@@ -24,7 +24,12 @@ async function syncSubscriptionToOrg(subscription: Stripe.Subscription) {
     stripe_price_id: priceId,
     subscription_status: subscription.status,
     plan_tier: tier,
-    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    // current_period_end is a top-level Subscription field at runtime but
+    // shifted around in Stripe SDK 22.x type defs. Cast through any.
+    current_period_end: new Date(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((subscription as any).current_period_end as number) * 1000,
+    ).toISOString(),
   }
 
   if (orgId) {

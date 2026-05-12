@@ -11,9 +11,10 @@ export function getStripe(): Stripe {
     throw new Error('STRIPE_SECRET_KEY not configured.')
   }
   if (cachedClient) return cachedClient
+  // Use the SDK's default API version (Stripe SDK pins compatible version
+  // per release). Passing an outdated apiVersion string trips strict types
+  // in SDK 22.x and shouldn't be necessary.
   cachedClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    // Pin to a known-good API version. Bump intentionally when SDK upgrades.
-    apiVersion: '2024-12-18.acacia' as Stripe.StripeConfig['apiVersion'],
     appInfo: { name: 'Headland', version: '0.1.0' },
   })
   return cachedClient

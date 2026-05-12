@@ -29,14 +29,7 @@ export default async function ExportPage() {
         )}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <ExportCard
-          title="Print pack (PDF)"
-          description="Cover sheet + one page per field with satellite, metadata, recent harvests + operations, and a notes box. Hand a stack to the crew before grinding."
-          href="/api/export/pdf"
-          buttonLabel="Download PDF"
-          disabled={empty}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ExportCard
           title="GeoJSON"
           description="Field boundaries with all attributes. Re-import into QGIS, ArcGIS, or any modern GIS. Standard EPSG:4326."
@@ -52,6 +45,11 @@ export default async function ExportPage() {
           disabled={empty}
         />
       </div>
+
+      <p className="mt-6 text-xs text-gray-500">
+        Need a printed pack? Open each field and click <strong>Print</strong> — your browser handles
+        the PDF save or sends it to a printer. Bulk print pack coming back as an HTML page.
+      </p>
     </div>
   )
 }
