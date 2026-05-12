@@ -10,9 +10,9 @@ export default function MarketingNav() {
           <Image
             src="/images/logo-icon.png"
             alt=""
-            width={36}
-            height={36}
-            className="h-9 w-9"
+            width={44}
+            height={44}
+            className="h-11 w-11"
             priority
           />
           <span className="font-serif text-2xl font-bold text-primary uppercase tracking-wide">{SITE_NAME}</span>
