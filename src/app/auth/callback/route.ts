@@ -7,6 +7,16 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get('code')
   const next = url.searchParams.get('next') ?? '/app/map'
 
+  const supabaseError =
+    url.searchParams.get('error_description') ??
+    url.searchParams.get('error_code') ??
+    url.searchParams.get('error')
+  if (supabaseError) {
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(supabaseError)}`, url.origin),
+    )
+  }
+
   if (!code) {
     return NextResponse.redirect(new URL('/login?error=missing_code', url.origin))
   }
