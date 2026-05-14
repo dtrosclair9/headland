@@ -31,6 +31,13 @@ export default async function ExportPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ExportCard
+          title="Shapefile"
+          description="Zipped Esri shapefile bundle (.shp, .shx, .dbf, .prj). The format USDA FSA accepts for FSA-578 acreage reporting. EPSG:4326."
+          href="/api/export/shapefile"
+          buttonLabel="Download .zip"
+          disabled={empty}
+        />
+        <ExportCard
           title="GeoJSON"
           description="Field boundaries with all attributes. Re-import into QGIS, ArcGIS, or any modern GIS. Standard EPSG:4326."
           href="/api/export/geojson"
@@ -39,7 +46,7 @@ export default async function ExportPage() {
         />
         <ExportCard
           title="KML"
-          description="Open in Google Earth or pass to crop insurance / FSA. One placemark per field with name, variety, cut, and acreage in the description."
+          description="Open in Google Earth. One placemark per field with name, variety, cut, and acreage in the description."
           href="/api/export/kml"
           buttonLabel="Download .kml"
           disabled={empty}
