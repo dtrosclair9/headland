@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
+  const tokenHash = url.searchParams.get('token_hash')
+  const type = url.searchParams.get('type') as EmailOtpType | null
   const code = url.searchParams.get('code')
   const next = url.searchParams.get('next') ?? '/app/map'
 
@@ -17,16 +20,27 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  if (!code) {
-    return NextResponse.redirect(new URL('/login?error=missing_code', url.origin))
-  }
-
   const supabase = await createClient()
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-  if (exchangeError) {
-    return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, url.origin),
-    )
+
+  if (tokenHash && type) {
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      type,
+      token_hash: tokenHash,
+    })
+    if (verifyError) {
+      return NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent(verifyError.message)}`, url.origin),
+      )
+    }
+  } else if (code) {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    if (exchangeError) {
+      return NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, url.origin),
+      )
+    }
+  } else {
+    return NextResponse.redirect(new URL('/login?error=missing_token', url.origin))
   }
 
   const {
