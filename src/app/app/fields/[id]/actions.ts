@@ -44,6 +44,11 @@ const UpdateSchema = z.object({
     .transform((v) => (v && v.length > 0 ? v : null))
     .pipe(RatoonEnum.nullable()),
   notes: z.string().max(2000).optional().transform((v) => (v && v.length > 0 ? v : null)),
+  section_id: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null))
+    .pipe(z.string().uuid().nullable()),
 })
 
 async function requireOwnedField(fieldId: string) {
@@ -64,6 +69,7 @@ export async function updateField(fieldId: string, formData: FormData) {
     plant_date: formData.get('plant_date'),
     current_ratoon: formData.get('current_ratoon'),
     notes: formData.get('notes'),
+    section_id: formData.get('section_id'),
   })
   if (!parsed.success) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Please check the values entered.'))

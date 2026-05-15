@@ -33,6 +33,9 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Bulk-select mode (for retrofitting fields to sections, archiving, etc.)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -66,6 +69,33 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       const { id } = await res.json()
       startTransition(() => router.refresh())
       setSelectedFieldId(id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleBulkAssignSection(sectionId: string | null) {
+    if (selectedIds.size === 0) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fields/bulk-section', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          field_ids: Array.from(selectedIds),
+          section_id: sectionId,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to assign section')
+      }
+      setSelectedIds(new Set())
+      setSelectMode(false)
+      startTransition(() => router.refresh())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -118,6 +148,23 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
           }}
           totalAcres={totalAcres}
           onClose={() => setSidebarOpen(false)}
+          selectMode={selectMode}
+          selectedIds={selectedIds}
+          onToggleSelectMode={() => {
+            setSelectMode((on) => {
+              if (on) setSelectedIds(new Set())
+              return !on
+            })
+          }}
+          onToggleFieldSelected={(id) => {
+            setSelectedIds((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id)
+              else next.add(id)
+              return next
+            })
+          }}
+          onBulkAssignSection={handleBulkAssignSection}
         />
       </div>
 

@@ -58,11 +58,23 @@ export interface Organization {
   units_default: Units
   state: CaneState | null
   acre_count_cached: number
+  fsa_farm_number: string | null
+  county_fips: string | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   stripe_price_id: string | null
   subscription_status: SubscriptionStatus
   current_period_end: string | null
+  created_at: string
+}
+
+export interface Section {
+  id: string
+  org_id: string
+  name: string
+  fsa_tract_number: string | null
+  notes: string | null
+  archived_at: string | null
   created_at: string
 }
 
@@ -86,6 +98,7 @@ export interface Field {
   plant_date: string | null
   current_ratoon: RatoonStage | null
   notes: string | null
+  section_id: string | null
   archived_at: string | null
   created_at: string
 }

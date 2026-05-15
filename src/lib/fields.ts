@@ -13,10 +13,12 @@ export async function countActiveFields(orgId: string): Promise<number> {
 }
 
 // What the fields_view exposes. geometry is GeoJSON.Polygon serialized as JSONB.
+// section_name is denormalized from the join in fields_view for cheap grouping.
 export interface FieldRow extends Omit<Field, 'geometry'> {
   geometry: GeoJSON.Polygon
   centroid_lng: number
   centroid_lat: number
+  section_name: string | null
 }
 
 export async function listFields(orgId: string): Promise<FieldRow[]> {
@@ -79,11 +81,32 @@ export async function updateFieldMetadata(
     plant_date?: string | null
     current_ratoon?: RatoonStage | null
     notes?: string | null
+    section_id?: string | null
   },
 ): Promise<void> {
   const supabase = await createClient()
   const { error } = await supabase.from('fields').update(patch).eq('id', fieldId)
   if (error) throw error
+}
+
+// Bulk-assign one section (or null to unassign) to many fields in a single
+// statement. RLS still enforces the org boundary so callers can't reach into
+// another org's fields. Returns the number of rows updated.
+export async function bulkAssignSection(input: {
+  orgId: string
+  fieldIds: string[]
+  sectionId: string | null
+}): Promise<number> {
+  if (input.fieldIds.length === 0) return 0
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('fields')
+    .update({ section_id: input.sectionId })
+    .eq('org_id', input.orgId)
+    .in('id', input.fieldIds)
+    .select('id')
+  if (error) throw error
+  return data?.length ?? 0
 }
 
 export async function archiveField(fieldId: string): Promise<void> {

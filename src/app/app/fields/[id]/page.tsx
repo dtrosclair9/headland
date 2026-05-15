@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getField } from '@/lib/fields'
+import { listSections } from '@/lib/sections'
 import { listApplications, listHarvests } from '@/lib/records'
 import { listScoutingPins } from '@/lib/scouting'
 import { listVarietiesForState, findVariety, isRipenerSensitive } from '@/lib/varieties'
@@ -41,12 +42,13 @@ export default async function FieldDetailPage({
   const field = await getField(id)
   if (!field || field.org_id !== org.id) notFound()
 
-  const [{ error, saved }, harvests, applications, scoutingPins, weather] = await Promise.all([
+  const [{ error, saved }, harvests, applications, scoutingPins, weather, sections] = await Promise.all([
     searchParams,
     listHarvests(id),
     listApplications(id),
     listScoutingPins(id),
     fetchWeather(field.centroid_lat, field.centroid_lng),
+    listSections(org.id),
   ])
 
   const varieties = listVarietiesForState(org.state)
@@ -173,6 +175,28 @@ export default async function FieldDetailPage({
               ))}
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="section_id">
+            Section
+            {sections.length === 0 && (
+              <span className="font-normal text-gray-400">
+                {' '}— <Link href="/app/sections" className="text-primary hover:underline">create one</Link> to group fields by location
+              </span>
+            )}
+          </label>
+          <select
+            id="section_id"
+            name="section_id"
+            defaultValue={field.section_id ?? ''}
+            className="input"
+          >
+            <option value="">— Unassigned</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
         </div>
 
         <div>
