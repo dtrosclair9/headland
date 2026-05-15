@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import FieldSidebar from './FieldSidebar'
@@ -31,6 +31,21 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [drawing, setDrawing] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // Default the sidebar closed on mobile so the map is full-screen on first view.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false)
+    }
+  }, [])
+
+  // Auto-collapse the sidebar whenever drawing begins so the user has the
+  // whole screen to sketch. They can reopen it with the Fields button.
+  useEffect(() => {
+    if (drawing) setSidebarOpen(false)
+  }, [drawing])
 
   const totalAcres = fields.reduce((sum, f) => sum + Number(f.acreage_cached || 0), 0)
 
@@ -81,13 +96,41 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
 
   return (
     <div className="flex-1 flex min-h-0 relative">
-      <FieldSidebar
-        fields={fields}
-        units={units}
-        selectedFieldId={selectedFieldId}
-        onSelectField={setSelectedFieldId}
-        totalAcres={totalAcres}
-      />
+      {/* Sidebar — slide-over drawer on mobile, persistent column on md+ when open.
+          On desktop, closing collapses the column entirely so the map fills the screen. */}
+      <div
+        className={`${
+          sidebarOpen
+            ? 'translate-x-0 pointer-events-auto md:relative'
+            : '-translate-x-full pointer-events-none md:hidden'
+        } absolute inset-y-0 left-0 z-30 transform transition-transform duration-200 ease-out flex`}
+      >
+        <FieldSidebar
+          fields={fields}
+          units={units}
+          selectedFieldId={selectedFieldId}
+          onSelectField={(id) => {
+            setSelectedFieldId(id)
+            // On mobile, picking a field should reveal the map; collapse the drawer.
+            if (typeof window !== 'undefined' && window.innerWidth < 768) {
+              setSidebarOpen(false)
+            }
+          }}
+          totalAcres={totalAcres}
+          onClose={() => setSidebarOpen(false)}
+        />
+      </div>
+
+      {/* Backdrop on mobile when drawer is open — tap to close */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close fields panel"
+          onClick={() => setSidebarOpen(false)}
+          className="md:hidden absolute inset-0 z-20 bg-black/30"
+        />
+      )}
+
       <FieldMap
         fields={fields}
         state={state}
@@ -95,7 +138,10 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         onSelectField={setSelectedFieldId}
         onCreateField={handleCreate}
         onUpdateField={handleUpdate}
+        onDrawingChange={setDrawing}
+        onShowFields={!sidebarOpen ? () => setSidebarOpen(true) : undefined}
       />
+
       {(busy || error) && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
           {busy && (

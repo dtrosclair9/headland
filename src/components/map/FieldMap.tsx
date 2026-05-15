@@ -81,6 +81,8 @@ export interface FieldMapProps {
   onSelectField: (id: string | null) => void
   onCreateField: (geometry: GeoJSON.Polygon) => Promise<void>
   onUpdateField: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
+  onDrawingChange?: (drawing: boolean) => void
+  onShowFields?: () => void
 }
 
 export default function FieldMap({
@@ -90,6 +92,8 @@ export default function FieldMap({
   onSelectField,
   onCreateField,
   onUpdateField,
+  onDrawingChange,
+  onShowFields,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -158,14 +162,15 @@ export default function FieldMap({
     // a second time after Mapbox grabbed it can return null and produce false
     // positives. Mapbox's own error event covers genuine context failures.)
 
-    // If load doesn't fire within 12s, surface a diagnostic.
+    // If load doesn't fire within 25s, surface a diagnostic. (Slow mobile
+    // cellular routinely takes 15–20s on first visit — keep the canary
+    // generous to avoid false positives.)
     readyTimer = setTimeout(() => {
       if (!mapRef.current) return
-      // Map exists but never fired load — likely network/style issue.
       setError(
-        'Map style took >12s to load. Likely a network issue, ad-blocker, or revoked Mapbox token. Hard-refresh; if it persists, open DevTools → Network and look for failing api.mapbox.com requests.',
+        'Map is taking unusually long to load. Likely a slow connection or ad-blocker. The map may still appear in a moment.',
       )
-    }, 12_000)
+    }, 25_000)
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     const geolocate = new mapboxgl.GeolocateControl({
@@ -193,7 +198,9 @@ export default function FieldMap({
     }
 
     map.on('draw.modechange', (e: { mode: string }) => {
-      setDrawing(e.mode === 'draw_polygon')
+      const isDrawing = e.mode === 'draw_polygon'
+      setDrawing(isDrawing)
+      onDrawingChange?.(isDrawing)
     })
 
     map.on('load', () => {
@@ -270,6 +277,8 @@ export default function FieldMap({
         clearTimeout(readyTimer)
         readyTimer = null
       }
+      // Clear any "slow load" warning that may have been set before load arrived.
+      setError(null)
       setReady(true)
     })
 
@@ -578,7 +587,19 @@ export default function FieldMap({
 
       {/* Labeled action buttons — overlay the map at top-left. */}
       <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 pointer-events-none items-start">
-        <div className="flex gap-2 pointer-events-none">
+        <div className="flex flex-wrap gap-2 pointer-events-none">
+          {onShowFields && (
+            <button
+              type="button"
+              onClick={onShowFields}
+              className="pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition bg-white text-primary border-2 border-primary hover:bg-primary/5"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
+              Fields ({fields.length})
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleDraw}
