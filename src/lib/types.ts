@@ -74,8 +74,18 @@ export interface Section {
   org_id: string
   name: string
   fsa_tract_number: string | null
+  fsa_farm_number: string | null
   notes: string | null
   archived_at: string | null
+  created_at: string
+}
+
+export interface FieldCycleHistory {
+  id: string
+  field_id: string
+  crop_year: number
+  previous_stage: RatoonStage | null
+  new_stage: RatoonStage
   created_at: string
 }
 

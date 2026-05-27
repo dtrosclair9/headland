@@ -103,6 +103,33 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
     }
   }
 
+  async function handleBulkRotate(): Promise<{ advanced: number; skipped: number } | null> {
+    if (selectedIds.size === 0) return null
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fields/bulk-rotate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ field_ids: Array.from(selectedIds) }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Rotation failed')
+      }
+      const result = (await res.json()) as { advanced: number; skipped: number }
+      setSelectedIds(new Set())
+      setSelectMode(false)
+      startTransition(() => router.refresh())
+      return result
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleUpdate(id: string, geometry: GeoJSON.Polygon) {
     setBusy(true)
     setError(null)
@@ -165,6 +192,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
             })
           }}
           onBulkAssignSection={handleBulkAssignSection}
+          onBulkRotate={handleBulkRotate}
         />
       </div>
 

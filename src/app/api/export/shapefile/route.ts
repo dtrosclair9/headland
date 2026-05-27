@@ -17,6 +17,7 @@ const PROP_KEYS = {
   plant_date: 'plant_date',
   current_ratoon: 'cur_ratoon',
   section: 'section',
+  fsa_farm: 'fsa_farm',
   fsa_tract: 'fsa_tract',
   notes: 'notes',
 } as const
@@ -35,6 +36,11 @@ export async function GET() {
     listSections(org.id),
   ])
   const tractByName = new Map(sections.map((s) => [s.name, s.fsa_tract_number ?? '']))
+  // Farm number lives on the section (each section ≈ one FSA farm); fall back
+  // to the org-level farm number when the section doesn't have its own.
+  const farmByName = new Map(
+    sections.map((s) => [s.name, s.fsa_farm_number ?? org.fsa_farm_number ?? '']),
+  )
 
   const featureCollection: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
@@ -50,6 +56,9 @@ export async function GET() {
         [PROP_KEYS.plant_date]: f.plant_date ?? '',
         [PROP_KEYS.current_ratoon]: f.current_ratoon ?? 0,
         [PROP_KEYS.section]: f.section_name ?? '',
+        [PROP_KEYS.fsa_farm]: f.section_name
+          ? (farmByName.get(f.section_name) ?? org.fsa_farm_number ?? '')
+          : (org.fsa_farm_number ?? ''),
         [PROP_KEYS.fsa_tract]: f.section_name ? (tractByName.get(f.section_name) ?? '') : '',
         [PROP_KEYS.notes]: f.notes ?? '',
       },

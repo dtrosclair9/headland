@@ -6,6 +6,7 @@ import {
   createSectionAction,
   updateSectionAction,
 } from './actions'
+import RotateSectionButton from './RotateSectionButton'
 
 export const metadata: Metadata = { title: 'Sections' }
 
@@ -55,18 +56,33 @@ export default async function SectionsPage({
               className="input"
             />
           </div>
-          <div>
-            <label className="label" htmlFor="new-tract">
-              FSA tract # <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              id="new-tract"
-              name="fsa_tract_number"
-              type="text"
-              maxLength={50}
-              placeholder="e.g. 563"
-              className="input"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="new-farm">
+                FSA farm # <span className="font-normal text-gray-400">(opt.)</span>
+              </label>
+              <input
+                id="new-farm"
+                name="fsa_farm_number"
+                type="text"
+                maxLength={50}
+                placeholder="e.g. 37"
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="new-tract">
+                FSA tract # <span className="font-normal text-gray-400">(opt.)</span>
+              </label>
+              <input
+                id="new-tract"
+                name="fsa_tract_number"
+                type="text"
+                maxLength={50}
+                placeholder="e.g. 563"
+                className="input"
+              />
+            </div>
           </div>
         </div>
         <div>
@@ -117,7 +133,20 @@ export default async function SectionsPage({
                       {section.field_count} field{section.field_count === 1 ? '' : 's'}
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label" htmlFor={`farm-${section.id}`}>
+                        FSA farm #
+                      </label>
+                      <input
+                        id={`farm-${section.id}`}
+                        name="fsa_farm_number"
+                        type="text"
+                        maxLength={50}
+                        defaultValue={section.fsa_farm_number ?? ''}
+                        className="input"
+                      />
+                    </div>
                     <div>
                       <label className="label" htmlFor={`tract-${section.id}`}>
                         FSA tract #
@@ -154,6 +183,13 @@ export default async function SectionsPage({
                     </button>
                   </div>
                 </form>
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <RotateSectionButton
+                    sectionId={section.id}
+                    sectionName={section.name}
+                    fieldCount={section.field_count}
+                  />
+                </div>
               </li>
             )
           })}

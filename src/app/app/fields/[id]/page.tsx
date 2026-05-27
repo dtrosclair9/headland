@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getField } from '@/lib/fields'
 import { listSections } from '@/lib/sections'
+import { getFieldCycleHistory } from '@/lib/rotation'
 import { listApplications, listHarvests } from '@/lib/records'
 import { listScoutingPins } from '@/lib/scouting'
 import { listVarietiesForState, findVariety, isRipenerSensitive } from '@/lib/varieties'
@@ -31,6 +32,10 @@ const RATOON_OPTIONS: { value: string; label: string }[] = [
   { value: 'fallow', label: 'Fallow' },
 ]
 
+const RATOON_LABEL: Record<string, string> = Object.fromEntries(
+  RATOON_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+)
+
 export default async function FieldDetailPage({
   params,
   searchParams,
@@ -43,13 +48,14 @@ export default async function FieldDetailPage({
   const field = await getField(id)
   if (!field || field.org_id !== org.id) notFound()
 
-  const [{ error, saved }, harvests, applications, scoutingPins, weather, sections] = await Promise.all([
+  const [{ error, saved }, harvests, applications, scoutingPins, weather, sections, cycleHistory] = await Promise.all([
     searchParams,
     listHarvests(id),
     listApplications(id),
     listScoutingPins(id),
     fetchWeather(field.centroid_lat, field.centroid_lng),
     listSections(org.id),
+    getFieldCycleHistory(id),
   ])
 
   const varieties = listVarietiesForState(org.state)
@@ -226,6 +232,29 @@ export default async function FieldDetailPage({
           )}
         </div>
       </form>
+
+      {cycleHistory.length > 0 && (
+        <div className="bg-white border border-gray-100 rounded-xl p-6">
+          <h2 className="text-base font-bold text-primary mb-3">Cycle history</h2>
+          <ul className="space-y-2">
+            {cycleHistory.map((h) => (
+              <li key={h.id} className="flex items-center gap-3 text-sm">
+                <span className="font-semibold text-gray-700 w-12 shrink-0">{h.crop_year}</span>
+                <span className="text-gray-600">
+                  {h.previous_stage ? RATOON_LABEL[h.previous_stage] ?? h.previous_stage : '—'}
+                  <span className="text-gray-400"> → </span>
+                  <span className="font-medium text-primary">
+                    {RATOON_LABEL[h.new_stage] ?? h.new_stage}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-gray-400">
+            Recorded automatically each time this block is rotated to the next cycle.
+          </p>
+        </div>
+      )}
 
       <WeatherCard weather={weather} />
       <FieldImageryCard fieldId={field.id} configured={isSentinelHubConfigured()} />

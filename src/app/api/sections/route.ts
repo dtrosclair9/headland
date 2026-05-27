@@ -12,6 +12,7 @@ export async function GET() {
 const CreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
   fsa_tract_number: z.string().trim().max(50).optional().nullable(),
+  fsa_farm_number: z.string().trim().max(50).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
 })
 
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       orgId: org.id,
       name: parsed.data.name,
       fsa_tract_number: parsed.data.fsa_tract_number ?? null,
+      fsa_farm_number: parsed.data.fsa_farm_number ?? null,
       notes: parsed.data.notes ?? null,
     })
     return NextResponse.json({ id }, { status: 201 })

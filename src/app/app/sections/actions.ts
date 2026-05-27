@@ -26,6 +26,7 @@ const OptionalTractSchema = z
 const CreateSchema = z.object({
   name: NameSchema,
   fsa_tract_number: OptionalTractSchema,
+  fsa_farm_number: OptionalTractSchema,
   notes: OptionalTextSchema,
 })
 
@@ -45,6 +46,7 @@ export async function createSectionAction(formData: FormData) {
   const parsed = CreateSchema.safeParse({
     name: formData.get('name'),
     fsa_tract_number: formData.get('fsa_tract_number'),
+    fsa_farm_number: formData.get('fsa_farm_number'),
     notes: formData.get('notes'),
   })
   if (!parsed.success) {
@@ -55,6 +57,7 @@ export async function createSectionAction(formData: FormData) {
       orgId: org.id,
       name: parsed.data.name,
       fsa_tract_number: parsed.data.fsa_tract_number,
+      fsa_farm_number: parsed.data.fsa_farm_number,
       notes: parsed.data.notes,
     })
   } catch (e) {
@@ -75,6 +78,7 @@ export async function updateSectionAction(sectionId: string, formData: FormData)
   const parsed = UpdateSchema.safeParse({
     name: formData.get('name'),
     fsa_tract_number: formData.get('fsa_tract_number'),
+    fsa_farm_number: formData.get('fsa_farm_number'),
     notes: formData.get('notes'),
   })
   if (!parsed.success) {

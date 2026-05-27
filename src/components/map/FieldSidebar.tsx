@@ -20,6 +20,7 @@ interface FieldSidebarProps {
   onToggleFieldSelected: (id: string) => void
   // sectionId: pass a UUID to assign, or null to unassign.
   onBulkAssignSection: (sectionId: string | null) => Promise<void>
+  onBulkRotate: () => Promise<{ advanced: number; skipped: number } | null>
 }
 
 export default function FieldSidebar({
@@ -34,9 +35,12 @@ export default function FieldSidebar({
   onToggleSelectMode,
   onToggleFieldSelected,
   onBulkAssignSection,
+  onBulkRotate,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
   const [assignOpen, setAssignOpen] = useState(false)
+  const [rotateOpen, setRotateOpen] = useState(false)
+  const [rotating, setRotating] = useState(false)
 
   return (
     <aside className="w-72 border-r border-gray-100 bg-white flex flex-col shadow-xl md:shadow-none">
@@ -196,14 +200,56 @@ export default function FieldSidebar({
                 setAssignOpen(false)
               }}
             />
+          ) : rotateOpen ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-sm font-semibold text-amber-900">
+                Roll {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} forward one year cane?
+              </p>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Each moves to its next cut — plant cane → 1st stubble, 1st → 2nd, and so on through
+                6th. Blocks that are fallow, already 6th+, or have no cut set stay put. No bulk undo.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={rotating}
+                  onClick={async () => {
+                    setRotating(true)
+                    await onBulkRotate()
+                    setRotating(false)
+                    setRotateOpen(false)
+                  }}
+                  className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+                >
+                  {rotating ? 'Rotating…' : 'Yes, rotate'}
+                </button>
+                <button
+                  type="button"
+                  disabled={rotating}
+                  onClick={() => setRotateOpen(false)}
+                  className="text-xs text-gray-600 hover:text-primary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setAssignOpen(true)}
-              className="btn-primary w-full text-sm"
-            >
-              Assign {selectedIds.size} to section…
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setAssignOpen(true)}
+                className="btn-primary w-full text-sm"
+              >
+                Assign {selectedIds.size} to section…
+              </button>
+              <button
+                type="button"
+                onClick={() => setRotateOpen(true)}
+                className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
+              >
+                Rotate {selectedIds.size} to next cycle →
+              </button>
+            </>
           )}
         </div>
       )}

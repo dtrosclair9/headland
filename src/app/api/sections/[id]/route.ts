@@ -6,6 +6,7 @@ import { archiveSection, getSection, updateSection } from '@/lib/sections'
 const PatchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   fsa_tract_number: z.string().trim().max(50).nullable().optional(),
+  fsa_farm_number: z.string().trim().max(50).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
 })
 

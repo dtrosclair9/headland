@@ -56,6 +56,7 @@ export async function createSection(input: {
   orgId: string
   name: string
   fsa_tract_number?: string | null
+  fsa_farm_number?: string | null
   notes?: string | null
 }): Promise<{ id: string }> {
   const supabase = await createClient()
@@ -65,6 +66,7 @@ export async function createSection(input: {
       org_id: input.orgId,
       name: input.name,
       fsa_tract_number: input.fsa_tract_number ?? null,
+      fsa_farm_number: input.fsa_farm_number ?? null,
       notes: input.notes ?? null,
     })
     .select('id')
@@ -78,6 +80,7 @@ export async function updateSection(
   patch: {
     name?: string
     fsa_tract_number?: string | null
+    fsa_farm_number?: string | null
     notes?: string | null
   },
 ): Promise<void> {
