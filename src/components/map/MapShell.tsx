@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 import FieldSidebar from './FieldSidebar'
 import NewBlockModal from './NewBlockModal'
 import type { FieldRow } from '@/lib/fields'
-import type { Units, CaneState } from '@/lib/types'
+import type { Units, CaneState, Ditch } from '@/lib/types'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -19,16 +19,18 @@ const FieldMap = dynamic(() => import('./FieldMap'), {
 
 interface MapShellProps {
   initialFields: FieldRow[]
+  initialDitches: Ditch[]
   units: Units
   state: CaneState | null
 }
 
-export default function MapShell({ initialFields, units, state }: MapShellProps) {
+export default function MapShell({ initialFields, initialDitches, units, state }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Use server data directly. router.refresh() flows new initialFields in.
   // No local mirror — that pattern was infinite-looping with new array refs.
   const fields = initialFields
+  const ditches = initialDitches
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,6 +102,44 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       }
       setSelectedIds(new Set())
       setSelectMode(false)
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCreateDitch(geometry: GeoJSON.LineString) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/ditches', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ geometry }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to save ditch')
+      }
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeleteDitch(id: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/ditches/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to delete ditch')
+      }
       startTransition(() => router.refresh())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -213,11 +253,14 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
 
       <FieldMap
         fields={fields}
+        ditches={ditches}
         state={state}
         selectedFieldId={selectedFieldId}
         onSelectField={setSelectedFieldId}
         onCreateField={handleCreate}
         onUpdateField={handleUpdate}
+        onCreateDitch={handleCreateDitch}
+        onDeleteDitch={handleDeleteDitch}
         onDrawingChange={setDrawing}
         onShowFields={!sidebarOpen ? () => setSidebarOpen(true) : undefined}
       />

@@ -165,6 +165,8 @@ const ApplicationTypeEnum = z.enum([
   'other',
 ])
 
+const WindDirectionEnum = z.enum(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'])
+
 const ApplicationSchema = z.object({
   applied_at: z.string().min(1),
   type: ApplicationTypeEnum,
@@ -175,6 +177,16 @@ const ApplicationSchema = z.object({
     .transform((v) => (v && v.length > 0 ? Number(v) : null))
     .pipe(z.number().nonnegative().nullable()),
   unit: z.string().max(20).optional().transform((v) => (v && v.length > 0 ? v : null)),
+  wind_direction: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null))
+    .pipe(WindDirectionEnum.nullable()),
+  wind_speed_mph: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? Number(v) : null))
+    .pipe(z.number().nonnegative().max(200).nullable()),
   notes: z.string().max(500).optional().transform((v) => (v && v.length > 0 ? v : null)),
 })
 
@@ -187,6 +199,8 @@ export async function createApplication(fieldId: string, formData: FormData) {
     product: formData.get('product'),
     rate: formData.get('rate'),
     unit: formData.get('unit'),
+    wind_direction: formData.get('wind_direction'),
+    wind_speed_mph: formData.get('wind_speed_mph'),
     notes: formData.get('notes'),
   })
   if (!parsed.success) {

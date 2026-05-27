@@ -33,6 +33,7 @@ export function ApplicationsCard({
               <th className="py-2 font-semibold">Type</th>
               <th className="py-2 font-semibold">Product</th>
               <th className="py-2 font-semibold">Rate</th>
+              <th className="py-2 font-semibold">Wind</th>
               <th className="py-2 font-semibold">Notes</th>
               <th className="py-2 w-8" />
             </tr>
@@ -47,6 +48,13 @@ export function ApplicationsCard({
                 <td className="py-2">{a.product ?? '—'}</td>
                 <td className="py-2">
                   {a.rate != null ? `${a.rate}${a.unit ? ' ' + a.unit : ''}` : '—'}
+                </td>
+                <td className="py-2">
+                  {a.wind_direction || a.wind_speed_mph != null
+                    ? `${a.wind_direction ?? ''}${
+                        a.wind_speed_mph != null ? ` ${a.wind_speed_mph} mph` : ''
+                      }`.trim()
+                    : '—'}
                 </td>
                 <td className="py-2 text-gray-600 truncate max-w-xs">{a.notes ?? ''}</td>
                 <td className="py-2 text-right">
@@ -132,6 +140,30 @@ export function ApplicationsCard({
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label" htmlFor="wind_direction">Wind dir.</label>
+              <select id="wind_direction" name="wind_direction" className="input" defaultValue="">
+                <option value="">—</option>
+                {['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="wind_speed_mph">Wind mph</label>
+              <input
+                id="wind_speed_mph"
+                name="wind_speed_mph"
+                type="number"
+                step="0.1"
+                min={0}
+                max={200}
+                className="input"
+                placeholder="6"
+              />
+            </div>
+          </div>
           <div className="sm:col-span-3">
             <label className="label" htmlFor="op_notes">Notes</label>
             <input
@@ -140,7 +172,7 @@ export function ApplicationsCard({
               type="text"
               maxLength={500}
               className="input"
-              placeholder="Wind, applicator, target weed/insect, etc."
+              placeholder="Applicator, target weed/insect, nozzle, etc."
             />
           </div>
           {varietyIsRipenerSensitive && (

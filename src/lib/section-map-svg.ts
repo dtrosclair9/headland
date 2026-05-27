@@ -1,4 +1,5 @@
 import type { FieldRow } from '@/lib/fields'
+import type { Ditch } from '@/lib/types'
 import { colorForRatoon } from '@/lib/ratoon-colors'
 
 export interface SvgBlock {
@@ -17,6 +18,7 @@ export interface SectionSvg {
   width: number
   height: number
   blocks: SvgBlock[]
+  ditches: { id: string; points: string }[]
   /** ratoon stage keys present among these blocks, for the legend */
   stagesPresent: string[]
   hasUnset: boolean
@@ -31,7 +33,7 @@ function clamp(n: number, lo: number, hi: number) {
 // North is up. No basemap; this is the plat-map schematic.
 export function buildSectionSvg(
   blocks: FieldRow[],
-  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
+  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean; ditches?: Ditch[] } = {},
 ): SectionSvg | null {
   const canvasWidth = opts.canvasWidth ?? 1100
   const pad = opts.pad ?? 28
@@ -109,10 +111,25 @@ export function buildSectionSvg(
     }
   })
 
+  // Overlay ditches that touch this section's frame. The SVG viewBox clips
+  // anything past the canvas edges, so we keep a ditch if any vertex lands
+  // within the block bounds and let SVG trim the rest.
+  const inBounds = (lng: number, lat: number) =>
+    projX(lng) >= minX && projX(lng) <= maxX && lat >= minY && lat <= maxY
+  const svgDitches = (opts.ditches ?? [])
+    .filter((d) => (d.geometry?.coordinates ?? []).some(([lng, lat]) => inBounds(lng, lat)))
+    .map((d) => ({
+      id: d.id,
+      points: (d.geometry.coordinates as [number, number][])
+        .map(([lng, lat]) => `${toX(lng).toFixed(1)},${toY(lat).toFixed(1)}`)
+        .join(' '),
+    }))
+
   return {
     width: canvasWidth,
     height,
     blocks: svgBlocks,
+    ditches: svgDitches,
     stagesPresent: Array.from(stages),
     hasUnset,
   }

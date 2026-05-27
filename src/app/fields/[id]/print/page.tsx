@@ -175,11 +175,12 @@ export default async function FieldPrintPage({
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <Th style={{ width: '18%' }}>Date</Th>
-                  <Th style={{ width: '22%' }}>Type</Th>
-                  <Th style={{ width: '30%' }}>Product</Th>
-                  <Th style={{ width: '15%' }}>Rate</Th>
-                  <Th style={{ width: '15%' }}>Notes</Th>
+                  <Th style={{ width: '16%' }}>Date</Th>
+                  <Th style={{ width: '20%' }}>Type</Th>
+                  <Th style={{ width: '26%' }}>Product</Th>
+                  <Th style={{ width: '13%' }}>Rate</Th>
+                  <Th style={{ width: '13%' }}>Wind</Th>
+                  <Th style={{ width: '12%' }}>Notes</Th>
                 </tr>
               </thead>
               <tbody>
@@ -189,6 +190,11 @@ export default async function FieldPrintPage({
                     <Td>{OPERATION_TYPE_LABEL[a.type] ?? a.type}</Td>
                     <Td>{a.product ?? '—'}</Td>
                     <Td>{a.rate != null ? `${a.rate}${a.unit ? ' ' + a.unit : ''}` : '—'}</Td>
+                    <Td>
+                      {a.wind_direction || a.wind_speed_mph != null
+                        ? `${a.wind_direction ?? ''}${a.wind_speed_mph != null ? ` ${a.wind_speed_mph}` : ''}`.trim()
+                        : '—'}
+                    </Td>
                     <Td>{a.notes ?? ''}</Td>
                   </tr>
                 ))}

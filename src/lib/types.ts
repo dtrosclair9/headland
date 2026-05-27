@@ -132,8 +132,21 @@ export interface Application {
   type: ApplicationType
   rate: number | null
   unit: string | null
+  wind_direction: string | null
+  wind_speed_mph: number | null
   notes: string | null
   applied_by: string | null
+  created_at: string
+}
+
+export type WindDirection = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW'
+
+export interface Ditch {
+  id: string
+  org_id: string
+  geometry: GeoJSON.LineString
+  notes: string | null
+  archived_at: string | null
   created_at: string
 }
 

@@ -65,6 +65,8 @@ export interface AddApplicationInput {
   type: ApplicationType
   rate: number | null
   unit: string | null
+  wind_direction: string | null
+  wind_speed_mph: number | null
   notes: string | null
   applied_by: string
 }
