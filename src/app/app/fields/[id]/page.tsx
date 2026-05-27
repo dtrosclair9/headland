@@ -18,7 +18,7 @@ import { ScoutingCard } from '@/components/fields/ScoutingCard'
 import { WeatherCard } from '@/components/fields/WeatherCard'
 import { FieldImageryCard } from '@/components/fields/FieldImageryCard'
 
-export const metadata: Metadata = { title: 'Field' }
+export const metadata: Metadata = { title: 'Block' }
 
 const RATOON_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '—' },
@@ -115,7 +115,7 @@ export default async function FieldDetailPage({
 
       <form action={updateAction} className="bg-white border border-gray-100 rounded-xl p-6 space-y-5">
         <div>
-          <label className="label" htmlFor="name">Field name</label>
+          <label className="label" htmlFor="name">Block name</label>
           <input
             id="name"
             name="name"
@@ -189,7 +189,7 @@ export default async function FieldDetailPage({
             Section
             {sections.length === 0 && (
               <span className="font-normal text-gray-400">
-                {' '}— <Link href="/app/sections" className="text-primary hover:underline">create one</Link> to group fields by location
+                {' '}— <Link href="/app/sections" className="text-primary hover:underline">create one</Link> to group blocks by location
               </span>
             )}
           </label>
@@ -227,7 +227,7 @@ export default async function FieldDetailPage({
               formAction={deleteAction}
               className="text-sm text-red-600 hover:underline"
             >
-              Delete field
+              Delete block
             </button>
           )}
         </div>

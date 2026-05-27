@@ -19,11 +19,11 @@ export default async function ExportPage() {
     <div className="container-wide py-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-primary mb-2">Export</h1>
       <p className="text-sm text-gray-600 mb-6">
-        Download every field in <strong>{org.name}</strong>. {empty ? (
-          <>You don&apos;t have any fields yet.</>
+        Download every block in <strong>{org.name}</strong>. {empty ? (
+          <>You don&apos;t have any blocks yet.</>
         ) : (
           <>
-            {fields.length} field{fields.length === 1 ? '' : 's'} ·{' '}
+            {fields.length} block{fields.length === 1 ? '' : 's'} ·{' '}
             {total.primary} <span className="text-gray-400">· {total.alt}</span>
           </>
         )}
@@ -39,14 +39,14 @@ export default async function ExportPage() {
         />
         <ExportCard
           title="GeoJSON"
-          description="Field boundaries with all attributes. Re-import into QGIS, ArcGIS, or any modern GIS. Standard EPSG:4326."
+          description="Block boundaries with all attributes. Re-import into QGIS, ArcGIS, or any modern GIS. Standard EPSG:4326."
           href="/api/export/geojson"
           buttonLabel="Download .geojson"
           disabled={empty}
         />
         <ExportCard
           title="KML"
-          description="Open in Google Earth. One placemark per field with name, variety, cut, and acreage in the description."
+          description="Open in Google Earth. One placemark per block with name, variety, cut, and acreage in the description."
           href="/api/export/kml"
           buttonLabel="Download .kml"
           disabled={empty}
@@ -54,7 +54,7 @@ export default async function ExportPage() {
       </div>
 
       <p className="mt-6 text-xs text-gray-500">
-        Need a printed pack? Open each field and click <strong>Print</strong> — your browser handles
+        Need a printed pack? Open each block and click <strong>Print</strong> — your browser handles
         the PDF save or sends it to a printer. Bulk print pack coming back as an HTML page.
       </p>
     </div>

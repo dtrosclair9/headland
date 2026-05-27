@@ -691,7 +691,7 @@ export default function FieldMap({
               <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
               </svg>
-              Fields ({fields.length})
+              Blocks ({fields.length})
             </button>
           )}
           <button
@@ -716,7 +716,7 @@ export default function FieldMap({
                 <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M10 2a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H3a1 1 0 110-2h6V3a1 1 0 011-1z" />
                 </svg>
-                Draw a field
+                Draw a block
               </>
             )}
           </button>
@@ -745,7 +745,7 @@ export default function FieldMap({
 
         {drawing && (
           <div className="pointer-events-none rounded-md bg-primary-dark/90 text-white px-3 py-2 text-xs leading-snug max-w-xs shadow-md">
-            Click each corner of the field. Double-click the last corner to finish.
+            Click each corner of the block. Double-click the last corner to finish.
             Press Esc to cancel.
           </div>
         )}

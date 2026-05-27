@@ -3,7 +3,7 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields } from '@/lib/fields'
 import MapShell from '@/components/map/MapShell'
 
-export const metadata: Metadata = { title: 'Field map' }
+export const metadata: Metadata = { title: 'Block map' }
 
 export default async function MapPage() {
   const { org } = await requireUserAndOrg()

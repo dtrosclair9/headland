@@ -23,8 +23,8 @@ export default async function SectionsPage({
     <div className="container-wide py-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-primary mb-1">Sections</h1>
       <p className="text-sm text-gray-600 mb-6">
-        Group your fields by location (e.g. <em>Rosedale</em>, <em>Woodlawn</em>). Lines up with
-        the FSA Tract concept — add the tract number if you have it.
+        Group your blocks by location (e.g. <em>Rosedale</em>, <em>Woodlawn</em>). Lines up with
+        the FSA Farm / Tract concept — add the farm and tract numbers if you have them.
       </p>
 
       {error && (
@@ -103,7 +103,7 @@ export default async function SectionsPage({
 
       {sections.length === 0 ? (
         <div className="text-center text-sm text-gray-500 py-8">
-          No sections yet. Create one above, then assign fields to it from the map.
+          No sections yet. Create one above, then assign blocks to it from the map.
         </div>
       ) : (
         <ul className="space-y-3">
@@ -130,7 +130,7 @@ export default async function SectionsPage({
                       />
                     </div>
                     <p className="text-xs text-gray-500 whitespace-nowrap pt-6">
-                      {section.field_count} field{section.field_count === 1 ? '' : 's'}
+                      {section.field_count} block{section.field_count === 1 ? '' : 's'}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -197,8 +197,8 @@ export default async function SectionsPage({
       )}
 
       <p className="mt-8 text-xs text-gray-500 leading-relaxed">
-        Archiving a section unassigns its fields (they revert to <em>Unassigned</em>) but doesn&apos;t
-        delete them. Fields can be reassigned anytime from the map sidebar.
+        Archiving a section unassigns its blocks (they revert to <em>Unassigned</em>) but doesn&apos;t
+        delete them. Blocks can be reassigned anytime from the map sidebar.
       </p>
     </div>
   )

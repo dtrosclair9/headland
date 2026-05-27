@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import FieldSidebar from './FieldSidebar'
+import NewBlockModal from './NewBlockModal'
 import type { FieldRow } from '@/lib/fields'
 import type { Units, CaneState } from '@/lib/types'
 
@@ -36,6 +37,8 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   // Bulk-select mode (for retrofitting fields to sections, archiving, etc.)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // After a block is drawn, prompt for its details right away.
+  const [newBlock, setNewBlock] = useState<{ id: string; name: string } | null>(null)
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -56,7 +59,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
     setBusy(true)
     setError(null)
     try {
-      const name = `Field ${fields.length + 1}`
+      const name = `Block ${fields.length + 1}`
       const res = await fetch('/api/fields', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -64,11 +67,13 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Failed to save field')
+        throw new Error(err.message || 'Failed to save block')
       }
       const { id } = await res.json()
       startTransition(() => router.refresh())
       setSelectedFieldId(id)
+      // Pop the details modal so the grower names/tags the block while it's fresh.
+      setNewBlock({ id, name })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -230,6 +235,17 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
             </div>
           )}
         </div>
+      )}
+
+      {newBlock && (
+        <NewBlockModal
+          blockId={newBlock.id}
+          defaultName={newBlock.name}
+          onClose={() => {
+            setNewBlock(null)
+            startTransition(() => router.refresh())
+          }}
+        />
       )}
     </div>
   )
