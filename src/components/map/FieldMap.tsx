@@ -11,7 +11,11 @@ import type { CaneState } from '@/lib/types'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const SELECTED_COLOR = '#E8A33D'
-const UNSET_COLOR = '#1A3D2E'
+// Unset / no cut entered yet — light grey, reads as "no crop" like fallow.
+const UNSET_COLOR = '#D1D5DB'
+
+const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
+const CROP_STYLE = 'mapbox://styles/mapbox/light-v11'
 
 // Centroids for default map center if user has no fields yet.
 const STATE_CENTERS: Record<CaneState, [number, number]> = {
@@ -19,17 +23,18 @@ const STATE_CENTERS: Record<CaneState, [number, number]> = {
   FL: [-80.7, 26.6],
 }
 
-// Map ratoon stage → fill color. Goes bright-green (new growth) through red
-// (time to plow out) so a farmer can tell at a glance which fields are
-// approaching the end of their cycle.
+// Map ratoon stage → fill color. This is the grower's established convention
+// from his printed crop maps (see memory: crop-color-convention) — plant cane
+// red, climbing through the stubble years, fallow/open grey. Matching it makes
+// the crop-map view read instantly to someone used to the paper version.
 const RATOON_COLORS: { key: string; label: string; color: string }[] = [
-  { key: 'plant_cane', label: 'Plant cane', color: '#4ADE80' },
-  { key: 'first_stubble', label: '1st stubble', color: '#22C55E' },
-  { key: 'second_stubble', label: '2nd stubble', color: '#84CC16' },
-  { key: 'third_stubble', label: '3rd stubble', color: '#EAB308' },
-  { key: 'fourth_stubble', label: '4th stubble', color: '#F59E0B' },
-  { key: 'fifth_stubble_plus', label: '5th+ stubble', color: '#EF4444' },
-  { key: 'fallow', label: 'Fallow', color: '#9CA3AF' },
+  { key: 'plant_cane', label: 'Plant cane', color: '#DC2626' }, // red
+  { key: 'first_stubble', label: '1st stubble', color: '#2563EB' }, // blue
+  { key: 'second_stubble', label: '2nd stubble', color: '#EAB308' }, // yellow
+  { key: 'third_stubble', label: '3rd stubble', color: '#16A34A' }, // green
+  { key: 'fourth_stubble', label: '4th stubble', color: '#92400E' }, // brown
+  { key: 'fifth_stubble_plus', label: '5th+ stubble', color: '#EC4899' }, // pink
+  { key: 'fallow', label: 'Fallow / open', color: '#9CA3AF' }, // grey
 ]
 
 function fillColorExpression(selectedFieldId: string | null): mapboxgl.ExpressionSpecification {
@@ -65,12 +70,52 @@ function truncateNotesForLabel(notes: string | null, acres: number): string {
   return cut.trimEnd() + '…'
 }
 
-function lineColorExpression(selectedFieldId: string | null): mapboxgl.ExpressionSpecification {
+// Outline color depends on basemap: white reads on satellite, dark grey on the
+// light crop-map background (white would vanish there).
+function lineColorExpression(
+  selectedFieldId: string | null,
+  viewMode: ViewMode,
+): mapboxgl.ExpressionSpecification {
   return [
     'case',
     ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
     SELECTED_COLOR,
-    '#FFFFFF',
+    viewMode === 'crop' ? '#374151' : '#FFFFFF',
+  ] as unknown as mapboxgl.ExpressionSpecification
+}
+
+type ViewMode = 'satellite' | 'crop'
+
+// Satellite label: name + variety + truncated note (ground-truth context while
+// drawing / scouting). Each optional line gets a conditional newline so empty
+// values don't leave blank gaps.
+function satelliteLabelExpression(): mapboxgl.ExpressionSpecification {
+  return [
+    'format',
+    ['get', 'name'],
+    { 'font-scale': 1 },
+    ['case', ['!=', ['get', 'variety'], ''], '\n', ''],
+    {},
+    ['get', 'variety'],
+    { 'font-scale': 0.75 },
+    ['case', ['!=', ['get', 'notes_short'], ''], '\n', ''],
+    {},
+    ['get', 'notes_short'],
+    { 'font-scale': 0.65 },
+  ] as unknown as mapboxgl.ExpressionSpecification
+}
+
+// Crop-map label: block name + acreage, matching the printed plat maps where
+// the acreage number is the headline figure inside each block.
+function cropLabelExpression(): mapboxgl.ExpressionSpecification {
+  return [
+    'format',
+    ['get', 'name'],
+    { 'font-scale': 0.85 },
+    '\n',
+    {},
+    ['concat', ['number-format', ['get', 'acreage'], { 'max-fraction-digits': 2 }], ' ac'],
+    { 'font-scale': 1 },
   ] as unknown as mapboxgl.ExpressionSpecification
 }
 
@@ -106,6 +151,7 @@ export default function FieldMap({
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
   const [legendOpen, setLegendOpen] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('satellite')
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
   const [locateAccuracy, setLocateAccuracy] = useState<number | null>(null)
@@ -222,7 +268,9 @@ export default function FieldMap({
         type: 'line',
         source: 'fields',
         paint: {
-          'line-color': lineColorExpression(selectedFieldId),
+          // Initial paint assumes satellite (the default mode); the view-mode
+          // effect re-applies the correct colors/opacity once ready flips true.
+          'line-color': lineColorExpression(selectedFieldId, 'satellite'),
           'line-width': 2,
         },
       })
@@ -231,23 +279,9 @@ export default function FieldMap({
         type: 'symbol',
         source: 'fields',
         layout: {
-          // Three-line label: field name (full size), variety (smaller), then
-          // a truncated note line (smallest). Each optional line is preceded
-          // by a conditional newline so empty values don't introduce blank
-          // gaps in the label.
-          'text-field': [
-            'format',
-            ['get', 'name'],
-            { 'font-scale': 1 },
-            ['case', ['!=', ['get', 'variety'], ''], '\n', ''],
-            {},
-            ['get', 'variety'],
-            { 'font-scale': 0.75 },
-            ['case', ['!=', ['get', 'notes_short'], ''], '\n', ''],
-            {},
-            ['get', 'notes_short'],
-            { 'font-scale': 0.65 },
-          ],
+          // Default to the satellite label; the view-mode effect swaps to the
+          // acreage-forward crop label when needed.
+          'text-field': satelliteLabelExpression(),
           'text-size': 13,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
           'text-line-height': 1.15,
@@ -399,17 +433,49 @@ export default function FieldMap({
     }
   }, [fields, ready])
 
-  // Recolor selection (and re-apply ratoon match for unselected fields).
+  // Recolor selection + apply the active view mode. In crop mode we hide the
+  // satellite raster, lighten the background, and crank fill opacity so blocks
+  // read as solid plat-map colors (matching the grower's printed maps).
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
     map.setPaintProperty('fields-fill', 'fill-color', fillColorExpression(selectedFieldId))
-    map.setPaintProperty('fields-outline', 'line-color', lineColorExpression(selectedFieldId))
-    if (selectedFieldId) {
-      const sel = fields.find((f) => f.id === selectedFieldId)
-      if (sel) {
-        map.flyTo({ center: [sel.centroid_lng, sel.centroid_lat], zoom: 15, speed: 1.4 })
+    map.setPaintProperty('fields-fill', 'fill-opacity', viewMode === 'crop' ? 0.92 : 0.4)
+    map.setPaintProperty('fields-outline', 'line-color', lineColorExpression(selectedFieldId, viewMode))
+    map.setPaintProperty('fields-outline', 'line-width', viewMode === 'crop' ? 1.5 : 2)
+    map.setLayoutProperty(
+      'fields-label',
+      'text-field',
+      viewMode === 'crop' ? cropLabelExpression() : satelliteLabelExpression(),
+    )
+
+    // Toggle the basemap by dimming the satellite raster rather than swapping
+    // styles (setStyle wipes our layers + the draw control). Iterate so we
+    // don't depend on Mapbox's internal raster layer id. Also lighten the
+    // style's background layer so hiding the raster reveals a clean plat-map
+    // backdrop (the satellite style's own background is dark).
+    const style = map.getStyle()
+    for (const layer of style?.layers ?? []) {
+      try {
+        if (layer.type === 'raster') {
+          map.setPaintProperty(layer.id, 'raster-opacity', viewMode === 'crop' ? 0 : 1)
+        } else if (layer.type === 'background') {
+          map.setPaintProperty(layer.id, 'background-color', viewMode === 'crop' ? '#EAE7E1' : '#0B0B0B')
+        }
+      } catch {
+        /* layer may not support the property — ignore */
       }
+    }
+  }, [selectedFieldId, ready, viewMode])
+
+  // Fly to a field when it becomes the selected one (kept separate so toggling
+  // the view mode doesn't yank the camera around).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !selectedFieldId) return
+    const sel = fields.find((f) => f.id === selectedFieldId)
+    if (sel) {
+      map.flyTo({ center: [sel.centroid_lng, sel.centroid_lat], zoom: 15, speed: 1.4 })
     }
   }, [selectedFieldId, fields, ready])
 
@@ -582,8 +648,35 @@ export default function FieldMap({
       <div
         ref={containerRef}
         className="absolute inset-0"
-        style={{ width: '100%', height: '100%' }}
+        // Light backdrop shows through wherever the satellite raster is hidden
+        // (crop-map mode), giving the plain plat-map look.
+        style={{ width: '100%', height: '100%', backgroundColor: '#EAE7E1' }}
       />
+
+      {/* View-mode toggle — top-center. Flip between satellite (for drawing /
+          ground-truth) and the plain colored crop map (for reading / printing). */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
+        <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
+          <button
+            type="button"
+            onClick={() => setViewMode('satellite')}
+            className={`px-3 py-2 transition ${
+              viewMode === 'satellite' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Satellite
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('crop')}
+            className={`px-3 py-2 transition ${
+              viewMode === 'crop' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Crop map
+          </button>
+        </div>
+      </div>
 
       {/* Labeled action buttons — overlay the map at top-left. */}
       <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 pointer-events-none items-start">
@@ -672,8 +765,9 @@ export default function FieldMap({
 
       </div>
 
-      {/* Cycle legend — bottom-right. Collapsible. */}
-      {anyRatoonSet && (
+      {/* Cycle legend — bottom-right. Collapsible. Always shown in crop mode
+          since the colors are the entire point there. */}
+      {(anyRatoonSet || viewMode === 'crop') && (
         <div className="absolute bottom-8 right-3 z-10 pointer-events-auto">
           {legendOpen ? (
             <div className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 p-3 w-44">
