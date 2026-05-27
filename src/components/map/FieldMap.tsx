@@ -33,7 +33,8 @@ const RATOON_COLORS: { key: string; label: string; color: string }[] = [
   { key: 'second_stubble', label: '2nd stubble', color: '#EAB308' }, // yellow
   { key: 'third_stubble', label: '3rd stubble', color: '#16A34A' }, // green
   { key: 'fourth_stubble', label: '4th stubble', color: '#92400E' }, // brown
-  { key: 'fifth_stubble_plus', label: '5th+ stubble', color: '#EC4899' }, // pink
+  { key: 'fifth_stubble_plus', label: '5th stubble', color: '#EC4899' }, // pink
+  { key: 'sixth_stubble_plus', label: '6th+ stubble', color: '#7C3AED' }, // purple
   { key: 'fallow', label: 'Fallow / open', color: '#9CA3AF' }, // grey
 ]
 

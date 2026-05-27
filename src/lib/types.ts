@@ -15,6 +15,7 @@ export type RatoonStage =
   | 'third_stubble'
   | 'fourth_stubble'
   | 'fifth_stubble_plus'
+  | 'sixth_stubble_plus'
   | 'fallow'
 
 export type ApplicationType =

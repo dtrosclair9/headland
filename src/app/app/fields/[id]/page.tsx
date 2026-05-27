@@ -26,7 +26,8 @@ const RATOON_OPTIONS: { value: string; label: string }[] = [
   { value: 'second_stubble', label: '2nd stubble' },
   { value: 'third_stubble', label: '3rd stubble' },
   { value: 'fourth_stubble', label: '4th stubble' },
-  { value: 'fifth_stubble_plus', label: '5th+ stubble' },
+  { value: 'fifth_stubble_plus', label: '5th stubble' },
+  { value: 'sixth_stubble_plus', label: '6th+ stubble' },
   { value: 'fallow', label: 'Fallow' },
 ]
 

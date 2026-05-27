@@ -25,6 +25,7 @@ const PatchSchema = z.object({
       'third_stubble',
       'fourth_stubble',
       'fifth_stubble_plus',
+      'sixth_stubble_plus',
       'fallow',
     ])
     .nullable()

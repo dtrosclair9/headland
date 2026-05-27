@@ -17,7 +17,8 @@ const RATOON_LABELS: Record<string, string> = {
   second_stubble: '2nd stubble',
   third_stubble: '3rd stubble',
   fourth_stubble: '4th stubble',
-  fifth_stubble_plus: '5th+ stubble',
+  fifth_stubble_plus: '5th stubble',
+  sixth_stubble_plus: '6th+ stubble',
   fallow: 'Fallow',
 }
 
