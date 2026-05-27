@@ -33,6 +33,18 @@ export async function listFields(orgId: string): Promise<FieldRow[]> {
   return (data ?? []) as FieldRow[]
 }
 
+export async function listFieldsBySection(sectionId: string): Promise<FieldRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('fields_view')
+    .select('*')
+    .eq('section_id', sectionId)
+    .is('archived_at', null)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as FieldRow[]
+}
+
 export async function getField(fieldId: string): Promise<FieldRow | null> {
   const supabase = await createClient()
   const { data, error } = await supabase

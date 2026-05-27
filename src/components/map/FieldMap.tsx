@@ -8,11 +8,11 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import type { FieldRow } from '@/lib/fields'
 import type { CaneState } from '@/lib/types'
+import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const SELECTED_COLOR = '#E8A33D'
-// Unset / no cut entered yet — light grey, reads as "no crop" like fallow.
-const UNSET_COLOR = '#D1D5DB'
+const UNSET_COLOR = UNSET_RATOON_COLOR
 
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
 const CROP_STYLE = 'mapbox://styles/mapbox/light-v11'
@@ -22,21 +22,6 @@ const STATE_CENTERS: Record<CaneState, [number, number]> = {
   LA: [-91.5, 30.0],
   FL: [-80.7, 26.6],
 }
-
-// Map ratoon stage → fill color. This is the grower's established convention
-// from his printed crop maps (see memory: crop-color-convention) — plant cane
-// red, climbing through the stubble years, fallow/open grey. Matching it makes
-// the crop-map view read instantly to someone used to the paper version.
-const RATOON_COLORS: { key: string; label: string; color: string }[] = [
-  { key: 'plant_cane', label: 'Plant cane', color: '#DC2626' }, // red
-  { key: 'first_stubble', label: '1st stubble', color: '#2563EB' }, // blue
-  { key: 'second_stubble', label: '2nd stubble', color: '#EAB308' }, // yellow
-  { key: 'third_stubble', label: '3rd stubble', color: '#16A34A' }, // green
-  { key: 'fourth_stubble', label: '4th stubble', color: '#92400E' }, // brown
-  { key: 'fifth_stubble_plus', label: '5th stubble', color: '#EC4899' }, // pink
-  { key: 'sixth_stubble_plus', label: '6th+ stubble', color: '#7C3AED' }, // purple
-  { key: 'fallow', label: 'Fallow / open', color: '#9CA3AF' }, // grey
-]
 
 function fillColorExpression(selectedFieldId: string | null): mapboxgl.ExpressionSpecification {
   return [

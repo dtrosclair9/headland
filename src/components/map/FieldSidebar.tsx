@@ -117,14 +117,26 @@ export default function FieldSidebar({
           groups.map((group) => {
             const groupAcres = group.fields.reduce((s, f) => s + Number(f.acreage_cached || 0), 0)
             const groupArea = formatArea(groupAcres, units)
+            const sectionId = group.fields[0]?.section_id ?? null
             return (
               <div key={group.name || '__unassigned'}>
-                <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur px-4 py-1.5 border-y border-gray-100 flex items-baseline justify-between">
+                <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur px-4 py-1.5 border-y border-gray-100 flex items-baseline justify-between gap-2">
                   <span className="text-[11px] uppercase tracking-wider font-bold text-gray-600 truncate">
                     {group.name || 'Unassigned'}
                   </span>
-                  <span className="text-[11px] text-gray-400 shrink-0 ml-2">
-                    {group.fields.length} · {groupArea.primary}
+                  <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-2">
+                    <span>{group.fields.length} · {groupArea.primary}</span>
+                    {sectionId && !selectMode && (
+                      <a
+                        href={`/sections/${sectionId}/print`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary font-semibold hover:underline"
+                        title={`Print ${group.name}`}
+                      >
+                        Print
+                      </a>
+                    )}
                   </span>
                 </div>
                 <ul className="divide-y divide-gray-100">

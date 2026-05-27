@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getField } from '@/lib/fields'
 import { listHarvests, listRecentApplications } from '@/lib/records'
-import { buildStaticMapUrl } from '@/lib/mapbox-static'
+import { buildSectionSvg } from '@/lib/section-map-svg'
 import { acresToArpents } from '@/lib/units'
 import { OPERATION_TYPE_LABEL } from '@/lib/records'
 import { SITE_NAME } from '@/lib/site'
@@ -62,7 +62,7 @@ export default async function FieldPrintPage({
         day: 'numeric',
       })
     : '—'
-  const mapUrl = buildStaticMapUrl(field.geometry, 1200, 600)
+  const svg = buildSectionSvg([field], { unitsArpents: org.units_default === 'arpents' })
 
   return (
     <>
@@ -116,16 +116,23 @@ export default async function FieldPrintPage({
 
         <div style={{ height: 2, background: '#1A3D2E', marginBottom: 14 }} />
 
-        {mapUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={mapUrl}
-            alt="Field satellite"
-            style={{ width: '100%', height: 280, objectFit: 'cover', borderRadius: 4, marginBottom: 14 }}
-          />
+        {svg ? (
+          <svg
+            viewBox={`0 0 ${svg.width} ${svg.height}`}
+            style={{ width: '100%', height: 'auto', maxHeight: 300, display: 'block', marginBottom: 14, border: '1px solid #E5E7EB', borderRadius: 4 }}
+          >
+            {svg.blocks.map((b) => (
+              <polygon key={b.id} points={b.points} fill={b.color} stroke="#1f2937" strokeWidth={0.8} strokeLinejoin="round" />
+            ))}
+            {svg.blocks.map((b) => (
+              <text key={`l-${b.id}`} x={b.labelX} y={b.labelY} textAnchor="middle" fontSize={b.fontSize} fill="#111827">
+                {b.acreageLabel}
+              </text>
+            ))}
+          </svg>
         ) : (
           <div style={{ width: '100%', height: 280, border: '1px solid #D9D9D9', borderRadius: 4, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6B6B6B', fontSize: 10 }}>
-            Map unavailable (Mapbox token missing).
+            No boundary to draw.
           </div>
         )}
 

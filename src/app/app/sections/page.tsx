@@ -183,7 +183,19 @@ export default async function SectionsPage({
                     </button>
                   </div>
                 </form>
-                <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-start justify-between gap-3">
+                  {section.field_count > 0 ? (
+                    <a
+                      href={`/sections/${section.id}/print`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-primary hover:underline whitespace-nowrap"
+                    >
+                      Print map →
+                    </a>
+                  ) : (
+                    <span />
+                  )}
                   <RotateSectionButton
                     sectionId={section.id}
                     sectionName={section.name}
