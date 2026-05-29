@@ -20,23 +20,11 @@ export function getStripe(): Stripe {
   return cachedClient
 }
 
-import type { PlanTier } from '@/lib/types'
+import type { BillingInterval } from '@/lib/billing'
 
-export function priceIdToPlanTier(
-  priceId: string | null | undefined,
-): PlanTier {
-  if (!priceId) return 'free'
-  if (priceId === process.env.STRIPE_PRICE_STARTER) return 'starter'
-  if (priceId === process.env.STRIPE_PRICE_PRO) return 'pro'
-  if (priceId === process.env.STRIPE_PRICE_BUSINESS) return 'business'
-  return 'free'
-}
-
-export type CheckoutTier = 'starter' | 'pro' | 'business'
-
-export function planTierToPriceId(tier: CheckoutTier): string | null {
-  if (tier === 'starter') return process.env.STRIPE_PRICE_STARTER ?? null
-  if (tier === 'pro') return process.env.STRIPE_PRICE_PRO ?? null
-  if (tier === 'business') return process.env.STRIPE_PRICE_BUSINESS ?? null
+// Single flat plan → one Stripe Price per billing interval.
+export function priceIdForInterval(interval: BillingInterval): string | null {
+  if (interval === 'monthly') return process.env.STRIPE_PRICE_MONTHLY ?? null
+  if (interval === 'annual') return process.env.STRIPE_PRICE_ANNUAL ?? null
   return null
 }

@@ -2,10 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getStripe, isStripeConfigured, planTierToPriceId } from '@/lib/stripe'
+import { getStripe, isStripeConfigured, priceIdForInterval } from '@/lib/stripe'
 import { BASE_URL } from '@/lib/site'
 
-const Body = z.object({ tier: z.enum(['starter', 'pro', 'business']) })
+const Body = z.object({ interval: z.enum(['monthly', 'annual']) })
 
 export async function POST(request: NextRequest) {
   if (!isStripeConfigured()) {
@@ -19,10 +19,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid_body' }, { status: 400 })
   }
 
-  const priceId = planTierToPriceId(parsed.data.tier)
+  const priceId = priceIdForInterval(parsed.data.interval)
   if (!priceId) {
     return NextResponse.json(
-      { error: 'price_not_configured', tier: parsed.data.tier },
+      { error: 'price_not_configured', interval: parsed.data.interval },
       { status: 503 },
     )
   }

@@ -2,10 +2,14 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { SITE_NAME } from '@/lib/site'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { hasActiveSubscription, isInTrial, trialDaysLeft } from '@/lib/billing'
 import { signOut } from '../(auth)/actions'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, org } = await requireUserAndOrg()
+  const subscribed = hasActiveSubscription(org)
+  const onTrial = isInTrial(org)
+  const daysLeft = trialDaysLeft(org)
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -42,6 +46,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
+      {!subscribed && (
+        <Link
+          href="/app/billing"
+          className={`block text-center text-sm px-4 py-2 font-medium ${
+            onTrial
+              ? 'bg-accent/20 text-primary-dark hover:bg-accent/30'
+              : 'bg-red-600 text-white hover:bg-red-700'
+          }`}
+        >
+          {onTrial
+            ? `Free trial — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left. Subscribe →`
+            : 'Your free trial has ended. Subscribe to keep going →'}
+        </Link>
+      )}
       <main className="flex-1 flex flex-col min-h-0">{children}</main>
     </div>
   )

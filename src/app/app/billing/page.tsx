@@ -1,15 +1,17 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { listFields } from '@/lib/fields'
 import { isStripeConfigured } from '@/lib/stripe'
-import { PLAN_LIMITS } from '@/lib/limits'
+import {
+  PRICING,
+  hasActiveSubscription,
+  isInTrial,
+  trialDaysLeft,
+} from '@/lib/billing'
 import UpgradeButtonClient from './UpgradeButtonClient'
 import PortalForm from './PortalForm'
 
 export const metadata: Metadata = { title: 'Billing' }
-
-type UpgradeTier = 'starter' | 'pro' | 'business'
 
 export default async function BillingPage({
   searchParams,
@@ -17,23 +19,20 @@ export default async function BillingPage({
   searchParams: Promise<{ status?: string }>
 }) {
   const { org } = await requireUserAndOrg()
-  const fields = await listFields(org.id)
   const stripeConfigured = isStripeConfigured()
-  const limits = PLAN_LIMITS[org.plan_tier]
   const { status } = await searchParams
 
-  const totalAcres = fields.reduce(
-    (sum, f) => sum + Number(f.acreage_cached || 0),
-    0,
-  )
+  const subscribed = hasActiveSubscription(org)
+  const onTrial = isInTrial(org)
+  const daysLeft = trialDaysLeft(org)
 
   return (
-    <div className="container-wide py-8 max-w-4xl space-y-6">
+    <div className="container-wide py-8 max-w-3xl space-y-6">
       <h1 className="text-2xl font-bold text-primary">Billing &amp; plan</h1>
 
       {status === 'success' && (
         <div className="rounded-md bg-green-50 border border-green-100 px-3 py-2 text-sm text-green-700">
-          You&apos;re upgraded. Welcome aboard.
+          You&apos;re all set — subscription active. Thank you.
         </div>
       )}
       {status === 'cancelled' && (
@@ -42,160 +41,121 @@ export default async function BillingPage({
         </div>
       )}
 
+      {/* Status */}
       <section className="bg-white border border-gray-100 rounded-xl p-6">
         <div className="flex items-baseline justify-between mb-1">
-          <h2 className="text-lg font-bold text-primary">Current plan</h2>
+          <h2 className="text-lg font-bold text-primary">Headland</h2>
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              org.subscription_status === 'active'
+              subscribed
                 ? 'bg-green-100 text-green-800'
-                : org.subscription_status === 'past_due'
-                ? 'bg-red-100 text-red-800'
-                : 'bg-gray-100 text-gray-700'
+                : onTrial
+                ? 'bg-blue-100 text-blue-800'
+                : 'bg-red-100 text-red-800'
             }`}
           >
-            {org.subscription_status}
+            {subscribed ? org.subscription_status : onTrial ? 'free trial' : 'trial ended'}
           </span>
         </div>
-        <p className="text-2xl font-bold text-primary mb-3">{limits.name}</p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <Stat label="Fields" used={fields.length} limit={limits.fields} />
-          <Stat
-            label="Acres"
-            used={totalAcres}
-            limit={limits.acres}
-            format={(n) => n.toFixed(0)}
-          />
-          <Stat label="Users" used={1} limit={limits.users} />
-          <Stat label="NDVI" used={limits.ndvi ? 'on' : 'off'} />
-        </div>
-
-        {org.current_period_end && (
-          <p className="mt-4 text-xs text-gray-500">
-            Renews on {new Date(org.current_period_end).toLocaleDateString()}
+        {subscribed ? (
+          <p className="text-sm text-gray-600">
+            Your subscription is active.
+            {org.current_period_end && (
+              <> Renews {new Date(org.current_period_end).toLocaleDateString()}.</>
+            )}
+          </p>
+        ) : onTrial ? (
+          <p className="text-sm text-gray-600">
+            <span className="font-semibold text-primary">{daysLeft} day{daysLeft === 1 ? '' : 's'} left</span>{' '}
+            in your free trial. Subscribe anytime to keep going — full access, no block limits.
+          </p>
+        ) : (
+          <p className="text-sm text-gray-600">
+            Your free trial has ended. Subscribe to keep drawing, printing, and recording. Your
+            blocks and history are saved and waiting.
           </p>
         )}
       </section>
 
+      {/* Subscribe / manage */}
       {!stripeConfigured ? (
         <section className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-sm text-gray-700">
-          <p className="font-semibold text-primary mb-2">Stripe not configured</p>
-          <p>
-            To enable upgrades, set the following in{' '}
-            <code className="bg-gray-100 px-1 rounded text-xs">.env.local</code> and restart:
-          </p>
-          <ul className="mt-2 list-disc list-inside space-y-0.5">
-            <li><code className="bg-gray-100 px-1 rounded text-xs">STRIPE_SECRET_KEY</code></li>
-            <li><code className="bg-gray-100 px-1 rounded text-xs">STRIPE_WEBHOOK_SECRET</code></li>
-            <li><code className="bg-gray-100 px-1 rounded text-xs">STRIPE_PRICE_STARTER</code> ($99/mo flat)</li>
-            <li><code className="bg-gray-100 px-1 rounded text-xs">STRIPE_PRICE_PRO</code> ($3/ac/yr · 1,500 ac min)</li>
-            <li><code className="bg-gray-100 px-1 rounded text-xs">STRIPE_PRICE_BUSINESS</code> ($2.50/ac/yr · 4,000 ac min)</li>
-          </ul>
-          <p className="mt-3">
-            Create the products at{' '}
-            <a href="https://dashboard.stripe.com/products" target="_blank" rel="noreferrer" className="text-primary underline">
-              dashboard.stripe.com/products
-            </a>
-            . Enterprise tier is sales-led and uses a custom-quote contract — no Stripe price needed.
-          </p>
+          <p className="font-semibold text-primary mb-2">Payments not enabled yet</p>
+          <p>Stripe keys aren&apos;t configured on this environment. Set them in Vercel to turn on subscriptions.</p>
         </section>
-      ) : org.plan_tier === 'free' ? (
-        <section>
-          <h2 className="text-lg font-bold text-primary mb-3">Pick a plan</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <UpgradeCard tier="starter" />
-            <UpgradeCard tier="pro" />
-            <UpgradeCard tier="business" recommended />
-          </div>
-          <p className="mt-4 text-xs text-gray-500">
-            Need 4,000+ acres or a custom contract?{' '}
-            <Link href="/contact" className="underline">Talk to us about Enterprise</Link>.
-          </p>
-        </section>
-      ) : (
+      ) : subscribed ? (
         <section className="bg-white border border-gray-100 rounded-xl p-6">
           <h2 className="text-lg font-bold text-primary mb-2">Manage subscription</h2>
           <p className="text-sm text-gray-600 mb-4">
-            Update payment method, switch plans, view invoices, or cancel anytime in the
+            Update payment method, switch monthly/annual, view invoices, or cancel anytime in the
             secure Stripe portal.
           </p>
           <PortalForm />
         </section>
+      ) : (
+        <section>
+          <h2 className="text-lg font-bold text-primary mb-3">Subscribe</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <PlanCard
+              title="Monthly"
+              price={`$${PRICING.monthly}`}
+              cadence="/ month"
+              blurb="Everything, billed monthly. Cancel anytime."
+              interval="monthly"
+              variant="primary"
+            />
+            <PlanCard
+              title="Annual"
+              price={`$${PRICING.annual.toLocaleString()}`}
+              cadence="/ year"
+              blurb={`Two months free vs monthly ($${(PRICING.monthly * 12).toLocaleString()}/yr).`}
+              interval="annual"
+              variant="ghost"
+              badge="Best value"
+            />
+          </div>
+          <p className="mt-4 text-xs text-gray-500">
+            One flat price — every block, section, print, and record included. No per-acre math.
+          </p>
+        </section>
       )}
 
       <p className="text-xs text-gray-500">
-        Looking for the public pricing breakdown?{' '}
-        <Link href="/pricing" className="underline">/pricing</Link>
+        Public pricing: <Link href="/pricing" className="underline">/pricing</Link>
       </p>
     </div>
   )
 }
 
-function Stat({
-  label,
-  used,
-  limit,
-  format,
+function PlanCard({
+  title,
+  price,
+  cadence,
+  blurb,
+  interval,
+  variant,
+  badge,
 }: {
-  label: string
-  used: number | string
-  limit?: number | string
-  format?: (n: number) => string
+  title: string
+  price: string
+  cadence: string
+  blurb: string
+  interval: 'monthly' | 'annual'
+  variant: 'primary' | 'ghost'
+  badge?: string
 }) {
-  const showLimit = typeof limit === 'number' && Number.isFinite(limit)
-  const formatted = typeof used === 'number' && format ? format(used) : used
   return (
-    <div>
-      <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
-        {label}
-      </p>
-      <p className="text-lg font-bold text-primary mt-0.5">
-        {formatted}
-        {showLimit && (
-          <span className="text-sm font-normal text-gray-500"> / {limit}</span>
-        )}
-        {typeof limit === 'number' && !Number.isFinite(limit) && (
-          <span className="text-sm font-normal text-gray-500"> / unlimited</span>
-        )}
-      </p>
-    </div>
-  )
-}
-
-const UPGRADE_LABELS: Record<UpgradeTier, { price: string; blurb: string }> = {
-  starter: {
-    price: '$99 / mo',
-    blurb: 'Up to 500 ac, 25 fields, 2 users. Long-tail family farms.',
-  },
-  pro: {
-    price: '$3 / ac / yr',
-    blurb: '500–1,500 ac, 100 fields, 5 users. $1,500 / yr minimum.',
-  },
-  business: {
-    price: '$2.50 / ac / yr',
-    blurb: '1,500–4,000 ac, unlimited fields, 10 users. $3,750 / yr minimum.',
-  },
-}
-
-function UpgradeCard({ tier, recommended }: { tier: UpgradeTier; recommended?: boolean }) {
-  const labels = UPGRADE_LABELS[tier]
-  const limits = PLAN_LIMITS[tier]
-  return (
-    <div
-      className={`bg-white rounded-xl p-5 flex flex-col border ${
-        recommended ? 'border-accent shadow-md ring-1 ring-accent/40' : 'border-gray-100'
-      }`}
-    >
-      {recommended && (
-        <p className="text-xs font-bold uppercase tracking-wider text-accent-dark mb-1">
-          Recommended
-        </p>
+    <div className={`bg-white rounded-xl p-5 flex flex-col border ${badge ? 'border-accent ring-1 ring-accent/40' : 'border-gray-100'}`}>
+      {badge && (
+        <p className="text-xs font-bold uppercase tracking-wider text-accent-dark mb-1">{badge}</p>
       )}
-      <h3 className="text-lg font-bold text-primary">{limits.name}</h3>
-      <p className="text-2xl font-bold text-primary mt-2">{labels.price}</p>
-      <p className="text-sm text-gray-600 mt-2 mb-4 leading-relaxed flex-1">{labels.blurb}</p>
-      <UpgradeButtonClient tier={tier} />
+      <h3 className="text-lg font-bold text-primary">{title}</h3>
+      <p className="text-2xl font-bold text-primary mt-1">
+        {price}<span className="text-sm font-normal text-gray-500"> {cadence}</span>
+      </p>
+      <p className="text-sm text-gray-600 mt-2 mb-4 leading-relaxed flex-1">{blurb}</p>
+      <UpgradeButtonClient interval={interval} label={`Subscribe ${title.toLowerCase()}`} variant={variant} />
     </div>
   )
 }

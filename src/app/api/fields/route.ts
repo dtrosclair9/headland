@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { countActiveFields, createField, listFields } from '@/lib/fields'
-import { isAtFieldLimit, PLAN_LIMITS } from '@/lib/limits'
+import { createField, listFields } from '@/lib/fields'
 
 export async function GET() {
   const { org } = await requireUserAndOrg()
@@ -29,19 +28,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid_body', details: parsed.error.flatten() }, { status: 400 })
   }
 
-  // Plan limit check.
-  const currentCount = await countActiveFields(org.id)
-  if (isAtFieldLimit(org.plan_tier, currentCount)) {
-    return NextResponse.json(
-      {
-        error: 'plan_limit_reached',
-        message: `Your ${PLAN_LIMITS[org.plan_tier].name} plan allows up to ${PLAN_LIMITS[org.plan_tier].fields} fields. Upgrade in Billing to add more.`,
-        limit: PLAN_LIMITS[org.plan_tier].fields,
-        used: currentCount,
-      },
-      { status: 402 },
-    )
-  }
+  // No block cap — the product wedge is "draw every block, never lose them",
+  // so we never gate on count. Access is governed by trial/subscription
+  // (see lib/billing), enforced at the app boundary, not here.
 
   try {
     const { id } = await createField({

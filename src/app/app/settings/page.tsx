@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { hasActiveSubscription, isInTrial, trialDaysLeft } from '@/lib/billing'
 import { updateOrgSettings } from './actions'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -120,7 +121,14 @@ export default async function SettingsPage({
       </form>
 
       <div className="mt-8 text-xs text-gray-500">
-        Plan: <span className="font-medium text-gray-700 capitalize">{org.plan_tier}</span>
+        Plan:{' '}
+        <span className="font-medium text-gray-700">
+          {hasActiveSubscription(org)
+            ? `Headland (${org.subscription_status})`
+            : isInTrial(org)
+            ? `Free trial — ${trialDaysLeft(org)} day${trialDaysLeft(org) === 1 ? '' : 's'} left`
+            : 'Trial ended'}
+        </span>
         {' · '}
         Created: <span className="font-medium text-gray-700">{new Date(org.created_at).toLocaleDateString()}</span>
       </div>
