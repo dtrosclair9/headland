@@ -11,7 +11,9 @@ export type BillingInterval = 'monthly' | 'annual'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-type OrgAccessFields = Pick<Organization, 'subscription_status' | 'created_at'>
+// plan_tier is included so comp accounts (manually set to 'enterprise')
+// bypass the pay-wall — see orgHasAccess.
+type OrgAccessFields = Pick<Organization, 'subscription_status' | 'created_at' | 'plan_tier'>
 
 export function trialEndsAt(org: Pick<Organization, 'created_at'>): Date {
   return new Date(new Date(org.created_at).getTime() + PRICING.trialDays * DAY_MS)
@@ -34,7 +36,14 @@ export function isInTrial(org: OrgAccessFields): boolean {
   return !hasActiveSubscription(org) && trialDaysLeft(org) > 0
 }
 
-// Full access = paying subscriber OR within the 14-day free trial.
+// Comp / internal accounts: manually set plan_tier to 'enterprise' in the
+// DB to grant permanent access regardless of subscription or trial state.
+// The Stripe webhook only ever writes 'pro' or 'free', so it never clobbers this.
+export function isCompAccount(org: Pick<Organization, 'plan_tier'>): boolean {
+  return org.plan_tier === 'enterprise'
+}
+
+// Full access = comp account OR paying subscriber OR within the 14-day free trial.
 export function orgHasAccess(org: OrgAccessFields): boolean {
-  return hasActiveSubscription(org) || trialDaysLeft(org) > 0
+  return isCompAccount(org) || hasActiveSubscription(org) || trialDaysLeft(org) > 0
 }
