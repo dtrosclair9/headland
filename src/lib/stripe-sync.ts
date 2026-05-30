@@ -17,10 +17,10 @@ export async function syncSubscriptionToOrg(subscription: Stripe.Subscription) {
 
   const item = subscription.items.data[0]
   const priceId = item?.price.id ?? null
-  // Single flat plan — no tiers. plan_tier is a vestigial paid/free marker:
-  // 'pro' while the subscription is live, 'free' once it lapses. Comp accounts
-  // (plan_tier 'enterprise') never run through Stripe, so this never clobbers them.
-  const live = subscription.status === 'active' || subscription.status === 'trialing'
+
+  // Single flat plan — no tiers. Paid access is governed entirely by
+  // subscription_status; comp access lives in the separate `comped` flag,
+  // which this sync never touches (so a subscription can't clobber it).
 
   // current_period_end moved off the top-level Subscription and onto the
   // subscription item in recent API versions (the SDK default here is
@@ -35,7 +35,6 @@ export async function syncSubscriptionToOrg(subscription: Stripe.Subscription) {
     stripe_subscription_id: subscription.id,
     stripe_price_id: priceId,
     subscription_status: subscription.status,
-    plan_tier: live ? 'pro' : 'free',
     current_period_end: periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null,
   }
 

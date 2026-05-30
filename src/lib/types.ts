@@ -2,8 +2,6 @@
 
 export type Role = 'owner' | 'member'
 
-export type PlanTier = 'free' | 'starter' | 'pro' | 'business' | 'enterprise'
-
 export type Units = 'acres' | 'arpents'
 
 export type CaneState = 'LA' | 'FL'
@@ -55,7 +53,7 @@ export interface Organization {
   id: string
   name: string
   owner_id: string
-  plan_tier: PlanTier
+  comped: boolean
   units_default: Units
   state: CaneState | null
   acre_count_cached: number
