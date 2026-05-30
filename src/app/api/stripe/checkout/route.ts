@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
     customer: customerId,
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${BASE_URL}/app/billing?status=success`,
+    // Route the return through /api/stripe/confirm so the subscription is
+    // reconciled into the DB before the billing page renders — the banner and
+    // badge are then correct immediately, not pending the async webhook.
+    success_url: `${BASE_URL}/api/stripe/confirm?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${BASE_URL}/app/billing?status=cancelled`,
     allow_promotion_codes: true,
     subscription_data: { metadata: { org_id: org.id } },
