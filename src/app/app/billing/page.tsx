@@ -5,6 +5,7 @@ import { isStripeConfigured } from '@/lib/stripe'
 import {
   PRICING,
   hasActiveSubscription,
+  isCompAccount,
   isInTrial,
   trialDaysLeft,
 } from '@/lib/billing'
@@ -22,6 +23,7 @@ export default async function BillingPage({
   const stripeConfigured = isStripeConfigured()
   const { status } = await searchParams
 
+  const comped = isCompAccount(org)
   const subscribed = hasActiveSubscription(org)
   const onTrial = isInTrial(org)
   const daysLeft = trialDaysLeft(org)
@@ -47,18 +49,23 @@ export default async function BillingPage({
           <h2 className="text-lg font-bold text-primary">Headland</h2>
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              subscribed
+              comped || subscribed
                 ? 'bg-green-100 text-green-800'
                 : onTrial
                 ? 'bg-blue-100 text-blue-800'
                 : 'bg-red-100 text-red-800'
             }`}
           >
-            {subscribed ? org.subscription_status : onTrial ? 'free trial' : 'trial ended'}
+            {comped ? 'complimentary' : subscribed ? org.subscription_status : onTrial ? 'free trial' : 'trial ended'}
           </span>
         </div>
 
-        {subscribed ? (
+        {comped ? (
+          <p className="text-sm text-gray-600">
+            You have complimentary full access — no subscription needed. Map, print, and
+            record without limits.
+          </p>
+        ) : subscribed ? (
           <p className="text-sm text-gray-600">
             Your subscription is active.
             {org.current_period_end && (
@@ -83,6 +90,22 @@ export default async function BillingPage({
         <section className="bg-gray-50 border border-gray-100 rounded-xl p-6 text-sm text-gray-700">
           <p className="font-semibold text-primary mb-2">Payments not enabled yet</p>
           <p>Stripe keys aren&apos;t configured on this environment. Set them in Vercel to turn on subscriptions.</p>
+        </section>
+      ) : comped ? (
+        <section className="bg-white border border-gray-100 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-primary mb-2">Complimentary access</h2>
+          <p className="text-sm text-gray-600">
+            This account has full access at no charge. You won&apos;t be billed.
+          </p>
+          {subscribed && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-3">
+                You also have a paid subscription on file — manage or cancel it anytime in the
+                secure Stripe portal.
+              </p>
+              <PortalForm />
+            </div>
+          )}
         </section>
       ) : subscribed ? (
         <section className="bg-white border border-gray-100 rounded-xl p-6">

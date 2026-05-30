@@ -2,11 +2,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { SITE_NAME } from '@/lib/site'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { hasActiveSubscription, isInTrial, trialDaysLeft } from '@/lib/billing'
+import { hasActiveSubscription, isCompAccount, isInTrial, trialDaysLeft } from '@/lib/billing'
 import { signOut } from '../(auth)/actions'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, org } = await requireUserAndOrg()
+  const comped = isCompAccount(org)
   const subscribed = hasActiveSubscription(org)
   const onTrial = isInTrial(org)
   const daysLeft = trialDaysLeft(org)
@@ -46,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      {!subscribed && (
+      {!comped && !subscribed && (
         <Link
           href="/app/billing"
           className={`block text-center text-sm px-4 py-2 font-medium ${
