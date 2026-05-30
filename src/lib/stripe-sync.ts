@@ -15,23 +15,28 @@ export async function syncSubscriptionToOrg(subscription: Stripe.Subscription) {
       ? subscription.customer
       : subscription.customer.id
 
-  const priceId = subscription.items.data[0]?.price.id ?? null
+  const item = subscription.items.data[0]
+  const priceId = item?.price.id ?? null
   // Single flat plan — no tiers. plan_tier is a vestigial paid/free marker:
   // 'pro' while the subscription is live, 'free' once it lapses. Comp accounts
   // (plan_tier 'enterprise') never run through Stripe, so this never clobbers them.
   const live = subscription.status === 'active' || subscription.status === 'trialing'
+
+  // current_period_end moved off the top-level Subscription and onto the
+  // subscription item in recent API versions (the SDK default here is
+  // 2026-04-22.dahlia). Read the item first, fall back to the legacy
+  // top-level field, and guard the null case — otherwise new Date(NaN)
+  // .toISOString() throws and aborts the entire sync (webhook + confirm).
+  const periodEndUnix: number | null =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((item as any)?.current_period_end ?? (subscription as any).current_period_end ?? null)
 
   const updates = {
     stripe_subscription_id: subscription.id,
     stripe_price_id: priceId,
     subscription_status: subscription.status,
     plan_tier: live ? 'pro' : 'free',
-    // current_period_end is a top-level Subscription field at runtime but
-    // shifted around in Stripe SDK 22.x type defs. Cast through any.
-    current_period_end: new Date(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((subscription as any).current_period_end as number) * 1000,
-    ).toISOString(),
+    current_period_end: periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null,
   }
 
   if (orgId) {
