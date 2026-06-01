@@ -27,8 +27,8 @@ export default function TermsPage() {
             You&apos;re responsible for keeping your login credentials secure. The
             account owner can invite team members, who in turn can read and write farm
             data within that organization. Don&apos;t share login credentials across
-            farms — per-acre pricing is what funds the Service, and credential-sharing
-            undermines it.
+            farms — each separate farm business needs its own
+            subscription, and credential-sharing undermines the Service.
           </p>
 
           <h2 className="text-xl font-bold text-primary mt-6">Your data</h2>
@@ -64,9 +64,10 @@ export default function TermsPage() {
 
           <h2 className="text-xl font-bold text-primary mt-6">Termination</h2>
           <p>
-            You can cancel anytime. We may terminate accounts for violations of these
-            terms, with reasonable notice except in cases of egregious abuse.
-            Terminated accounts retain data export access for 90 days.
+            You can cancel anytime, and your data stays accessible — you can export or
+            delete it whenever you want. We may terminate accounts for violations of
+            these terms, with reasonable notice and a window to export your data first,
+            except in cases of egregious abuse.
           </p>
 
           <h2 className="text-xl font-bold text-primary mt-6">Changes</h2>

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { signUp } from '../actions'
 
-export const metadata: Metadata = { title: 'Start free' }
+export const metadata: Metadata = { title: 'Start your free trial' }
 
 export default async function SignupPage({
   searchParams,
@@ -13,9 +13,9 @@ export default async function SignupPage({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-      <h1 className="text-2xl font-bold text-primary mb-2">Start free</h1>
+      <h1 className="text-2xl font-bold text-primary mb-2">Start your free trial</h1>
       <p className="text-sm text-gray-600 mb-6">
-        5 fields, 100 acres, 1 user. No credit card.
+        Full access for 14 days. No credit card to start.
       </p>
 
       {error && (

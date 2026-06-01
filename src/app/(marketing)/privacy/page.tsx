@@ -51,10 +51,11 @@ export default function PrivacyPage() {
 
           <h2 className="text-xl font-bold text-primary mt-6">Your data, your control</h2>
           <p>
-            Every export (GeoJSON, KML, PDF) is available on every plan, including the
-            free tier. If you cancel, your data remains accessible for 90 days, after
-            which it&apos;s deleted from our active database. Submit an immediate-deletion
-            request through our{' '}
+            Every export — GeoJSON, KML, and FSA shapefile — plus printable crop maps is
+            available during your trial and on a paid plan. If you cancel, your data stays
+            in your account and remains accessible; we don&apos;t auto-delete it. You can
+            delete your own data anytime, or submit a full account-deletion request through
+            our{' '}
             <a href="/contact" className="text-primary underline">contact form</a>.
           </p>
 

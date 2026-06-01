@@ -95,7 +95,7 @@ export default async function RegionLandingPage({
             a sheet per field for the crew — without buying another desktop license.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/signup" className="btn-accent">Start free — 5 fields</Link>
+            <Link href="/signup" className="btn-accent">Start free trial</Link>
             <Link href="/#features" className="btn-outline">See features</Link>
           </div>
         </div>
@@ -173,10 +173,10 @@ export default async function RegionLandingPage({
             Ready to map your {region.kind === 'parish' ? 'parish' : 'county'}&apos;s fields?
           </h2>
           <p className="text-gray-200 mb-8">
-            Free for the first 5 fields. No credit card. Built by a Louisianian for the
+            Free for 14 days, no card to start. Built by a Louisianian for the
             cane belt — start mapping in two minutes.
           </p>
-          <Link href="/signup" className="btn-accent">Start free</Link>
+          <Link href="/signup" className="btn-accent">Start free trial</Link>
         </div>
       </section>
     </>

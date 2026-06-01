@@ -11,8 +11,16 @@ const features = [
     body: 'Tag each field with variety (HoCP, L-series, CP-series), plant date, and current cut. Plant cane through last stubble — visible at a glance.',
   },
   {
-    title: 'Records that travel',
-    body: 'Harvests, sprays, fertilizer — logged per field, year after year. Export tonnage history when the broker calls.',
+    title: 'Harvest history that lasts',
+    body: 'Log tonnage and harvest dates per field, season after season. Your whole history in one place — not a binder in the shop.',
+  },
+  {
+    title: 'Log every spray',
+    body: 'Record each spray with product, rate, and the wind direction and speed at the time — per field, ready whenever you need to show it.',
+  },
+  {
+    title: 'Print maps for the crew',
+    body: 'Print a clean crop map — blocks colored by cut, no satellite clutter. Hand the crew exactly what to run, section by section.',
   },
   {
     title: 'Scout from the truck',
@@ -44,8 +52,11 @@ export default function HomePage() {
             Map every acre. Track every ratoon. Scout from the truck.
             Export for FSA in one click. From plant cane to last stubble — {SITE_NAME} keeps every field on one map.
           </p>
+          <p className="mt-4 text-base text-gray-300 max-w-2xl">
+            Simple enough for anyone on the crew — no training, no manual, no middleman.
+          </p>
           <div className="mt-10 flex flex-wrap gap-4">
-            <Link href="/signup" className="btn-accent">Start free — 5 fields</Link>
+            <Link href="/signup" className="btn-accent">Start free trial</Link>
             <Link href="/#features" className="btn-outline">See features</Link>
           </div>
         </div>
@@ -76,9 +87,9 @@ export default function HomePage() {
         <div className="container-wide text-center text-white">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to map your fields?</h2>
           <p className="text-gray-200 max-w-xl mx-auto mb-8">
-            Free for the first 5 fields. No credit card. Built by growers, for growers — from the Louisiana bayou to the Florida Glades.
+            Free for 14 days, no card to start. Built by a cane family, for cane farmers — from the Louisiana bayou to the Florida Glades.
           </p>
-          <Link href="/signup" className="btn-accent">Start free</Link>
+          <Link href="/signup" className="btn-accent">Start free trial</Link>
         </div>
       </section>
     </>
