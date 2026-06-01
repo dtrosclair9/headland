@@ -32,7 +32,7 @@ export default async function ExportPage() {
       <div className="max-w-md">
         <ExportCard
           title="FSA acreage report"
-          description="A file your FSA office accepts for FSA-578 acreage reporting. Hand it to them or your crop insurance agent — every block, with acreage."
+          description="A file your FSA office accepts for FSA-578 acreage reporting — every block, with acreage, ready to send."
           note="Esri shapefile bundle (.shp, .shx, .dbf, .prj), EPSG:4326."
           href="/api/export/shapefile"
           buttonLabel="Download"
