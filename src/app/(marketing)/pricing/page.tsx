@@ -14,7 +14,7 @@ const features = [
   'Unlimited blocks, sections, and ditches',
   'Crop-stage map + printable section maps',
   'Harvest, operation & spray records (with wind)',
-  'Shapefile / GeoJSON / KML export for FSA',
+  'FSA acreage export (shapefile)',
   'Sentinel-2 NDVI + latest imagery',
   'Weather + 7-day forecast',
   'Every feature — no tiers, no per-acre math',
@@ -139,8 +139,8 @@ export default function PricingPage() {
             </Faq>
             <Faq q="Can I cancel anytime?">
               Yes. Cancel from <code className="bg-gray-100 px-1 rounded text-sm">/app/billing</code> any
-              time — no retention call, no dark patterns. Your data stays accessible after cancellation and
-              exports (Shapefile, GeoJSON, KML, PDF) are always available.
+              time — no retention call, no dark patterns. Your data stays accessible after cancellation, and
+              your FSA acreage export and printable crop maps are always available.
             </Faq>
             <Faq q="Do you sell or aggregate my data?">
               No. {SITE_NAME} never sells, shares, or aggregates grower data with traders, brokers, input

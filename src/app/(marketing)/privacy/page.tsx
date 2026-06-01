@@ -51,7 +51,7 @@ export default function PrivacyPage() {
 
           <h2 className="text-xl font-bold text-primary mt-6">Your data, your control</h2>
           <p>
-            Every export — GeoJSON, KML, and FSA shapefile — plus printable crop maps is
+            Your FSA acreage export (Esri shapefile) and printable crop maps are
             available during your trial and on a paid plan. If you cancel, your data stays
             in your account and remains accessible; we don&apos;t auto-delete it. You can
             delete your own data anytime, or submit a full account-deletion request through

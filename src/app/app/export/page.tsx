@@ -29,26 +29,13 @@ export default async function ExportPage() {
         )}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="max-w-md">
         <ExportCard
-          title="Shapefile"
-          description="Zipped Esri shapefile bundle (.shp, .shx, .dbf, .prj). The format USDA FSA accepts for FSA-578 acreage reporting. EPSG:4326."
+          title="FSA acreage report"
+          description="A file your FSA office accepts for FSA-578 acreage reporting. Hand it to them or your crop insurance agent — every block, with acreage."
+          note="Esri shapefile bundle (.shp, .shx, .dbf, .prj), EPSG:4326."
           href="/api/export/shapefile"
-          buttonLabel="Download .zip"
-          disabled={empty}
-        />
-        <ExportCard
-          title="GeoJSON"
-          description="Block boundaries with all attributes. Re-import into QGIS, ArcGIS, or any modern GIS. Standard EPSG:4326."
-          href="/api/export/geojson"
-          buttonLabel="Download .geojson"
-          disabled={empty}
-        />
-        <ExportCard
-          title="KML"
-          description="Open in Google Earth. One placemark per block with name, variety, cut, and acreage in the description."
-          href="/api/export/kml"
-          buttonLabel="Download .kml"
+          buttonLabel="Download"
           disabled={empty}
         />
       </div>
@@ -64,12 +51,14 @@ export default async function ExportPage() {
 function ExportCard({
   title,
   description,
+  note,
   href,
   buttonLabel,
   disabled,
 }: {
   title: string
   description: string
+  note?: string
   href: string
   buttonLabel: string
   disabled: boolean
@@ -78,6 +67,7 @@ function ExportCard({
     <div className="bg-white border border-gray-100 rounded-xl p-5 flex flex-col">
       <h2 className="text-base font-bold text-primary mb-1">{title}</h2>
       <p className="text-sm text-gray-600 leading-relaxed flex-1">{description}</p>
+      {note && <p className="mt-2 text-xs text-gray-400">{note}</p>}
       {disabled ? (
         <button
           type="button"
