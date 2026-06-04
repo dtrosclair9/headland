@@ -29,16 +29,28 @@ export default async function ExportPage() {
         )}
       </p>
 
-      <div className="max-w-md">
+      <p className="text-sm font-semibold text-primary mb-3">For FSA acreage reporting</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ExportCard
-          title="FSA acreage report"
-          description="A file your FSA office accepts for FSA-578 acreage reporting — every block, with acreage, ready to send."
-          note="Esri shapefile bundle (.shp, .shx, .dbf, .prj), EPSG:4326."
+          title="FSA shapefile"
+          description="The Esri shapefile bundle for FSA-578 acreage reporting — every block, with acreage."
+          note="Esri shapefile (.shp/.shx/.dbf/.prj), NAD83."
           href="/api/export/shapefile"
           buttonLabel="Download"
           disabled={empty}
         />
+        <ExportCard
+          title="Google Earth (KML)"
+          description="The same blocks as a Google Earth file. Some FSA offices import this more reliably than a shapefile."
+          note="Opens in Google Earth; one placemark per block."
+          href="/api/export/kml"
+          buttonLabel="Download"
+          disabled={empty}
+        />
       </div>
+      <p className="mt-3 text-xs text-gray-500">
+        Not sure which your FSA office takes? Send both and ask which one worked.
+      </p>
 
       <p className="mt-6 text-xs text-gray-500">
         Need a printed pack? Open each block and click <strong>Print</strong> — your browser handles
