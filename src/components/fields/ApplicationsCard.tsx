@@ -21,7 +21,7 @@ export function ApplicationsCard({
 
   return (
     <section className="bg-white border border-gray-100 rounded-xl p-6">
-      <h2 className="text-lg font-bold text-primary mb-4">Operations</h2>
+      <h2 className="text-lg font-bold text-primary mb-4">Operations / Spraying</h2>
 
       {applications.length === 0 ? (
         <p className="text-sm text-gray-500 mb-4">No operations logged yet.</p>

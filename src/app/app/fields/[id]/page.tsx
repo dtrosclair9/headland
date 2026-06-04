@@ -261,9 +261,6 @@ export default async function FieldDetailPage({
       )}
 
       <TodoCard fieldId={field.id} tasks={tasks} />
-      <WeatherCard weather={weather} />
-      <FieldImageryCard fieldId={field.id} configured={isSentinelHubConfigured()} />
-      <HarvestsCard fieldId={field.id} harvests={harvests} />
       <ApplicationsCard
         fieldId={field.id}
         applications={applications}
@@ -275,6 +272,9 @@ export default async function FieldDetailPage({
         centroidLat={field.centroid_lat}
         pins={scoutingPins}
       />
+      <HarvestsCard fieldId={field.id} harvests={harvests} />
+      <WeatherCard weather={weather} />
+      <FieldImageryCard fieldId={field.id} configured={isSentinelHubConfigured()} />
     </div>
   )
 }
