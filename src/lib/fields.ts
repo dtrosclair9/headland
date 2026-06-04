@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Field, RatoonStage } from '@/lib/types'
+import { openTaskCountsByFieldIds } from '@/lib/block-tasks'
 
 export async function countActiveFields(orgId: string): Promise<number> {
   const supabase = await createClient()
@@ -19,6 +20,9 @@ export interface FieldRow extends Omit<Field, 'geometry'> {
   centroid_lng: number
   centroid_lat: number
   section_name: string | null
+  // Open to-do count, populated by listFields for the map sidebar badge.
+  // Other producers (getField, listFieldsBySection) leave it undefined.
+  open_todo_count?: number
 }
 
 export async function listFields(orgId: string): Promise<FieldRow[]> {
@@ -30,7 +34,9 @@ export async function listFields(orgId: string): Promise<FieldRow[]> {
     .is('archived_at', null)
     .order('created_at', { ascending: true })
   if (error) throw error
-  return (data ?? []) as FieldRow[]
+  const rows = (data ?? []) as FieldRow[]
+  const counts = await openTaskCountsByFieldIds(rows.map((r) => r.id))
+  return rows.map((r) => ({ ...r, open_todo_count: counts[r.id] ?? 0 }))
 }
 
 export async function listFieldsBySection(sectionId: string): Promise<FieldRow[]> {

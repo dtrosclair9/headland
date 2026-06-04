@@ -7,6 +7,7 @@ import { listSections } from '@/lib/sections'
 import { getFieldCycleHistory } from '@/lib/rotation'
 import { listApplications, listHarvests } from '@/lib/records'
 import { listScoutingPins } from '@/lib/scouting'
+import { listBlockTasks } from '@/lib/block-tasks'
 import { listVarietiesForState, findVariety, isRipenerSensitive } from '@/lib/varieties'
 import { formatArea } from '@/lib/units'
 import { fetchWeather } from '@/lib/weather'
@@ -15,6 +16,7 @@ import { updateField, deleteField } from './actions'
 import { HarvestsCard } from '@/components/fields/HarvestsCard'
 import { ApplicationsCard } from '@/components/fields/ApplicationsCard'
 import { ScoutingCard } from '@/components/fields/ScoutingCard'
+import { TodoCard } from '@/components/fields/TodoCard'
 import { WeatherCard } from '@/components/fields/WeatherCard'
 import { FieldImageryCard } from '@/components/fields/FieldImageryCard'
 
@@ -48,11 +50,12 @@ export default async function FieldDetailPage({
   const field = await getField(id)
   if (!field || field.org_id !== org.id) notFound()
 
-  const [{ error, saved }, harvests, applications, scoutingPins, weather, sections, cycleHistory] = await Promise.all([
+  const [{ error, saved }, harvests, applications, scoutingPins, tasks, weather, sections, cycleHistory] = await Promise.all([
     searchParams,
     listHarvests(id),
     listApplications(id),
     listScoutingPins(id),
+    listBlockTasks(id),
     fetchWeather(field.centroid_lat, field.centroid_lng),
     listSections(org.id),
     getFieldCycleHistory(id),
@@ -71,6 +74,7 @@ export default async function FieldDetailPage({
     saved === 'harvest' ? 'Harvest added.' :
     saved === 'op' ? 'Operation logged.' :
     saved === 'scout' ? 'Scouting note added.' :
+    saved === 'todo' ? 'To-do added.' :
     saved === '1' ? 'Saved.' : null
 
   return (
@@ -256,6 +260,7 @@ export default async function FieldDetailPage({
         </div>
       )}
 
+      <TodoCard fieldId={field.id} tasks={tasks} />
       <WeatherCard weather={weather} />
       <FieldImageryCard fieldId={field.id} configured={isSentinelHubConfigured()} />
       <HarvestsCard fieldId={field.id} harvests={harvests} />

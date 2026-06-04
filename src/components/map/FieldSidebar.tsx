@@ -174,7 +174,20 @@ export default function FieldSidebar({
                             </span>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-primary text-sm truncate">{f.name}</p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-semibold text-primary text-sm truncate">{f.name}</span>
+                              {(f.open_todo_count ?? 0) > 0 && (
+                                <span
+                                  title={`${f.open_todo_count} open to-do${f.open_todo_count === 1 ? '' : 's'}`}
+                                  className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold bg-accent/20 text-primary-dark rounded-full pl-1 pr-1.5 py-0.5"
+                                >
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.42 0l-4-4a1 1 0 011.42-1.42L8 12.59l7.29-7.3a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                  {f.open_todo_count}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500 mt-0.5">
                               {area.primary}
                               <span className="text-gray-400"> · {area.alt}</span>

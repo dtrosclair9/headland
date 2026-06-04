@@ -158,3 +158,14 @@ export interface ScoutingPin {
   created_by: string
   created_at: string
 }
+
+export interface BlockTask {
+  id: string
+  field_id: string
+  text: string
+  done: boolean
+  created_by: string
+  created_at: string
+  completed_at: string | null
+  completed_by: string | null
+}

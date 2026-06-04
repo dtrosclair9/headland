@@ -21,6 +21,11 @@ import {
   newPinId,
   uploadScoutingPhoto,
 } from '@/lib/scouting'
+import {
+  createBlockTask as createBlockTaskDb,
+  setBlockTaskDone,
+  deleteBlockTask as deleteBlockTaskDb,
+} from '@/lib/block-tasks'
 
 // ── field metadata ───────────────────────────────────────────────────
 
@@ -308,6 +313,53 @@ export async function removeScoutingPin(pinId: string, fieldId: string) {
   await requireOwnedField(fieldId)
   try {
     await deleteScoutingPinDb(pinId)
+  } catch (e) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
+  }
+  revalidatePath(`/app/fields/${fieldId}`)
+  revalidatePath('/app/map')
+  redirect(`/app/fields/${fieldId}`)
+}
+
+// ── to-do list ──────────────────────────────────────────────────────
+
+const TaskTextSchema = z.string().trim().min(1).max(500)
+
+export async function createBlockTask(fieldId: string, formData: FormData) {
+  const { user } = await requireOwnedField(fieldId)
+
+  const parsed = TaskTextSchema.safeParse(formData.get('text'))
+  if (!parsed.success) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Type a to-do first.'))
+  }
+
+  try {
+    await createBlockTaskDb({ fieldId, text: parsed.data, createdBy: user.id })
+  } catch (e) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
+  }
+  revalidatePath(`/app/fields/${fieldId}`)
+  revalidatePath('/app/map')
+  redirect(`/app/fields/${fieldId}?saved=todo`)
+}
+
+// done is bound at the call site (true to check off, false to reopen).
+export async function toggleBlockTask(taskId: string, fieldId: string, done: boolean) {
+  const { user } = await requireOwnedField(fieldId)
+  try {
+    await setBlockTaskDone({ taskId, done, userId: user.id })
+  } catch (e) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
+  }
+  revalidatePath(`/app/fields/${fieldId}`)
+  revalidatePath('/app/map')
+  redirect(`/app/fields/${fieldId}`)
+}
+
+export async function removeBlockTask(taskId: string, fieldId: string) {
+  await requireOwnedField(fieldId)
+  try {
+    await deleteBlockTaskDb(taskId)
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }
