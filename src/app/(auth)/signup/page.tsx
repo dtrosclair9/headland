@@ -64,6 +64,20 @@ export default async function SignupPage({
           <input id="email" name="email" type="email" required className="input" placeholder="you@farm.com" />
         </div>
 
+        <div>
+          <label className="label" htmlFor="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className="input"
+            placeholder="At least 8 characters"
+          />
+        </div>
+
         <fieldset>
           <legend className="label">Preferred unit</legend>
           <div className="grid grid-cols-2 gap-2">
@@ -86,8 +100,11 @@ export default async function SignupPage({
         </fieldset>
 
         <button type="submit" className="btn-primary w-full">
-          Send magic link
+          Create account
         </button>
+        <p className="text-xs text-gray-500 text-center">
+          We&apos;ll send one email to confirm your address, then you&apos;re in.
+        </p>
       </form>
 
       <p className="mt-6 text-sm text-gray-600 text-center">

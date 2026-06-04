@@ -40,3 +40,33 @@ export async function updateOrgSettings(formData: FormData) {
   revalidatePath('/app', 'layout')
   redirect('/app/settings?saved=1')
 }
+
+const PasswordSchema = z
+  .object({
+    password: z.string().min(8, 'Password must be at least 8 characters.'),
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: 'Passwords do not match.',
+    path: ['confirm'],
+  })
+
+// Sets (or changes) the signed-in user's password. This is how magic-link-only
+// accounts get a password the first time, and how anyone rotates it later.
+export async function updatePassword(formData: FormData) {
+  await requireUserAndOrg() // must be signed in
+  const parsed = PasswordSchema.safeParse({
+    password: formData.get('password'),
+    confirm: formData.get('confirm'),
+  })
+  if (!parsed.success) {
+    redirect('/app/settings?error=' + encodeURIComponent(parsed.error.issues[0]?.message ?? 'Invalid password.'))
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
+  if (error) {
+    redirect('/app/settings?error=' + encodeURIComponent(error.message))
+  }
+  redirect('/app/settings?saved=password')
+}

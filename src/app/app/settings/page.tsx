@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { hasActiveSubscription, isInTrial, trialDaysLeft } from '@/lib/billing'
-import { updateOrgSettings } from './actions'
+import { updateOrgSettings, updatePassword } from './actions'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -23,7 +23,7 @@ export default async function SettingsPage({
       )}
       {saved && (
         <div className="mb-4 rounded-md bg-green-50 border border-green-100 px-3 py-2 text-sm text-green-700">
-          Settings saved.
+          {saved === 'password' ? 'Password updated.' : 'Settings saved.'}
         </div>
       )}
 
@@ -118,6 +118,44 @@ export default async function SettingsPage({
         <button type="submit" className="btn-primary" disabled={!isOwner}>
           Save changes
         </button>
+      </form>
+
+      <form action={updatePassword} className="mt-6 bg-white border border-gray-100 rounded-xl p-6 space-y-5">
+        <div>
+          <h2 className="text-base font-bold text-primary">Password</h2>
+          <p className="text-sm text-gray-600 mt-0.5">
+            Set or change your password so you can log in without waiting on an email.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label" htmlFor="password">New password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className="input"
+              placeholder="At least 8 characters"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="confirm">Confirm password</label>
+            <input
+              id="confirm"
+              name="confirm"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className="input"
+              placeholder="Re-type it"
+            />
+          </div>
+        </div>
+        <button type="submit" className="btn-primary">Save password</button>
       </form>
 
       <div className="mt-8 text-xs text-gray-500">

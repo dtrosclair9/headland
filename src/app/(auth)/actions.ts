@@ -5,8 +5,12 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BASE_URL } from '@/lib/site'
 
+// Min length kept in sync with the form's minLength and the Supabase setting.
+const PASSWORD = z.string().min(8, 'Password must be at least 8 characters.')
+
 const SignUpSchema = z.object({
   email: z.string().email(),
+  password: PASSWORD,
   farm_name: z.string().min(2).max(100),
   state: z.enum(['LA', 'FL']),
   units: z.enum(['acres', 'arpents']).default('acres'),
@@ -14,22 +18,30 @@ const SignUpSchema = z.object({
 
 const SignInSchema = z.object({
   email: z.string().email(),
+  password: z.string().min(1, 'Enter your password.'),
 })
+
+const EmailOnlySchema = z.object({ email: z.string().email() })
 
 export async function signUp(formData: FormData) {
   const parsed = SignUpSchema.safeParse({
     email: formData.get('email'),
+    password: formData.get('password'),
     farm_name: formData.get('farm_name'),
     state: formData.get('state'),
     units: formData.get('units') ?? 'acres',
   })
   if (!parsed.success) {
-    redirect('/signup?error=' + encodeURIComponent('Please fill in farm name, state, and email.'))
+    const msg = parsed.error.issues[0]?.message ?? 'Please fill in farm name, state, email, and a password.'
+    redirect('/signup?error=' + encodeURIComponent(msg))
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.auth.signInWithOtp({
+  // Email confirmation is ON, so this sends one confirmation email and returns
+  // no session. The org is bootstrapped in /auth/callback when they confirm.
+  const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
+    password: parsed.data.password,
     options: {
       data: {
         farm_name: parsed.data.farm_name,
@@ -44,9 +56,32 @@ export async function signUp(formData: FormData) {
 }
 
 export async function signIn(formData: FormData) {
-  const parsed = SignInSchema.safeParse({ email: formData.get('email') })
+  const parsed = SignInSchema.safeParse({
+    email: formData.get('email'),
+    password: formData.get('password'),
+  })
   if (!parsed.success) {
-    redirect('/login?error=' + encodeURIComponent('Please enter a valid email.'))
+    const msg = parsed.error.issues[0]?.message ?? 'Enter your email and password.'
+    redirect('/login?error=' + encodeURIComponent(msg))
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.signInWithPassword({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  })
+  if (error) {
+    redirect('/login?error=' + encodeURIComponent(error.message))
+  }
+  redirect('/app/map')
+}
+
+// Fallback / recovery: email a one-time login link instead of a password.
+// Also how existing magic-link users get in to set a password the first time.
+export async function signInWithLink(formData: FormData) {
+  const parsed = EmailOnlySchema.safeParse({ email: formData.get('email') })
+  if (!parsed.success) {
+    redirect('/login?error=' + encodeURIComponent('Enter your email to get a login link.'))
   }
 
   const supabase = await createClient()
