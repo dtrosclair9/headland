@@ -111,7 +111,11 @@ export default function FieldSidebar({
         {fields.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-gray-500">
             <p className="mb-2 font-semibold text-primary">No blocks yet</p>
-            <p>Click the <strong>Draw a block</strong> button on the map to plot your first one.</p>
+            <p className="mb-4">Click the <strong>Draw a block</strong> button on the map to plot your first one.</p>
+            <p className="text-xs text-gray-400">— or —</p>
+            <Link href="/app/import" className="mt-2 inline-block text-sm font-semibold text-primary hover:underline">
+              Import your fields from another program →
+            </Link>
           </div>
         ) : (
           groups.map((group) => {
