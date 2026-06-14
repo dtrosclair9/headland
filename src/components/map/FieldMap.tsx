@@ -167,6 +167,7 @@ export default function FieldMap({
     let map: mapboxgl.Map
     let draw: MapboxDraw
     let onKey: ((ev: KeyboardEvent) => void) | null = null
+    let tapCleanup: (() => void) | null = null
     let readyTimer: ReturnType<typeof setTimeout> | null = null
 
     try {
@@ -298,14 +299,16 @@ export default function FieldMap({
         },
       })
 
-      map.on('click', 'fields-fill', (e) => {
-        const props = e.features?.[0]?.properties
+      // Tapping a block needs to DO something visible — on mobile the sidebar is
+      // closed, so selection alone gave no feedback. Pop a quick card with the
+      // basics + a link to open the full block.
+      const openFieldInfo = (
+        props: Record<string, unknown> | null | undefined,
+        lngLat: mapboxgl.LngLat,
+      ) => {
         const featureId = props?.id
         if (typeof featureId !== 'string') return
         onSelectField(featureId)
-        // Tapping a block needs to DO something visible — on mobile the sidebar is
-        // closed, so selection alone gave no feedback. Pop a quick card with the
-        // basics + a link to open the full block.
         popupRef.current?.remove()
         const esc = (s: string) =>
           s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string)
@@ -321,7 +324,7 @@ export default function FieldMap({
           props?.variety ? esc(String(props.variety)) : '',
         ].filter(Boolean).join(' · ')
         popupRef.current = new mapboxgl.Popup({ closeButton: true, offset: 10, maxWidth: '260px' })
-          .setLngLat(e.lngLat)
+          .setLngLat(lngLat)
           .setHTML(
             `<div style="font-family:system-ui,sans-serif;min-width:150px">` +
               `<div style="font-weight:700;color:#1A3D2E;font-size:15px">${name}</div>` +
@@ -330,7 +333,41 @@ export default function FieldMap({
               `</div>`,
           )
           .addTo(map)
-      })
+      }
+
+      map.on('click', 'fields-fill', (e) => openFieldInfo(e.features?.[0]?.properties, e.lngLat))
+
+      // mapbox-gl-draw is added full-time in simple_select and swallows the
+      // synthesized click on touch, so tapping a block did nothing on mobile.
+      // Detect the tap on the canvas directly and query the field underneath.
+      const canvasEl = map.getCanvas()
+      let tapStart: { x: number; y: number; t: number } | null = null
+      const onTapStart = (ev: TouchEvent) => {
+        tapStart =
+          ev.touches.length === 1
+            ? { x: ev.touches[0].clientX, y: ev.touches[0].clientY, t: Date.now() }
+            : null
+      }
+      const onTapEnd = (ev: TouchEvent) => {
+        const start = tapStart
+        tapStart = null
+        if (!start || ev.changedTouches.length !== 1) return
+        const tch = ev.changedTouches[0]
+        const moved = Math.hypot(tch.clientX - start.x, tch.clientY - start.y)
+        // A real tap, not a pan or long-press, and only when not mid-draw.
+        if (moved > 12 || Date.now() - start.t > 600) return
+        if (drawRef.current?.getMode?.() && drawRef.current.getMode() !== 'simple_select') return
+        const rect = canvasEl.getBoundingClientRect()
+        const pt: [number, number] = [tch.clientX - rect.left, tch.clientY - rect.top]
+        const feats = map.queryRenderedFeatures(pt, { layers: ['fields-fill'] })
+        if (feats.length) openFieldInfo(feats[0].properties, map.unproject(pt))
+      }
+      canvasEl.addEventListener('touchstart', onTapStart, { passive: true })
+      canvasEl.addEventListener('touchend', onTapEnd, { passive: true })
+      tapCleanup = () => {
+        canvasEl.removeEventListener('touchstart', onTapStart)
+        canvasEl.removeEventListener('touchend', onTapEnd)
+      }
       map.on('mouseenter', 'fields-fill', () => {
         map.getCanvas().style.cursor = 'pointer'
       })
@@ -428,6 +465,7 @@ export default function FieldMap({
       clearTimeout(t2)
       clearTimeout(t3)
       if (onKey) window.removeEventListener('keydown', onKey)
+      tapCleanup?.()
       if (resizeObserver) resizeObserver.disconnect()
       stopWatching()
       try {
