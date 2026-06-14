@@ -21,6 +21,10 @@ interface FieldSidebarProps {
   // sectionId: pass a UUID to assign, or null to unassign.
   onBulkAssignSection: (sectionId: string | null) => Promise<void>
   onBulkRotate: () => Promise<{ advanced: number; skipped: number } | null>
+  // Reposition (move/rotate) the currently-selected blocks on the map.
+  onStartReposition: () => void
+  // Reposition a whole section's blocks at once (the "farm drifted as a unit" case).
+  onRepositionSection: (sectionId: string) => void
 }
 
 export default function FieldSidebar({
@@ -36,6 +40,8 @@ export default function FieldSidebar({
   onToggleFieldSelected,
   onBulkAssignSection,
   onBulkRotate,
+  onStartReposition,
+  onRepositionSection,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
   const [assignOpen, setAssignOpen] = useState(false)
@@ -131,15 +137,25 @@ export default function FieldSidebar({
                   <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-2">
                     <span>{group.fields.length} · {groupArea.primary}</span>
                     {sectionId && !selectMode && (
-                      <a
-                        href={`/sections/${sectionId}/print`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary font-semibold hover:underline"
-                        title={`Print ${group.name}`}
-                      >
-                        Print
-                      </a>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onRepositionSection(sectionId)}
+                          className="text-primary font-semibold hover:underline"
+                          title={`Move/rotate all of ${group.name} on the map`}
+                        >
+                          Move
+                        </button>
+                        <a
+                          href={`/sections/${sectionId}/print`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary font-semibold hover:underline"
+                          title={`Print ${group.name}`}
+                        >
+                          Print
+                        </a>
+                      </>
                     )}
                   </span>
                 </div>
@@ -309,6 +325,13 @@ export default function FieldSidebar({
                 className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
               >
                 Rotate {selectedIds.size} to next cycle →
+              </button>
+              <button
+                type="button"
+                onClick={onStartReposition}
+                className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
+              >
+                Move / rotate {selectedIds.size} on map →
               </button>
             </>
           )}

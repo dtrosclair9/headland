@@ -70,6 +70,19 @@ function lineColorExpression(
   ] as unknown as mapboxgl.ExpressionSpecification
 }
 
+// Rigidly shift a polygon by a lng/lat delta (used while dragging a reposition
+// group). For the small, local moves this feature is for, a flat lng/lat shift
+// tracks the cursor exactly — which is what the grower expects when sliding a
+// block onto the satellite.
+function translatePolygon(geom: GeoJSON.Polygon, dLng: number, dLat: number): GeoJSON.Polygon {
+  return {
+    type: 'Polygon',
+    coordinates: geom.coordinates.map((ring) =>
+      ring.map(([lng, lat]) => [lng + dLng, lat + dLat]),
+    ),
+  }
+}
+
 type ViewMode = 'satellite' | 'crop'
 
 // Satellite label: name + variety + truncated note (ground-truth context while
@@ -117,6 +130,10 @@ export interface FieldMapProps {
   onDeleteDitch: (id: string) => Promise<void>
   onDrawingChange?: (drawing: boolean) => void
   onShowFields?: () => void
+  // Reposition mode: the ids of blocks to move/rotate as a rigid group, or null.
+  repositionIds: Set<string> | null
+  onSaveReposition: (features: { id: string; geometry: GeoJSON.Polygon }[]) => Promise<void>
+  onCancelReposition: () => void
 }
 
 export default function FieldMap({
@@ -131,6 +148,9 @@ export default function FieldMap({
   onDeleteDitch,
   onDrawingChange,
   onShowFields,
+  repositionIds,
+  onSaveReposition,
+  onCancelReposition,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -140,6 +160,14 @@ export default function FieldMap({
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const watchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Reposition mode: live working geometries (id → polygon) the Save button reads,
+  // a guard so the tap handler ignores taps while repositioning, and the camera's
+  // current view mode (read in the effect cleanup to restore base-layer opacity).
+  const repositionWorkingRef = useRef<Map<string, GeoJSON.Polygon>>(new Map())
+  const repositioningRef = useRef(false)
+  const rotateMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const viewModeRef = useRef<ViewMode>('satellite')
+  const [savingReposition, setSavingReposition] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
@@ -351,6 +379,8 @@ export default function FieldMap({
       const onTapEnd = (ev: TouchEvent) => {
         const start = tapStart
         tapStart = null
+        // Ignore taps while repositioning — the move/rotate handlers own the canvas.
+        if (repositioningRef.current) return
         if (!start || ev.changedTouches.length !== 1) return
         const tch = ev.changedTouches[0]
         const moved = Math.hypot(tch.clientX - start.x, tch.clientY - start.y)
@@ -582,6 +612,216 @@ export default function FieldMap({
     }
   }, [selectedFieldId, ready, viewMode])
 
+  // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
+  // correct base-layer opacity without taking viewMode as a dependency (which
+  // would tear down an in-progress move when the user flips the basemap).
+  useEffect(() => {
+    viewModeRef.current = viewMode
+  }, [viewMode])
+
+  // ── Reposition mode ────────────────────────────────────────────────
+  // Lift the chosen blocks into a bright, draggable working copy and let the
+  // grower slide (drag) + rotate (corner handle) the whole group as a rigid
+  // unit onto the satellite. Fixes imported GPS drift without redrawing. Save
+  // writes every new geometry in one round-trip; Cancel discards the working copy.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !repositionIds || repositionIds.size === 0) return
+
+    // Snapshot the chosen blocks' geometries at entry (deep-cloned working copy).
+    const workingMap = new Map<string, GeoJSON.Polygon>()
+    for (const f of fields) {
+      if (repositionIds.has(f.id)) {
+        workingMap.set(f.id, JSON.parse(JSON.stringify(f.geometry)) as GeoJSON.Polygon)
+      }
+    }
+    if (workingMap.size === 0) return
+    repositionWorkingRef.current = workingMap
+    repositioningRef.current = true
+
+    const fc = (): GeoJSON.FeatureCollection => ({
+      type: 'FeatureCollection',
+      features: Array.from(workingMap.entries()).map(([id, geometry]) => ({
+        type: 'Feature',
+        properties: { id },
+        geometry,
+      })),
+    })
+    const cloneWorking = () => {
+      const m = new Map<string, GeoJSON.Polygon>()
+      for (const [id, g] of workingMap) m.set(id, JSON.parse(JSON.stringify(g)) as GeoJSON.Polygon)
+      return m
+    }
+    const pushData = () => {
+      const src = map.getSource('reposition') as mapboxgl.GeoJSONSource | undefined
+      src?.setData(fc())
+    }
+
+    // Bright working-copy layers on top; dim the base fields so the group pops.
+    // Defensively clear any leftovers (React strict-mode double-invoke in dev).
+    try {
+      if (map.getLayer('reposition-fill')) map.removeLayer('reposition-fill')
+      if (map.getLayer('reposition-outline')) map.removeLayer('reposition-outline')
+      if (map.getSource('reposition')) map.removeSource('reposition')
+    } catch {
+      /* ignore */
+    }
+    map.addSource('reposition', { type: 'geojson', data: fc() })
+    map.addLayer({
+      id: 'reposition-fill',
+      type: 'fill',
+      source: 'reposition',
+      paint: { 'fill-color': SELECTED_COLOR, 'fill-opacity': 0.55 },
+    })
+    map.addLayer({
+      id: 'reposition-outline',
+      type: 'line',
+      source: 'reposition',
+      paint: { 'line-color': SELECTED_COLOR, 'line-width': 3 },
+    })
+    map.setPaintProperty('fields-fill', 'fill-opacity', viewMode === 'crop' ? 0.3 : 0.12)
+    try {
+      map.setLayoutProperty('fields-label', 'visibility', 'none')
+    } catch {
+      /* label layer may not be ready — ignore */
+    }
+
+    // Frame the group with room to drag.
+    const groupBounds = new mapboxgl.LngLatBounds()
+    for (const g of workingMap.values()) {
+      for (const ring of g.coordinates) for (const [lng, lat] of ring) groupBounds.extend([lng, lat])
+    }
+    if (!groupBounds.isEmpty()) {
+      map.fitBounds(groupBounds, { padding: 110, animate: true, maxZoom: 16, duration: 500 })
+    }
+
+    // ── Rotate handle ── a draggable marker above the group; spins the group
+    // around its centroid by the change in bearing from centroid → handle.
+    const handleEl = document.createElement('div')
+    handleEl.style.cssText =
+      'width:36px;height:36px;border-radius:9999px;background:#fff;border:2px solid ' +
+      SELECTED_COLOR +
+      ';box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;'
+    handleEl.innerHTML =
+      '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1A3D2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>'
+    const rotateMarker = new mapboxgl.Marker({ element: handleEl, draggable: true })
+    rotateMarkerRef.current = rotateMarker
+
+    const handleAnchor = (): [number, number] => {
+      const b = turf.bbox(fc()) // [minLng, minLat, maxLng, maxLat]
+      const pad = (b[3] - b[1]) * 0.18 || 0.0005
+      return [(b[0] + b[2]) / 2, b[3] + pad]
+    }
+    const placeHandle = () => rotateMarker.setLngLat(handleAnchor())
+    placeHandle()
+    rotateMarker.addTo(map)
+
+    let rotateBase: Map<string, GeoJSON.Polygon> | null = null
+    let rotatePivot: [number, number] | null = null
+    let startBearing = 0
+    rotateMarker.on('dragstart', () => {
+      rotateBase = cloneWorking()
+      const c = turf.centroid(fc()).geometry.coordinates as [number, number]
+      rotatePivot = c
+      const ll = rotateMarker.getLngLat()
+      startBearing = turf.bearing(c, [ll.lng, ll.lat])
+    })
+    rotateMarker.on('drag', () => {
+      if (!rotateBase || !rotatePivot) return
+      const ll = rotateMarker.getLngLat()
+      const delta = turf.bearing(rotatePivot, [ll.lng, ll.lat]) - startBearing
+      const baseFC: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: Array.from(rotateBase.entries()).map(([id, geometry]) => ({
+          type: 'Feature',
+          properties: { id },
+          geometry,
+        })),
+      }
+      const rotated = turf.transformRotate(baseFC, delta, { pivot: rotatePivot })
+      workingMap.clear()
+      for (const feat of rotated.features) {
+        workingMap.set(feat.properties!.id as string, feat.geometry as GeoJSON.Polygon)
+      }
+      pushData()
+    })
+    rotateMarker.on('dragend', () => {
+      rotateBase = null
+      rotatePivot = null
+      placeHandle() // snap the handle back above the rotated group
+    })
+
+    // ── Move ── a drag that STARTS on the group slides it; a drag on empty map
+    // still pans. Hit-test the working layer on pointer-down.
+    let moveBase: Map<string, GeoJSON.Polygon> | null = null
+    let moveStart: mapboxgl.LngLat | null = null
+    const onDown = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: ['reposition-fill'] })
+      if (hit.length === 0) return // empty map → let Mapbox pan
+      e.preventDefault()
+      map.dragPan.disable()
+      handleEl.style.cursor = 'grabbing'
+      moveBase = cloneWorking()
+      moveStart = e.lngLat
+    }
+    const onMove = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
+      if (!moveBase || !moveStart) return
+      const dLng = e.lngLat.lng - moveStart.lng
+      const dLat = e.lngLat.lat - moveStart.lat
+      workingMap.clear()
+      for (const [id, g] of moveBase) workingMap.set(id, translatePolygon(g, dLng, dLat))
+      pushData()
+      placeHandle()
+    }
+    const onUp = () => {
+      if (!moveBase) return
+      moveBase = null
+      moveStart = null
+      map.dragPan.enable()
+      handleEl.style.cursor = 'grab'
+      placeHandle()
+    }
+    map.on('mousedown', onDown)
+    map.on('touchstart', onDown)
+    map.on('mousemove', onMove)
+    map.on('touchmove', onMove)
+    map.on('mouseup', onUp)
+    map.on('touchend', onUp)
+
+    return () => {
+      repositioningRef.current = false
+      map.off('mousedown', onDown)
+      map.off('touchstart', onDown)
+      map.off('mousemove', onMove)
+      map.off('touchmove', onMove)
+      map.off('mouseup', onUp)
+      map.off('touchend', onUp)
+      try {
+        rotateMarkerRef.current?.remove()
+      } catch {
+        /* ignore */
+      }
+      rotateMarkerRef.current = null
+      try {
+        if (map.getLayer('reposition-fill')) map.removeLayer('reposition-fill')
+        if (map.getLayer('reposition-outline')) map.removeLayer('reposition-outline')
+        if (map.getSource('reposition')) map.removeSource('reposition')
+      } catch {
+        /* map may be tearing down — ignore */
+      }
+      try {
+        map.dragPan.enable()
+        const vm = viewModeRef.current
+        map.setPaintProperty('fields-fill', 'fill-opacity', vm === 'crop' ? 0.92 : 0.4)
+        map.setLayoutProperty('fields-label', 'visibility', 'visible')
+      } catch {
+        /* ignore */
+      }
+    }
+    // viewMode intentionally omitted — flipping the basemap mustn't reset the move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositionIds, ready, fields])
+
   // Fly to a field when it becomes the selected one (kept separate so toggling
   // the view mode doesn't yank the camera around).
   useEffect(() => {
@@ -808,7 +1048,9 @@ export default function FieldMap({
         </div>
       </div>
 
-      {/* Labeled action buttons — overlay the map at top-left. */}
+      {/* Labeled action buttons — overlay the map at top-left. Hidden while
+          repositioning so the move/rotate gesture owns the map. */}
+      {!repositionIds && (
       <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2 pointer-events-none items-start">
         <div className="flex flex-wrap gap-2 pointer-events-none">
           {onShowFields && (
@@ -922,6 +1164,51 @@ export default function FieldMap({
         )}
 
       </div>
+      )}
+
+      {/* Reposition bar — drag the highlighted group to slide it, use the corner
+          handle to rotate, then Save. Shapes/acreage never change. */}
+      {repositionIds && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[calc(100%-1.5rem)] max-w-md">
+          <div className="rounded-lg bg-white shadow-lg border border-gray-200 px-4 py-3">
+            <p className="text-sm font-semibold text-primary">
+              Repositioning {repositionIds.size} block{repositionIds.size === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+              Drag the highlighted blocks to slide them. Use the round handle above
+              them to rotate. Shapes and acreage stay the same.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                disabled={savingReposition}
+                onClick={async () => {
+                  setSavingReposition(true)
+                  const features = Array.from(repositionWorkingRef.current.entries()).map(
+                    ([id, geometry]) => ({ id, geometry }),
+                  )
+                  try {
+                    await onSaveReposition(features)
+                  } finally {
+                    setSavingReposition(false)
+                  }
+                }}
+                className="btn-primary flex-1 text-sm disabled:opacity-50"
+              >
+                {savingReposition ? 'Saving…' : 'Save new position'}
+              </button>
+              <button
+                type="button"
+                disabled={savingReposition}
+                onClick={onCancelReposition}
+                className="flex-1 text-sm font-semibold rounded-md border-2 border-gray-300 text-gray-600 px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cycle legend — bottom-right. Collapsible. Always shown in crop mode
           since the colors are the entire point there. */}

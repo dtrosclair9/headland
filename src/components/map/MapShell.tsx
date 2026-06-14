@@ -41,6 +41,8 @@ export default function MapShell({ initialFields, initialDitches, units, state }
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   // After a block is drawn, prompt for its details right away.
   const [newBlock, setNewBlock] = useState<{ id: string; name: string } | null>(null)
+  // Reposition mode: the set of block ids being moved/rotated as a group.
+  const [repositionIds, setRepositionIds] = useState<Set<string> | null>(null)
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -54,6 +56,33 @@ export default function MapShell({ initialFields, initialDitches, units, state }
   useEffect(() => {
     if (drawing) setSidebarOpen(false)
   }, [drawing])
+
+  // Collapse the sidebar when repositioning so the map is clear for the gesture.
+  useEffect(() => {
+    if (repositionIds) setSidebarOpen(false)
+  }, [repositionIds])
+
+  async function handleSaveReposition(features: { id: string; geometry: GeoJSON.Polygon }[]) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fields/bulk-geometry', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ features }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to save new positions')
+      }
+      setRepositionIds(null)
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const totalAcres = fields.reduce((sum, f) => sum + Number(f.acreage_cached || 0), 0)
 
@@ -238,6 +267,18 @@ export default function MapShell({ initialFields, initialDitches, units, state }
           }}
           onBulkAssignSection={handleBulkAssignSection}
           onBulkRotate={handleBulkRotate}
+          onStartReposition={() => {
+            if (selectedIds.size) {
+              setRepositionIds(new Set(selectedIds))
+              setSelectMode(false)
+              setSelectedIds(new Set())
+            }
+          }}
+          onRepositionSection={(sectionId) =>
+            setRepositionIds(
+              new Set(fields.filter((f) => f.section_id === sectionId).map((f) => f.id)),
+            )
+          }
         />
       </div>
 
@@ -263,6 +304,9 @@ export default function MapShell({ initialFields, initialDitches, units, state }
         onDeleteDitch={handleDeleteDitch}
         onDrawingChange={setDrawing}
         onShowFields={!sidebarOpen ? () => setSidebarOpen(true) : undefined}
+        repositionIds={repositionIds}
+        onSaveReposition={handleSaveReposition}
+        onCancelReposition={() => setRepositionIds(null)}
       />
 
       {(busy || error) && (
