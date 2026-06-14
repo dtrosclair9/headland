@@ -44,3 +44,6 @@ next-env.d.ts
 # Supabase
 supabase/.branches
 supabase/.temp
+
+# UI self-test screenshots (scripts/ui-check.mjs)
+.ui-check/
