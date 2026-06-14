@@ -178,6 +178,9 @@ export default function FieldMap({
         center,
         zoom: 11,
         attributionControl: true,
+        // Touch taps wander a few px; the 3px default makes Mapbox treat a tap as
+        // a drag and fire no click, so tapping a block did nothing on mobile.
+        clickTolerance: 8,
       })
     } catch (e) {
       setError(
@@ -908,7 +911,7 @@ export default function FieldMap({
                 {RATOON_COLORS.map((r) => (
                   <li key={r.key} className="flex items-center gap-2 text-xs text-gray-700">
                     <span
-                      className="inline-block w-3.5 h-3.5 rounded border border-white/80 shadow-sm"
+                      className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"
                       style={{ backgroundColor: r.color }}
                       aria-hidden="true"
                     />
@@ -917,7 +920,7 @@ export default function FieldMap({
                 ))}
                 <li className="flex items-center gap-2 text-xs text-gray-500 pt-1 mt-1 border-t border-gray-100">
                   <span
-                    className="inline-block w-3.5 h-3.5 rounded border border-white/80 shadow-sm"
+                    className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"
                     style={{ backgroundColor: UNSET_COLOR }}
                     aria-hidden="true"
                   />

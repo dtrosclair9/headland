@@ -13,8 +13,10 @@ export const RATOON_COLORS: { key: string; label: string; color: string }[] = [
   { key: 'fallow', label: 'Fallow / open', color: '#9CA3AF' }, // grey
 ]
 
-// No cut entered yet — light grey, reads as "no crop" like fallow.
-export const UNSET_RATOON_COLOR = '#D1D5DB'
+// No cut entered yet — cyan. A unique color (not in the cut palette) that stays
+// clearly visible on BOTH the satellite and the white crop-map canvas, unlike a
+// grey or white which disappear against one or the other.
+export const UNSET_RATOON_COLOR = '#06B6D4'
 
 export function colorForRatoon(stage: string | null | undefined): string {
   if (!stage) return UNSET_RATOON_COLOR
