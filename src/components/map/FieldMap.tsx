@@ -1052,7 +1052,10 @@ export default function FieldMap({
           repositioning so the move/rotate gesture owns the map. */}
       {!repositionIds && (
       <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2 pointer-events-none items-start">
-        <div className="flex flex-wrap gap-2 pointer-events-none">
+        {/* Cap the row width below lg so the buttons wrap into a tidy block at
+            top-left instead of stretching across the tablet toward the zoom
+            controls. Full single row on desktop. */}
+        <div className="flex flex-wrap gap-2 pointer-events-none max-w-[21rem] lg:max-w-none">
           {onShowFields && (
             <button
               type="button"
