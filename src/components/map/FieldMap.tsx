@@ -769,12 +769,11 @@ export default function FieldMap({
 
   return (
     <div
-      // Explicit height — flex-stretch was collapsing to 0 in this context
-      // (only absolute children → no content height → some Tailwind/flex
-      // combos collapse). Header is h-14 (3.5rem); pin map to viewport - that.
-      // Both Tailwind arbitrary value AND inline style for max compatibility.
-      className="relative flex-1 h-[calc(100vh-3.5rem)]"
-      style={{ height: 'calc(100vh - 3.5rem)' }}
+      // Fill the map shell, which is locked to the dynamic viewport height.
+      // h-full (not a static 100vh calc) keeps the map exactly its container's
+      // size, so nothing overflows and the on-map controls can't scroll out of
+      // view on mobile.
+      className="relative flex-1 h-full"
     >
       <div
         ref={containerRef}
