@@ -197,7 +197,7 @@ export default function MapShell({ initialFields, initialDitches, units, state }
   }
 
   return (
-    <div className="flex-1 flex min-h-0 relative">
+    <div className="h-full flex min-h-0 relative">
       {/* Sidebar — slide-over drawer on mobile, persistent column on md+ when open.
           On desktop, closing collapses the column entirely so the map fills the screen. */}
       <div

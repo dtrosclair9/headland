@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const daysLeft = trialDaysLeft(org)
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="h-[100dvh] overflow-hidden flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-100">
         <div className="container-wide h-14 flex items-center justify-between">
           <div className="flex items-center gap-8">
@@ -62,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             : 'Your free trial has ended. Subscribe to keep going →'}
         </Link>
       )}
-      <main className="flex-1 flex flex-col min-h-0">{children}</main>
+      <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
     </div>
   )
 }
