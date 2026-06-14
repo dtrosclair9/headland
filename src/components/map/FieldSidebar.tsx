@@ -48,8 +48,8 @@ export default function FieldSidebar({
   const [rotateOpen, setRotateOpen] = useState(false)
   const [rotating, setRotating] = useState(false)
 
-  // Group blocks by section (named sections alpha, Unassigned last). Order
-  // within a section stays drawn-date (the fields array arrives created_at asc).
+  // Group blocks by section (named sections alpha, Unassigned last). Within
+  // each section, blocks are sorted naturally by name (see the sort below).
   const groups = useMemo(() => {
     const map = new Map<string, FieldRow[]>()
     for (const f of fields) {
@@ -60,7 +60,15 @@ export default function FieldSidebar({
     }
     return Array.from(map.keys())
       .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-      .map((name) => ({ name, fields: map.get(name)! }))
+      .map((name) => {
+        // Sort blocks within every section naturally by name (2a, 16f, 31e, 35b,
+        // 39b…) so similarly-named blocks sit adjacent — much easier to scan and
+        // to multi-select. Applies to assigned sections and Unassigned alike.
+        const sorted = [...map.get(name)!].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+        )
+        return { name, fields: sorted }
+      })
   }, [fields])
 
   // Bring the selected block to the top of the list so it's never buried.

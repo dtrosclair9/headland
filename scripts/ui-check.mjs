@@ -47,6 +47,20 @@ async function shoot(browser, vp) {
     const file = `${OUT}/${vp.name}-map.png`
     await page.screenshot({ path: file })
     console.log(`✓ ${vp.name.padEnd(8)} ${vp.width}x${vp.height} → ${file}`)
+
+    // On phone, also capture the hamburger menu open (the only way to reach
+    // pages other than the map at that width).
+    if (vp.name === 'phone') {
+      const btn = page.locator('button[aria-label="Open menu"]')
+      if (await btn.count()) {
+        await btn.click()
+        await page.waitForTimeout(400)
+        await page.screenshot({ path: `${OUT}/phone-menu.png` })
+        console.log(`✓ phone    menu open           → ${OUT}/phone-menu.png`)
+      } else {
+        console.error('✗ phone: hamburger button not found')
+      }
+    }
   } catch (e) {
     console.error(`✗ ${vp.name}: ${e.message}`)
   } finally {

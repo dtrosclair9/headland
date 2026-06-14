@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import MobileNav from '@/components/MobileNav'
 import { SITE_NAME } from '@/lib/site'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { hasActiveSubscription, isCompAccount, isInTrial, trialDaysLeft } from '@/lib/billing'
@@ -16,7 +17,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="h-[100dvh] overflow-hidden flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-100">
         <div className="container-wide h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4 lg:gap-8 min-w-0">
+          <div className="flex items-center gap-3 lg:gap-8 min-w-0">
+            <MobileNav />
             <Link href="/app/map" className="flex items-center gap-2 shrink-0" aria-label={SITE_NAME}>
               <Image
                 src="/images/logo-icon.png"
