@@ -16,8 +16,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="h-[100dvh] overflow-hidden flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-100">
         <div className="container-wide h-14 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <Link href="/app/map" className="flex items-center gap-2" aria-label={SITE_NAME}>
+          <div className="flex items-center gap-4 lg:gap-8 min-w-0">
+            <Link href="/app/map" className="flex items-center gap-2 shrink-0" aria-label={SITE_NAME}>
               <Image
                 src="/images/logo-icon.png"
                 alt=""
@@ -26,9 +26,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 className="h-8 w-8"
                 priority
               />
-              <span className="font-serif text-xl font-bold text-primary uppercase tracking-wide">{SITE_NAME}</span>
+              <span className="font-serif text-lg lg:text-xl font-bold text-primary uppercase tracking-wide">{SITE_NAME}</span>
             </Link>
-            <nav className="hidden md:flex gap-6 text-sm font-medium text-gray-700">
+            <nav className="hidden md:flex gap-4 lg:gap-6 text-sm font-medium text-gray-700">
               <Link href="/app/map" className="hover:text-primary">Map</Link>
               <Link href="/app/sections" className="hover:text-primary">Sections</Link>
               <Link href="/app/import" className="hover:text-primary">Import</Link>
@@ -37,10 +37,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Link href="/app/settings" className="hover:text-primary">Settings</Link>
             </nav>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col items-end leading-tight">
-              <span className="text-sm font-semibold text-primary">{org.name}</span>
-              <span className="text-xs text-gray-500">{user.email}</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="hidden sm:flex flex-col items-end leading-tight max-w-[40vw] lg:max-w-none">
+              <span className="text-sm font-semibold text-primary truncate max-w-full">{org.name}</span>
+              {/* Email widens this column and overflows the bar at tablet width — show it on desktop only. */}
+              <span className="hidden lg:block text-xs text-gray-500">{user.email}</span>
             </div>
             <form action={signOut}>
               <button type="submit" className="btn-ghost text-sm">Sign out</button>
