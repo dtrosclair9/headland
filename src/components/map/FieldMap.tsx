@@ -135,6 +135,7 @@ export default function FieldMap({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const drawRef = useRef<MapboxDraw | null>(null)
+  const popupRef = useRef<mapboxgl.Popup | null>(null)
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const watchIdRef = useRef<number | null>(null)
@@ -143,7 +144,10 @@ export default function FieldMap({
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
   const [drawKind, setDrawKind] = useState<'block' | 'ditch' | null>(null)
-  const [legendOpen, setLegendOpen] = useState(true)
+  // Default the legend closed on phones so it doesn't cover the map; open on desktop.
+  const [legendOpen, setLegendOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 768,
+  )
   const [viewMode, setViewMode] = useState<ViewMode>('satellite')
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
@@ -292,8 +296,37 @@ export default function FieldMap({
       })
 
       map.on('click', 'fields-fill', (e) => {
-        const featureId = e.features?.[0]?.properties?.id
-        if (typeof featureId === 'string') onSelectField(featureId)
+        const props = e.features?.[0]?.properties
+        const featureId = props?.id
+        if (typeof featureId !== 'string') return
+        onSelectField(featureId)
+        // Tapping a block needs to DO something visible — on mobile the sidebar is
+        // closed, so selection alone gave no feedback. Pop a quick card with the
+        // basics + a link to open the full block.
+        popupRef.current?.remove()
+        const esc = (s: string) =>
+          s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string)
+        const cutLabels: Record<string, string> = {
+          plant_cane: 'Plant cane', first_stubble: '1st stubble', second_stubble: '2nd stubble',
+          third_stubble: '3rd stubble', fourth_stubble: '4th stubble', fifth_stubble_plus: '5th stubble',
+          sixth_stubble_plus: '6th+ stubble', fallow: 'Fallow',
+        }
+        const name = esc(String(props?.name ?? 'Block'))
+        const meta = [
+          `${Number(props?.acreage || 0).toFixed(2)} ac`,
+          cutLabels[String(props?.ratoon ?? '')] ?? '',
+          props?.variety ? esc(String(props.variety)) : '',
+        ].filter(Boolean).join(' · ')
+        popupRef.current = new mapboxgl.Popup({ closeButton: true, offset: 10, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `<div style="font-family:system-ui,sans-serif;min-width:150px">` +
+              `<div style="font-weight:700;color:#1A3D2E;font-size:15px">${name}</div>` +
+              `<div style="color:#4b5563;font-size:12px;margin-top:2px">${meta}</div>` +
+              `<a href="/app/fields/${featureId}" style="display:inline-block;margin-top:10px;font-weight:600;font-size:14px;color:#1A3D2E">Open block →</a>` +
+              `</div>`,
+          )
+          .addTo(map)
       })
       map.on('mouseenter', 'fields-fill', () => {
         map.getCanvas().style.cursor = 'pointer'
@@ -405,6 +438,8 @@ export default function FieldMap({
       } catch {
         // Ignore — mapbox sometimes throws on double-remove during HMR.
       }
+      popupRef.current?.remove()
+      popupRef.current = null
       mapRef.current = null
       drawRef.current = null
     }
@@ -710,7 +745,7 @@ export default function FieldMap({
 
       {/* View-mode toggle — top-center. Flip between satellite (for drawing /
           ground-truth) and the plain colored crop map (for reading / printing). */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 md:bottom-auto md:top-3">
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
           <button
             type="button"
@@ -734,7 +769,7 @@ export default function FieldMap({
       </div>
 
       {/* Labeled action buttons — overlay the map at top-left. */}
-      <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 pointer-events-none items-start">
+      <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2 pointer-events-none items-start">
         <div className="flex flex-wrap gap-2 pointer-events-none">
           {onShowFields && (
             <button
