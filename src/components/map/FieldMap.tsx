@@ -172,9 +172,11 @@ export default function FieldMap({
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
   const [drawKind, setDrawKind] = useState<'block' | 'ditch' | null>(null)
-  // Default the legend closed on phones so it doesn't cover the map; open on desktop.
+  // Default the legend closed on phones AND tablets so it doesn't cover the map
+  // or collide with the bottom-center view toggle on the narrower sidebar-open
+  // layout; open by default only on desktop (lg) where there's room.
   const [legendOpen, setLegendOpen] = useState(
-    () => typeof window === 'undefined' || window.innerWidth >= 768,
+    () => typeof window === 'undefined' || window.innerWidth >= 1024,
   )
   const [viewMode, setViewMode] = useState<ViewMode>('satellite')
   const [locating, setLocating] = useState(false)
@@ -1025,7 +1027,7 @@ export default function FieldMap({
 
       {/* View-mode toggle — top-center. Flip between satellite (for drawing /
           ground-truth) and the plain colored crop map (for reading / printing). */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 md:bottom-auto md:top-3">
+      <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 lg:bottom-auto lg:top-3">
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
           <button
             type="button"
