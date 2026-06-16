@@ -139,15 +139,6 @@ export interface Application {
 
 export type WindDirection = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW'
 
-export interface Ditch {
-  id: string
-  org_id: string
-  geometry: GeoJSON.LineString
-  notes: string | null
-  archived_at: string | null
-  created_at: string
-}
-
 export interface ScoutingPin {
   id: string
   field_id: string

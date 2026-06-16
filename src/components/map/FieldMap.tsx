@@ -7,7 +7,7 @@ import * as turf from '@turf/turf'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import type { FieldRow } from '@/lib/fields'
-import type { CaneState, Ditch } from '@/lib/types'
+import type { CaneState } from '@/lib/types'
 import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
@@ -120,14 +120,11 @@ function cropLabelExpression(): mapboxgl.ExpressionSpecification {
 
 export interface FieldMapProps {
   fields: FieldRow[]
-  ditches: Ditch[]
   state: CaneState | null
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
   onCreateField: (geometry: GeoJSON.Polygon) => Promise<void>
   onUpdateField: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
-  onCreateDitch: (geometry: GeoJSON.LineString) => Promise<void>
-  onDeleteDitch: (id: string) => Promise<void>
   onDrawingChange?: (drawing: boolean) => void
   onShowFields?: () => void
   // Reposition mode: the ids of blocks to move/rotate as a rigid group, or null.
@@ -138,14 +135,11 @@ export interface FieldMapProps {
 
 export default function FieldMap({
   fields,
-  ditches,
   state,
   selectedFieldId,
   onSelectField,
   onCreateField,
   onUpdateField,
-  onCreateDitch,
-  onDeleteDitch,
   onDrawingChange,
   onShowFields,
   repositionIds,
@@ -171,7 +165,7 @@ export default function FieldMap({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
-  const [drawKind, setDrawKind] = useState<'block' | 'ditch' | null>(null)
+  const [drawKind, setDrawKind] = useState<'block' | null>(null)
   // Default the legend closed on phones AND tablets so it doesn't cover the map
   // or collide with the bottom-center view toggle on the narrower sidebar-open
   // layout; open by default only on desktop (lg) where there's room.
@@ -275,8 +269,7 @@ export default function FieldMap({
     }
 
     map.on('draw.modechange', (e: { mode: string }) => {
-      const kind =
-        e.mode === 'draw_polygon' ? 'block' : e.mode === 'draw_line_string' ? 'ditch' : null
+      const kind = e.mode === 'draw_polygon' ? 'block' : null
       setDrawing(kind !== null)
       setDrawKind(kind)
       onDrawingChange?.(kind !== null)
@@ -407,31 +400,6 @@ export default function FieldMap({
         map.getCanvas().style.cursor = ''
       })
 
-      // Ditches — drawn black lines. Rendered above fills so they read like the
-      // thin lines on the paper crop maps. Click one to delete it.
-      map.addSource('ditches', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      })
-      map.addLayer({
-        id: 'ditches-line',
-        type: 'line',
-        source: 'ditches',
-        paint: { 'line-color': '#111827', 'line-width': 2 },
-      })
-      map.on('click', 'ditches-line', (e) => {
-        const id = e.features?.[0]?.properties?.id
-        if (typeof id === 'string' && window.confirm('Delete this ditch?')) {
-          void onDeleteDitch(id)
-        }
-      })
-      map.on('mouseenter', 'ditches-line', () => {
-        map.getCanvas().style.cursor = 'pointer'
-      })
-      map.on('mouseleave', 'ditches-line', () => {
-        map.getCanvas().style.cursor = ''
-      })
-
       if (readyTimer) {
         clearTimeout(readyTimer)
         readyTimer = null
@@ -445,8 +413,6 @@ export default function FieldMap({
       const feature = e.features[0]
       if (feature?.geometry?.type === 'Polygon') {
         await onCreateField(feature.geometry as GeoJSON.Polygon)
-      } else if (feature?.geometry?.type === 'LineString') {
-        await onCreateDitch(feature.geometry as GeoJSON.LineString)
       }
       draw.deleteAll()
       setDrawing(false)
@@ -562,22 +528,6 @@ export default function FieldMap({
       }
     }
   }, [fields, ready])
-
-  // Update ditches source when ditches change.
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !ready) return
-    const src = map.getSource('ditches') as mapboxgl.GeoJSONSource | undefined
-    if (!src) return
-    src.setData({
-      type: 'FeatureCollection',
-      features: ditches.map((d) => ({
-        type: 'Feature',
-        geometry: d.geometry,
-        properties: { id: d.id },
-      })),
-    })
-  }, [ditches, ready])
 
   // Recolor selection + apply the active view mode. In crop mode we hide the
   // satellite raster, lighten the background, and crank fill opacity so blocks
@@ -969,21 +919,6 @@ export default function FieldMap({
     }
   }
 
-  function toggleDitch() {
-    const draw = drawRef.current
-    if (!draw) return
-    if (drawing) {
-      draw.changeMode('simple_select')
-      draw.deleteAll()
-      setDrawing(false)
-      setDrawKind(null)
-    } else {
-      draw.changeMode('draw_line_string')
-      setDrawing(true)
-      setDrawKind('ditch')
-    }
-  }
-
   if (error) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-100 p-8">
@@ -1073,7 +1008,7 @@ export default function FieldMap({
           <button
             type="button"
             onClick={toggleDraw}
-            disabled={!ready || drawKind === 'ditch'}
+            disabled={!ready}
             className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 ${
               drawKind === 'block'
                 ? 'bg-white text-primary border-2 border-primary hover:bg-gray-50'
@@ -1093,33 +1028,6 @@ export default function FieldMap({
                   <path d="M10 2a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H3a1 1 0 110-2h6V3a1 1 0 011-1z" />
                 </svg>
                 Draw a block
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleDitch}
-            disabled={!ready || drawKind === 'block'}
-            className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 ${
-              drawKind === 'ditch'
-                ? 'bg-white text-primary border-2 border-primary hover:bg-gray-50'
-                : 'bg-white text-primary border-2 border-primary hover:bg-primary/5'
-            }`}
-          >
-            {drawKind === 'ditch' ? (
-              <>
-                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-                Finish ditch
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path strokeLinecap="round" d="M3 15 L8 8 L12 12 L17 4" />
-                </svg>
-                Draw ditch
               </>
             )}
           </button>
@@ -1148,9 +1056,7 @@ export default function FieldMap({
 
         {drawing && (
           <div className="pointer-events-none rounded-md bg-primary-dark/90 text-white px-3 py-2 text-xs leading-snug max-w-xs shadow-md">
-            {drawKind === 'ditch'
-              ? 'Click along the ditch line. Double-click the last point to finish. Press Esc to cancel.'
-              : 'Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.'}
+            Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.
           </div>
         )}
 

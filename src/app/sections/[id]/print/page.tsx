@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getSection } from '@/lib/sections'
 import { listFieldsBySection } from '@/lib/fields'
-import { listDitches } from '@/lib/ditches'
 import { buildSectionSvg } from '@/lib/section-map-svg'
 import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import { SITE_NAME } from '@/lib/site'
@@ -21,9 +20,9 @@ export default async function SectionPrintPage({
   const section = await getSection(id)
   if (!section || section.org_id !== org.id) notFound()
 
-  const [blocks, ditches] = await Promise.all([listFieldsBySection(id), listDitches(org.id)])
+  const blocks = await listFieldsBySection(id)
   const unitsArpents = org.units_default === 'arpents'
-  const svg = buildSectionSvg(blocks, { unitsArpents, ditches })
+  const svg = buildSectionSvg(blocks, { unitsArpents })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
@@ -123,17 +122,6 @@ export default async function SectionPrintPage({
                 stroke="#1f2937"
                 strokeWidth={0.8}
                 strokeLinejoin="round"
-              />
-            ))}
-            {svg.ditches.map((d) => (
-              <polyline
-                key={d.id}
-                points={d.points}
-                fill="none"
-                stroke="#111827"
-                strokeWidth={1.6}
-                strokeLinejoin="round"
-                strokeLinecap="round"
               />
             ))}
             {svg.blocks.map((b) => (

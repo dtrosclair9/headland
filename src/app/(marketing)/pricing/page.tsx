@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 }
 
 const features = [
-  'Unlimited blocks, sections, and ditches',
+  'Unlimited blocks and sections',
   'Crop-stage map + printable section maps',
   'Harvest, operation & spray records (with wind)',
   'FSA acreage export (shapefile)',
