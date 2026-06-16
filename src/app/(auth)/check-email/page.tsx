@@ -41,6 +41,10 @@ export default async function CheckEmailPage({
           </>
         )}
       </p>
+      <div className="mt-4 rounded-md bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-800">
+        Don&apos;t see it within a minute? <strong>Check your spam or junk folder</strong> — and
+        mark it &ldquo;Not spam&rdquo; so future Headland emails land in your inbox.
+      </div>
       <p className="mt-6 text-xs text-gray-500">
         Wrong address? <Link href="/login" className="underline">Try again</Link>
       </p>
