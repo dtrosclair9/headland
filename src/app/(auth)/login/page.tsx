@@ -28,7 +28,12 @@ export default async function LoginPage({
           <input id="email" name="email" type="email" required autoComplete="email" className="input" placeholder="you@farm.com" />
         </div>
         <div>
-          <label className="label" htmlFor="password">Password</label>
+          <div className="flex items-center justify-between">
+            <label className="label" htmlFor="password">Password</label>
+            <Link href="/forgot-password" className="text-xs font-semibold text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <input id="password" name="password" type="password" required autoComplete="current-password" className="input" placeholder="Your password" />
         </div>
         <button type="submit" className="btn-primary w-full">
@@ -54,7 +59,7 @@ export default async function LoginPage({
             Send me a login link
           </button>
           <p className="text-xs text-gray-400 text-center">
-            Forgot your password? Use this, then set a new one in Settings.
+            No password yet? Email yourself a one-time link, then set one in Settings.
           </p>
         </form>
       </details>

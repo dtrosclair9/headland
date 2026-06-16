@@ -96,6 +96,62 @@ export async function signInWithLink(formData: FormData) {
   redirect('/check-email?email=' + encodeURIComponent(parsed.data.email))
 }
 
+const NewPasswordSchema = z
+  .object({ password: PASSWORD, confirm: z.string() })
+  .refine((d) => d.password === d.confirm, {
+    message: 'Passwords do not match.',
+    path: ['confirm'],
+  })
+
+// Step 1 of forgot-password: email a recovery link. The link lands on
+// /auth/callback (which verifies it and opens a session) and then forwards to
+// /reset-password. We always show the same confirmation regardless of whether
+// the email exists, to avoid leaking which addresses have accounts.
+export async function requestPasswordReset(formData: FormData) {
+  const parsed = EmailOnlySchema.safeParse({ email: formData.get('email') })
+  if (!parsed.success) {
+    redirect('/forgot-password?error=' + encodeURIComponent('Enter a valid email address.'))
+  }
+
+  const supabase = await createClient()
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${BASE_URL}/auth/callback?next=/reset-password`,
+  })
+  redirect('/check-email?mode=reset&email=' + encodeURIComponent(parsed.data.email))
+}
+
+// Step 2 of forgot-password: the recovery link already opened a session via
+// /auth/callback, so we just set the new password on the signed-in user.
+export async function setNewPassword(formData: FormData) {
+  const parsed = NewPasswordSchema.safeParse({
+    password: formData.get('password'),
+    confirm: formData.get('confirm'),
+  })
+  if (!parsed.success) {
+    redirect(
+      '/reset-password?error=' +
+        encodeURIComponent(parsed.error.issues[0]?.message ?? 'Invalid password.'),
+    )
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    redirect(
+      '/forgot-password?error=' +
+        encodeURIComponent('That reset link has expired. Request a new one.'),
+    )
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
+  if (error) {
+    redirect('/reset-password?error=' + encodeURIComponent(error.message))
+  }
+  redirect('/app/map')
+}
+
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()

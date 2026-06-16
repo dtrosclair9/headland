@@ -6,9 +6,10 @@ export const metadata: Metadata = { title: 'Check your email' }
 export default async function CheckEmailPage({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string }>
+  searchParams: Promise<{ email?: string; mode?: string }>
 }) {
-  const { email } = await searchParams
+  const { email, mode } = await searchParams
+  const isReset = mode === 'reset'
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
       <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-accent/15 flex items-center justify-center">
@@ -18,9 +19,27 @@ export default async function CheckEmailPage({
       </div>
       <h1 className="text-2xl font-bold text-primary mb-2">Check your email</h1>
       <p className="text-sm text-gray-600">
-        {email ? <>We sent a magic sign-in link to <strong>{email}</strong>.</> : <>We sent you a magic sign-in link.</>}
-        <br />
-        Click it from this device — the link signs you in automatically.
+        {isReset ? (
+          <>
+            {email ? (
+              <>We sent a password-reset link to <strong>{email}</strong>.</>
+            ) : (
+              <>We sent you a password-reset link.</>
+            )}
+            <br />
+            Click it from this device to choose a new password.
+          </>
+        ) : (
+          <>
+            {email ? (
+              <>We sent a magic sign-in link to <strong>{email}</strong>.</>
+            ) : (
+              <>We sent you a magic sign-in link.</>
+            )}
+            <br />
+            Click it from this device — the link signs you in automatically.
+          </>
+        )}
       </p>
       <p className="mt-6 text-xs text-gray-500">
         Wrong address? <Link href="/login" className="underline">Try again</Link>
