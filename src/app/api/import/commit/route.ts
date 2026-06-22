@@ -29,6 +29,29 @@ interface Mapping {
   cutValueMap?: Record<string, string>
 }
 
+// Find a stated-acreage column without the grower having to map one. Prefer
+// "FSA acres", then any other "acre(s)" column whose values read like acreages
+// (mostly positive numbers in a sane range). Returns null if none qualifies.
+function autoDetectAcresColumn(parsed: {
+  columns: string[]
+  features: { properties: Record<string, string> }[]
+}): string | null {
+  const acreCols = parsed.columns.filter((c) => /acre/i.test(c))
+  const ranked = [
+    ...acreCols.filter((c) => /fsa/i.test(c)),
+    ...acreCols.filter((c) => !/fsa/i.test(c)),
+  ]
+  for (const col of ranked) {
+    const nums = parsed.features
+      .map((f) => parseFloat(String(f.properties[col] ?? '').replace(/[^0-9.]/g, '')))
+      .filter((v) => Number.isFinite(v) && v > 0)
+    if (nums.length >= parsed.features.length * 0.5 && nums.every((v) => v < 100000)) {
+      return col
+    }
+  }
+  return null
+}
+
 // Step 2 of import: re-parse the file, apply the column mapping, and bulk-create
 // the fields (auto-creating plantations). Re-parsing avoids holding ~500 polygons
 // in client state between steps.
@@ -66,12 +89,14 @@ export async function POST(request: NextRequest) {
   const val = (props: Record<string, string>, col?: string | null) =>
     col ? (props[col] ?? '') : ''
 
+  // Acreage MUST come from the file whenever it's there — never depend on the
+  // grower mapping it. Use their mapped column if set, else auto-detect any
+  // "acre(s)" column (preferring FSA acres) whose values look like acreages.
+  const acresCol = mapping.acresColumn || autoDetectAcresColumn(parsed)
   const features = parsed.features.map((f) => {
     const cutRaw = mapping.cutColumn ? (f.properties[mapping.cutColumn] ?? '') : ''
     const ratoon = cutMap[cutRaw]
-    // Parse the stated acreage if an acres column was mapped; the RPC trusts it
-    // over the polygon area when present (and > 0).
-    const acresRaw = mapping.acresColumn ? (f.properties[mapping.acresColumn] ?? '') : ''
+    const acresRaw = acresCol ? (f.properties[acresCol] ?? '') : ''
     const acresNum = parseFloat(String(acresRaw).replace(/[^0-9.]/g, ''))
     return {
       name: val(f.properties, mapping.nameColumn),
