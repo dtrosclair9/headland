@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { area as turfArea } from '@turf/turf'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createClient } from '@/lib/supabase/server'
 import { extractShapefileComponents, parseShapefileBuffers } from '@/lib/shapefile-import'
@@ -29,27 +30,77 @@ interface Mapping {
   cutValueMap?: Record<string, string>
 }
 
-// Find a stated-acreage column without the grower having to map one. Prefer
-// "FSA acres", then any other "acre(s)" column whose values read like acreages
-// (mostly positive numbers in a sane range). Returns null if none qualifies.
+function pearson(xs: number[], ys: number[]): number {
+  const n = xs.length
+  if (n < 3) return 0
+  const mx = xs.reduce((a, b) => a + b, 0) / n
+  const my = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0,
+    dx = 0,
+    dy = 0
+  for (let i = 0; i < n; i++) {
+    const a = xs[i] - mx
+    const b = ys[i] - my
+    num += a * b
+    dx += a * a
+    dy += b * b
+  }
+  return dx > 0 && dy > 0 ? num / Math.sqrt(dx * dy) : 0
+}
+
+// Auto-detect the stated-acreage column WITHOUT relying on its name — different
+// farm software names it differently ("FSA acres", "My Acres", "Area",
+// "Acreage", "ac"…). The reliable, name-agnostic signal: a column of positive
+// numbers in a field-acreage range whose values track the polygon sizes (high
+// correlation). A matching name only nudges the score. Returns null if nothing
+// looks like acreage (then we fall back to the polygon area).
 function autoDetectAcresColumn(parsed: {
   columns: string[]
-  features: { properties: Record<string, string> }[]
+  features: { geometry: GeoJSON.Geometry; properties: Record<string, string> }[]
 }): string | null {
-  const acreCols = parsed.columns.filter((c) => /acre/i.test(c))
-  const ranked = [
-    ...acreCols.filter((c) => /fsa/i.test(c)),
-    ...acreCols.filter((c) => !/fsa/i.test(c)),
-  ]
-  for (const col of ranked) {
-    const nums = parsed.features
-      .map((f) => parseFloat(String(f.properties[col] ?? '').replace(/[^0-9.]/g, '')))
-      .filter((v) => Number.isFinite(v) && v > 0)
-    if (nums.length >= parsed.features.length * 0.5 && nums.every((v) => v < 100000)) {
-      return col
+  const feats = parsed.features
+  if (feats.length < 3) return null
+  const areas = feats.map((f) => {
+    try {
+      return turfArea(f.geometry) * 0.000247105
+    } catch {
+      return NaN
+    }
+  })
+
+  let best: string | null = null
+  let bestScore = 0
+  for (const col of parsed.columns) {
+    const vals = feats.map((f) =>
+      parseFloat(String(f.properties[col] ?? '').replace(/[^0-9.]/g, '')),
+    )
+    const valid = vals.filter((v) => Number.isFinite(v) && v > 0)
+    if (valid.length < feats.length * 0.6) continue // must be mostly numeric & positive
+    const sorted = [...valid].sort((a, b) => a - b)
+    const median = sorted[Math.floor(sorted.length / 2)]
+    if (median < 0.2 || median > 5000) continue // a field's acreage, not an ID
+
+    const xs: number[] = []
+    const ys: number[] = []
+    for (let i = 0; i < feats.length; i++) {
+      if (Number.isFinite(vals[i]) && vals[i] > 0 && Number.isFinite(areas[i])) {
+        xs.push(vals[i])
+        ys.push(areas[i])
+      }
+    }
+    let score = pearson(xs, ys)
+    if (/acre|acreage/i.test(col)) score += 0.25
+    if (/area/i.test(col)) score += 0.1
+    if (/fsa/i.test(col)) score += 0.1
+
+    if (score > bestScore) {
+      bestScore = score
+      best = col
     }
   }
-  return null
+  // Require a genuine relationship to the field sizes — avoids grabbing an ID
+  // column that happens to be numeric.
+  return bestScore >= 0.6 ? best : null
 }
 
 // Step 2 of import: re-parse the file, apply the column mapping, and bulk-create
