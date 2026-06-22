@@ -21,6 +21,10 @@ interface Mapping {
   varietyColumn?: string | null
   plantationColumn?: string | null
   cutColumn?: string | null
+  // Column holding the grower's stated acreage (e.g. FarmWorks "FSA acres").
+  // When set, the importer trusts this over the polygon-derived area — source
+  // polygons are often rough/oversized while the stated acres are correct.
+  acresColumn?: string | null
   // Maps a raw cut value (e.g. "4") to a ratoon_stage (e.g. "fourth_stubble").
   cutValueMap?: Record<string, string>
 }
@@ -65,12 +69,17 @@ export async function POST(request: NextRequest) {
   const features = parsed.features.map((f) => {
     const cutRaw = mapping.cutColumn ? (f.properties[mapping.cutColumn] ?? '') : ''
     const ratoon = cutMap[cutRaw]
+    // Parse the stated acreage if an acres column was mapped; the RPC trusts it
+    // over the polygon area when present (and > 0).
+    const acresRaw = mapping.acresColumn ? (f.properties[mapping.acresColumn] ?? '') : ''
+    const acresNum = parseFloat(String(acresRaw).replace(/[^0-9.]/g, ''))
     return {
       name: val(f.properties, mapping.nameColumn),
       geometry: f.geometry,
       variety: val(f.properties, mapping.varietyColumn),
       ratoon: ratoon && RATOON.has(ratoon) ? ratoon : '',
       plantation: val(f.properties, mapping.plantationColumn),
+      acres: Number.isFinite(acresNum) && acresNum > 0 ? String(acresNum) : '',
     }
   })
 

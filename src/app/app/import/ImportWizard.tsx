@@ -32,6 +32,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
   const [nameCol, setNameCol] = useState('')
   const [varietyCol, setVarietyCol] = useState('')
   const [plantationCol, setPlantationCol] = useState('')
+  const [acresCol, setAcresCol] = useState('')
   const [cutCol, setCutCol] = useState('')
   const [cutMap, setCutMap] = useState<Record<string, string>>({})
   const [imported, setImported] = useState<number | null>(null)
@@ -51,6 +52,20 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not read that file.')
       setParse(data as ParseResult)
+      // Auto-suggest the column mapping from common header names so the grower
+      // mostly just confirms. They can override any of these.
+      const cols: string[] = (data as ParseResult).columns || []
+      const pick = (...res: RegExp[]) => {
+        for (const re of res) {
+          const c = cols.find((x) => re.test(x))
+          if (c) return c
+        }
+        return ''
+      }
+      setNameCol(pick(/field\s*i\b/i, /field\s*name/i, /^name$/i, /\bblock\b/i, /label/i))
+      setVarietyCol(pick(/variet/i))
+      setAcresCol(pick(/fsa[\s_]*acre/i, /\bacre/i))
+      setCutCol(pick(/year\s*cane/i, /ratoon/i, /stubble/i, /^cut$/i, /cycle/i))
       setStep(2)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -71,6 +86,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
           nameColumn: nameCol || null,
           varietyColumn: varietyCol || null,
           plantationColumn: plantationCol || null,
+          acresColumn: acresCol || null,
           cutColumn: cutCol || null,
           cutValueMap: cutMap,
         }),
@@ -118,6 +134,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
           <ColumnSelect label="Field name" hint="What labels each block (optional)" cols={cols} samples={parse.samples} value={nameCol} onChange={setNameCol} />
           <ColumnSelect label="Variety" hint="Cane variety (optional)" cols={cols} samples={parse.samples} value={varietyCol} onChange={setVarietyCol} />
           <ColumnSelect label="Plantation" hint="Groups blocks — we'll create these plantations (optional)" cols={cols} samples={parse.samples} value={plantationCol} onChange={setPlantationCol} />
+          <ColumnSelect label="Acreage" hint="Your stated acres (e.g. FSA acres). Recommended — we trust this over the polygon size." cols={cols} samples={parse.samples} value={acresCol} onChange={setAcresCol} />
           <ColumnSelect label="Cut / ratoon" hint="Which column holds the year-cane / stubble (optional)" cols={cols} samples={parse.samples} value={cutCol} onChange={(v) => { setCutCol(v); setCutMap({}) }} />
 
           {cutCol && cutValues.length > 0 && (
