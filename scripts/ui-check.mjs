@@ -48,6 +48,17 @@ async function shoot(browser, vp) {
     await page.screenshot({ path: file })
     console.log(`✓ ${vp.name.padEnd(8)} ${vp.width}x${vp.height} → ${file}`)
 
+    // Capture crop-map mode on desktop to confirm it's a blank white plat sheet.
+    if (vp.name === 'desktop') {
+      const crop = page.getByRole('button', { name: 'Crop map' })
+      if (await crop.count()) {
+        await crop.click()
+        await page.waitForTimeout(1200)
+        await page.screenshot({ path: `${OUT}/desktop-cropmap.png` })
+        console.log(`✓ desktop  crop map            → ${OUT}/desktop-cropmap.png`)
+      }
+    }
+
     // On phone, also capture the hamburger menu open (the only way to reach
     // pages other than the map at that width).
     if (vp.name === 'phone') {

@@ -44,6 +44,15 @@ export default function FieldSidebar({
   onRepositionPlantation,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
+  // Combined acreage of the bulk-selected blocks (live as you tap blocks).
+  const selectedArea = useMemo(
+    () =>
+      formatArea(
+        fields.reduce((s, f) => (selectedIds.has(f.id) ? s + Number(f.acreage_cached || 0) : s), 0),
+        units,
+      ),
+    [fields, selectedIds, units],
+  )
   const [assignOpen, setAssignOpen] = useState(false)
   const [rotateOpen, setRotateOpen] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -116,6 +125,9 @@ export default function FieldSidebar({
           {selectMode && (
             <span className="text-xs text-gray-500">
               {selectedIds.size} selected
+              {selectedIds.size > 0 && (
+                <span className="text-primary font-semibold"> · {selectedArea.primary}</span>
+              )}
             </span>
           )}
         </div>
@@ -277,6 +289,15 @@ export default function FieldSidebar({
 
       {selectMode && selectedIds.size > 0 && (
         <div className="border-t border-gray-100 bg-white p-3 space-y-2">
+          <div className="flex items-baseline justify-between px-1">
+            <span className="text-sm font-semibold text-primary">
+              {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} selected
+            </span>
+            <span className="text-sm font-bold text-primary">
+              {selectedArea.primary}
+              <span className="text-xs font-normal text-gray-400"> · {selectedArea.alt}</span>
+            </span>
+          </div>
           {assignOpen ? (
             <AssignToPlantationPanel
               onCancel={() => setAssignOpen(false)}

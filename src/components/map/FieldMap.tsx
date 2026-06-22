@@ -599,18 +599,26 @@ export default function FieldMap({
       viewMode === 'crop' ? cropLabelExpression() : satelliteLabelExpression(),
     )
 
-    // Toggle the basemap by dimming the satellite raster rather than swapping
-    // styles (setStyle wipes our layers + the draw control). Iterate so we
-    // don't depend on Mapbox's internal raster layer id. Also lighten the
-    // style's background layer so hiding the raster reveals a clean plat-map
-    // backdrop (the satellite style's own background is dark).
+    // Crop map = a blank white plat sheet: hide EVERY basemap layer (raster,
+    // streets, labels, water) and leave only our block layers on a white
+    // background. Satellite mode restores them. Swapping visibility (not
+    // setStyle) keeps our layers + the draw control intact.
+    const ours = new Set([
+      'fields-fill',
+      'fields-outline',
+      'fields-label',
+      'selected-highlight-line',
+      'reposition-fill',
+      'reposition-outline',
+    ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {
+      if (ours.has(layer.id)) continue
       try {
-        if (layer.type === 'raster') {
-          map.setPaintProperty(layer.id, 'raster-opacity', viewMode === 'crop' ? 0 : 1)
-        } else if (layer.type === 'background') {
-          map.setPaintProperty(layer.id, 'background-color', viewMode === 'crop' ? '#EAE7E1' : '#0B0B0B')
+        if (layer.type === 'background') {
+          map.setPaintProperty(layer.id, 'background-color', viewMode === 'crop' ? '#FFFFFF' : '#0B0B0B')
+        } else {
+          map.setLayoutProperty(layer.id, 'visibility', viewMode === 'crop' ? 'none' : 'visible')
         }
       } catch {
         /* layer may not support the property — ignore */
@@ -1009,9 +1017,9 @@ export default function FieldMap({
       <div
         ref={containerRef}
         className="absolute inset-0"
-        // Light backdrop shows through wherever the satellite raster is hidden
-        // (crop-map mode), giving the plain plat-map look.
-        style={{ width: '100%', height: '100%', backgroundColor: '#EAE7E1' }}
+        // White backdrop behind the canvas so crop-map mode reads as a blank
+        // white plat sheet wherever the basemap is hidden.
+        style={{ width: '100%', height: '100%', backgroundColor: '#FFFFFF' }}
       />
 
       {/* View-mode toggle — top-center. Flip between satellite (for drawing /
