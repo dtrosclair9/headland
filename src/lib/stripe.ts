@@ -22,7 +22,8 @@ export function getStripe(): Stripe {
 
 import type { BillingInterval } from '@/lib/billing'
 
-// Single flat plan → one Stripe Price per billing interval.
+// One graduated per-acre Stripe Price per billing interval (annual = monthly ×
+// 10). Created by scripts/create-stripe-prices.cjs; quantity = mapped acres.
 export function priceIdForInterval(interval: BillingInterval): string | null {
   if (interval === 'monthly') return process.env.STRIPE_PRICE_MONTHLY ?? null
   if (interval === 'annual') return process.env.STRIPE_PRICE_ANNUAL ?? null

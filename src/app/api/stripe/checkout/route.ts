@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe, isStripeConfigured, priceIdForInterval } from '@/lib/stripe'
+import { getBillableAcres } from '@/lib/acreage'
 import { BASE_URL } from '@/lib/site'
 
 const Body = z.object({ interval: z.enum(['monthly', 'annual']) })
@@ -46,10 +47,15 @@ export async function POST(request: NextRequest) {
       .eq('id', org.id)
   }
 
+  // Per-acre, graduated price: quantity = the org's total mapped acreage.
+  // Floor at 1 so a brand-new org (nothing imported yet) still lands in the
+  // first tier and pays the flat floor rather than $0.
+  const acres = Math.max(1, await getBillableAcres(org.id))
+
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: acres }],
     // Route the return through /api/stripe/confirm so the subscription is
     // reconciled into the DB before the billing page renders — the banner and
     // badge are then correct immediately, not pending the async webhook.

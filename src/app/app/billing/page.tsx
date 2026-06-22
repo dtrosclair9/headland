@@ -3,12 +3,16 @@ import Link from 'next/link'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { isStripeConfigured } from '@/lib/stripe'
 import {
-  PRICING,
   hasActiveSubscription,
   isCompAccount,
   isInTrial,
   trialDaysLeft,
+  annualPrice,
+  monthlyPrice,
+  effectivePerAcre,
+  formatUSD,
 } from '@/lib/billing'
+import { getBillableAcres } from '@/lib/acreage'
 import UpgradeButtonClient from './UpgradeButtonClient'
 import PortalForm from './PortalForm'
 
@@ -27,6 +31,14 @@ export default async function BillingPage({
   const subscribed = hasActiveSubscription(org)
   const onTrial = isInTrial(org)
   const daysLeft = trialDaysLeft(org)
+
+  // Per-acre quote for this org. Floor at 1 acre so a farm that hasn't mapped
+  // anything yet still sees the floor price rather than $0.
+  const mappedAcres = await getBillableAcres(org.id)
+  const billableAcres = Math.max(1, mappedAcres)
+  const annual = annualPrice(billableAcres)
+  const monthly = monthlyPrice(billableAcres)
+  const perAcre = effectivePerAcre(billableAcres)
 
   return (
     <div className="container-wide py-8 max-w-3xl space-y-6">
@@ -118,28 +130,37 @@ export default async function BillingPage({
         </section>
       ) : (
         <section>
-          <h2 className="text-lg font-bold text-primary mb-3">Subscribe</h2>
+          <h2 className="text-lg font-bold text-primary mb-1">Subscribe</h2>
+          <p className="text-sm text-gray-600 mb-3">
+            {formatUSD(perAcre)}/acre/year on your{' '}
+            <span className="font-semibold text-primary">
+              {mappedAcres > 0 ? `${mappedAcres.toLocaleString()} mapped acres` : 'mapped acreage'}
+            </span>
+            , whole crew included.
+            {mappedAcres === 0 && <> Import or draw your blocks to size your plan exactly.</>}
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <PlanCard
               title="Monthly"
-              price={`$${PRICING.monthly}`}
+              price={formatUSD(monthly)}
               cadence="/ month"
-              blurb="Everything, billed monthly. Cancel anytime."
+              blurb="Billed monthly on your acreage. Cancel anytime."
               interval="monthly"
               variant="primary"
             />
             <PlanCard
               title="Annual"
-              price={`$${PRICING.annual.toLocaleString()}`}
+              price={formatUSD(annual)}
               cadence="/ year"
-              blurb={`Two months free vs monthly ($${(PRICING.monthly * 12).toLocaleString()}/yr).`}
+              blurb={`Two months free vs monthly (${formatUSD(monthly * 12)}/yr).`}
               interval="annual"
               variant="ghost"
               badge="Best value"
             />
           </div>
           <p className="mt-4 text-xs text-gray-500">
-            One flat price — every block, plantation, print, and record included. No per-acre math.
+            No setup fee. Every acre, your whole crew, and free migration from your old
+            software — all included.
           </p>
         </section>
       )}
