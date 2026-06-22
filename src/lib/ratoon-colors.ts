@@ -1,5 +1,5 @@
 // Single source of truth for the grower's crop-stage color convention.
-// Used by the interactive crop map (FieldMap) and the printed section map.
+// Used by the interactive crop map (FieldMap) and the printed plantation map.
 // See memory: cane crop-stage color convention.
 
 export const RATOON_COLORS: { key: string; label: string; color: string }[] = [

@@ -1,58 +1,58 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Section } from '@/lib/types'
+import type { Plantation } from '@/lib/types'
 
-// One section, plus a denormalized count of how many active (un-archived)
+// One plantation, plus a denormalized count of how many active (un-archived)
 // fields are currently assigned to it. The count is useful for the
-// management UI and avoids an N+1 round-trip per section.
-export interface SectionWithCount extends Section {
+// management UI and avoids an N+1 round-trip per plantation.
+export interface PlantationWithCount extends Plantation {
   field_count: number
 }
 
-export async function listSections(orgId: string): Promise<SectionWithCount[]> {
+export async function listPlantations(orgId: string): Promise<PlantationWithCount[]> {
   const supabase = await createClient()
   // Two queries instead of a nested PostgREST select — nested filters on
   // joined rows can be flaky and silently drop the archived-at filter.
-  const [sectionsRes, fieldRes] = await Promise.all([
+  const [plantationsRes, fieldRes] = await Promise.all([
     supabase
-      .from('sections')
+      .from('plantations')
       .select('*')
       .eq('org_id', orgId)
       .is('archived_at', null)
       .order('name', { ascending: true }),
     supabase
       .from('fields')
-      .select('section_id')
+      .select('plantation_id')
       .eq('org_id', orgId)
       .is('archived_at', null)
-      .not('section_id', 'is', null),
+      .not('plantation_id', 'is', null),
   ])
-  if (sectionsRes.error) throw sectionsRes.error
+  if (plantationsRes.error) throw plantationsRes.error
   if (fieldRes.error) throw fieldRes.error
 
   const counts = new Map<string, number>()
-  for (const row of (fieldRes.data ?? []) as { section_id: string | null }[]) {
-    if (!row.section_id) continue
-    counts.set(row.section_id, (counts.get(row.section_id) ?? 0) + 1)
+  for (const row of (fieldRes.data ?? []) as { plantation_id: string | null }[]) {
+    if (!row.plantation_id) continue
+    counts.set(row.plantation_id, (counts.get(row.plantation_id) ?? 0) + 1)
   }
 
-  return ((sectionsRes.data ?? []) as Section[]).map((s) => ({
+  return ((plantationsRes.data ?? []) as Plantation[]).map((s) => ({
     ...s,
     field_count: counts.get(s.id) ?? 0,
   }))
 }
 
-export async function getSection(sectionId: string): Promise<Section | null> {
+export async function getPlantation(plantationId: string): Promise<Plantation | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
-    .from('sections')
+    .from('plantations')
     .select('*')
-    .eq('id', sectionId)
+    .eq('id', plantationId)
     .maybeSingle()
   if (error) throw error
-  return (data ?? null) as Section | null
+  return (data ?? null) as Plantation | null
 }
 
-export async function createSection(input: {
+export async function createPlantation(input: {
   orgId: string
   name: string
   fsa_tract_number?: string | null
@@ -61,7 +61,7 @@ export async function createSection(input: {
 }): Promise<{ id: string }> {
   const supabase = await createClient()
   const { data, error } = await supabase
-    .from('sections')
+    .from('plantations')
     .insert({
       org_id: input.orgId,
       name: input.name,
@@ -75,8 +75,8 @@ export async function createSection(input: {
   return { id: data.id as string }
 }
 
-export async function updateSection(
-  sectionId: string,
+export async function updatePlantation(
+  plantationId: string,
   patch: {
     name?: string
     fsa_tract_number?: string | null
@@ -85,15 +85,15 @@ export async function updateSection(
   },
 ): Promise<void> {
   const supabase = await createClient()
-  const { error } = await supabase.from('sections').update(patch).eq('id', sectionId)
+  const { error } = await supabase.from('plantations').update(patch).eq('id', plantationId)
   if (error) throw error
 }
 
-export async function archiveSection(sectionId: string): Promise<void> {
+export async function archivePlantation(plantationId: string): Promise<void> {
   const supabase = await createClient()
   const { error } = await supabase
-    .from('sections')
+    .from('plantations')
     .update({ archived_at: new Date().toISOString() })
-    .eq('id', sectionId)
+    .eq('id', plantationId)
   if (error) throw error
 }

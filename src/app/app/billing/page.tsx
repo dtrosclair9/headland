@@ -139,7 +139,7 @@ export default async function BillingPage({
             />
           </div>
           <p className="mt-4 text-xs text-gray-500">
-            One flat price — every block, section, print, and record included. No per-acre math.
+            One flat price — every block, plantation, print, and record included. No per-acre math.
           </p>
         </section>
       )}

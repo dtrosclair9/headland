@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
             <nav className="hidden md:flex gap-4 lg:gap-6 text-sm font-medium text-gray-700">
               <Link href="/app/map" className="hover:text-primary">Map</Link>
-              <Link href="/app/sections" className="hover:text-primary">Sections</Link>
+              <Link href="/app/plantations" className="hover:text-primary">Plantations</Link>
               <Link href="/app/import" className="hover:text-primary">Import</Link>
               <Link href="/app/export" className="hover:text-primary">Export</Link>
               <Link href="/app/billing" className="hover:text-primary">Billing</Link>

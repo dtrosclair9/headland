@@ -13,7 +13,7 @@ export interface SvgBlock {
   acreageLabel: string
 }
 
-export interface SectionSvg {
+export interface PlantationSvg {
   width: number
   height: number
   blocks: SvgBlock[]
@@ -27,12 +27,12 @@ function clamp(n: number, lo: number, hi: number) {
 }
 
 // Project blocks (lng/lat) onto a flat white canvas — local equirectangular
-// with a cos(lat) longitude correction, accurate for a single farm/section.
+// with a cos(lat) longitude correction, accurate for a single farm/plantation.
 // North is up. No basemap; this is the plat-map schematic.
-export function buildSectionSvg(
+export function buildPlantationSvg(
   blocks: FieldRow[],
   opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
-): SectionSvg | null {
+): PlantationSvg | null {
   const canvasWidth = opts.canvasWidth ?? 1100
   const pad = opts.pad ?? 28
 

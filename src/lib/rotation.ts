@@ -21,13 +21,13 @@ export interface RotationResult {
   skipped: number
 }
 
-// Advance the given blocks (by id, and/or every active block in a section) to
+// Advance the given blocks (by id, and/or every active block in a plantation) to
 // their next year cane, logging each change to field_cycle_history. RLS keeps
 // this scoped to the caller's org.
 export async function rotateBlocks(input: {
   orgId: string
   fieldIds?: string[]
-  sectionId?: string
+  plantationId?: string
   cropYear?: number
 }): Promise<RotationResult> {
   const supabase = await createClient()
@@ -40,12 +40,12 @@ export async function rotateBlocks(input: {
     .eq('org_id', input.orgId)
     .is('archived_at', null)
 
-  if (input.sectionId && input.fieldIds?.length) {
+  if (input.plantationId && input.fieldIds?.length) {
     query = query.or(
-      `section_id.eq.${input.sectionId},id.in.(${input.fieldIds.join(',')})`,
+      `plantation_id.eq.${input.plantationId},id.in.(${input.fieldIds.join(',')})`,
     )
-  } else if (input.sectionId) {
-    query = query.eq('section_id', input.sectionId)
+  } else if (input.plantationId) {
+    query = query.eq('plantation_id', input.plantationId)
   } else if (input.fieldIds?.length) {
     query = query.in('id', input.fieldIds)
   } else {

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getField } from '@/lib/fields'
-import { listSections } from '@/lib/sections'
+import { listPlantations } from '@/lib/plantations'
 import { getFieldCycleHistory } from '@/lib/rotation'
 import { listApplications, listHarvests } from '@/lib/records'
 import { listScoutingPins } from '@/lib/scouting'
@@ -50,14 +50,14 @@ export default async function FieldDetailPage({
   const field = await getField(id)
   if (!field || field.org_id !== org.id) notFound()
 
-  const [{ error, saved }, harvests, applications, scoutingPins, tasks, weather, sections, cycleHistory] = await Promise.all([
+  const [{ error, saved }, harvests, applications, scoutingPins, tasks, weather, plantations, cycleHistory] = await Promise.all([
     searchParams,
     listHarvests(id),
     listApplications(id),
     listScoutingPins(id),
     listBlockTasks(id),
     fetchWeather(field.centroid_lat, field.centroid_lng),
-    listSections(org.id),
+    listPlantations(org.id),
     getFieldCycleHistory(id),
   ])
 
@@ -189,22 +189,22 @@ export default async function FieldDetailPage({
         </div>
 
         <div>
-          <label className="label" htmlFor="section_id">
-            Section
-            {sections.length === 0 && (
+          <label className="label" htmlFor="plantation_id">
+            Plantation
+            {plantations.length === 0 && (
               <span className="font-normal text-gray-400">
-                {' '}— <Link href="/app/sections" className="text-primary hover:underline">create one</Link> to group blocks by location
+                {' '}— <Link href="/app/plantations" className="text-primary hover:underline">create one</Link> to group blocks by location
               </span>
             )}
           </label>
           <select
-            id="section_id"
-            name="section_id"
-            defaultValue={field.section_id ?? ''}
+            id="plantation_id"
+            name="plantation_id"
+            defaultValue={field.plantation_id ?? ''}
             className="input"
           >
             <option value="">— Unassigned</option>
-            {sections.map((s) => (
+            {plantations.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>

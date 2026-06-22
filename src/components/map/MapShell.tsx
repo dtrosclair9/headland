@@ -34,7 +34,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  // Bulk-select mode (for retrofitting fields to sections, archiving, etc.)
+  // Bulk-select mode (for retrofitting fields to plantations, archiving, etc.)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   // After a block is drawn, prompt for its details right away.
@@ -110,22 +110,22 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
     }
   }
 
-  async function handleBulkAssignSection(sectionId: string | null) {
+  async function handleBulkAssignPlantation(plantationId: string | null) {
     if (selectedIds.size === 0) return
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/fields/bulk-section', {
+      const res = await fetch('/api/fields/bulk-plantation', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           field_ids: Array.from(selectedIds),
-          section_id: sectionId,
+          plantation_id: plantationId,
         }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Failed to assign section')
+        throw new Error(err.message || 'Failed to assign plantation')
       }
       setSelectedIds(new Set())
       setSelectMode(false)
@@ -226,7 +226,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
               return next
             })
           }}
-          onBulkAssignSection={handleBulkAssignSection}
+          onBulkAssignPlantation={handleBulkAssignPlantation}
           onBulkRotate={handleBulkRotate}
           onStartReposition={() => {
             if (selectedIds.size) {
@@ -235,9 +235,9 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
               setSelectedIds(new Set())
             }
           }}
-          onRepositionSection={(sectionId) =>
+          onRepositionPlantation={(plantationId) =>
             setRepositionIds(
-              new Set(fields.filter((f) => f.section_id === sectionId).map((f) => f.id)),
+              new Set(fields.filter((f) => f.plantation_id === plantationId).map((f) => f.id)),
             )
           }
         />

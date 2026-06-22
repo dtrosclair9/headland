@@ -6,13 +6,13 @@ import { PRICING } from '@/lib/billing'
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'One flat price. $297/month or $2,970/year (two months free). Every block, section, print, and record included. 14-day free trial, no card to start.',
+    'One flat price. $297/month or $2,970/year (two months free). Every block, plantation, print, and record included. 14-day free trial, no card to start.',
   alternates: { canonical: `${BASE_URL}/pricing` },
 }
 
 const features = [
-  'Unlimited blocks and sections',
-  'Crop-stage map + printable section maps',
+  'Unlimited blocks and plantations',
+  'Crop-stage map + printable plantation maps',
   'Harvest, operation & spray records (with wind)',
   'FSA acreage export (shapefile)',
   'Sentinel-2 NDVI + latest imagery',
@@ -130,7 +130,7 @@ export default function PricingPage() {
               on the invoice.
             </Faq>
             <Faq q="What's the free trial?">
-              {PRICING.trialDays} days of full access — draw your whole operation, print your section
+              {PRICING.trialDays} days of full access — draw your whole operation, print your plantation
               maps, log your records. No card required to start. Subscribe when you&apos;re ready to keep going.
             </Faq>
             <Faq q="Monthly or annual?">

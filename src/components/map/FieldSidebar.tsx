@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FieldRow } from '@/lib/fields'
-import type { Section, Units } from '@/lib/types'
+import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 
 interface FieldSidebarProps {
@@ -13,18 +13,18 @@ interface FieldSidebarProps {
   onSelectField: (id: string | null) => void
   totalAcres: number
   onClose?: () => void
-  // Bulk-select mode (for assigning sections to many fields at once).
+  // Bulk-select mode (for assigning plantations to many fields at once).
   selectMode: boolean
   selectedIds: Set<string>
   onToggleSelectMode: () => void
   onToggleFieldSelected: (id: string) => void
-  // sectionId: pass a UUID to assign, or null to unassign.
-  onBulkAssignSection: (sectionId: string | null) => Promise<void>
+  // plantationId: pass a UUID to assign, or null to unassign.
+  onBulkAssignPlantation: (plantationId: string | null) => Promise<void>
   onBulkRotate: () => Promise<{ advanced: number; skipped: number } | null>
   // Reposition (move/rotate) the currently-selected blocks on the map.
   onStartReposition: () => void
-  // Reposition a whole section's blocks at once (the "farm drifted as a unit" case).
-  onRepositionSection: (sectionId: string) => void
+  // Reposition a whole plantation's blocks at once (the "farm drifted as a unit" case).
+  onRepositionPlantation: (plantationId: string) => void
 }
 
 export default function FieldSidebar({
@@ -38,22 +38,22 @@ export default function FieldSidebar({
   selectedIds,
   onToggleSelectMode,
   onToggleFieldSelected,
-  onBulkAssignSection,
+  onBulkAssignPlantation,
   onBulkRotate,
   onStartReposition,
-  onRepositionSection,
+  onRepositionPlantation,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
   const [assignOpen, setAssignOpen] = useState(false)
   const [rotateOpen, setRotateOpen] = useState(false)
   const [rotating, setRotating] = useState(false)
 
-  // Group blocks by section (named sections alpha, Unassigned last). Within
-  // each section, blocks are sorted naturally by name (see the sort below).
+  // Group blocks by plantation (named plantations alpha, Unassigned last). Within
+  // each plantation, blocks are sorted naturally by name (see the sort below).
   const groups = useMemo(() => {
     const map = new Map<string, FieldRow[]>()
     for (const f of fields) {
-      const key = f.section_name ?? ''
+      const key = f.plantation_name ?? ''
       const arr = map.get(key) ?? []
       arr.push(f)
       map.set(key, arr)
@@ -61,9 +61,9 @@ export default function FieldSidebar({
     return Array.from(map.keys())
       .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
       .map((name) => {
-        // Sort blocks within every section naturally by name (2a, 16f, 31e, 35b,
+        // Sort blocks within every plantation naturally by name (2a, 16f, 31e, 35b,
         // 39b…) so similarly-named blocks sit adjacent — much easier to scan and
-        // to multi-select. Applies to assigned sections and Unassigned alike.
+        // to multi-select. Applies to assigned plantations and Unassigned alike.
         const sorted = [...map.get(name)!].sort((a, b) =>
           a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
         )
@@ -135,7 +135,7 @@ export default function FieldSidebar({
           groups.map((group) => {
             const groupAcres = group.fields.reduce((s, f) => s + Number(f.acreage_cached || 0), 0)
             const groupArea = formatArea(groupAcres, units)
-            const sectionId = group.fields[0]?.section_id ?? null
+            const plantationId = group.fields[0]?.plantation_id ?? null
             return (
               <div key={group.name || '__unassigned'}>
                 <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur px-4 py-1.5 border-y border-gray-100 flex items-baseline justify-between gap-2">
@@ -144,18 +144,18 @@ export default function FieldSidebar({
                   </span>
                   <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-2">
                     <span>{group.fields.length} · {groupArea.primary}</span>
-                    {sectionId && !selectMode && (
+                    {plantationId && !selectMode && (
                       <>
                         <button
                           type="button"
-                          onClick={() => onRepositionSection(sectionId)}
+                          onClick={() => onRepositionPlantation(plantationId)}
                           className="text-primary font-semibold hover:underline"
                           title={`Move/rotate all of ${group.name} on the map`}
                         >
                           Move
                         </button>
                         <a
-                          href={`/sections/${sectionId}/print`}
+                          href={`/plantations/${plantationId}/print`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-primary font-semibold hover:underline"
@@ -278,10 +278,10 @@ export default function FieldSidebar({
       {selectMode && selectedIds.size > 0 && (
         <div className="border-t border-gray-100 bg-white p-3 space-y-2">
           {assignOpen ? (
-            <AssignToSectionPanel
+            <AssignToPlantationPanel
               onCancel={() => setAssignOpen(false)}
-              onAssign={async (sectionId) => {
-                await onBulkAssignSection(sectionId)
+              onAssign={async (plantationId) => {
+                await onBulkAssignPlantation(plantationId)
                 setAssignOpen(false)
               }}
             />
@@ -325,7 +325,7 @@ export default function FieldSidebar({
                 onClick={() => setAssignOpen(true)}
                 className="btn-primary w-full text-sm"
               >
-                Assign {selectedIds.size} to section…
+                Assign {selectedIds.size} to plantation…
               </button>
               <button
                 type="button"
@@ -349,18 +349,18 @@ export default function FieldSidebar({
   )
 }
 
-// ── Bulk-assign section panel ───────────────────────────────────────
-// Fetches sections lazily when opened so the sidebar doesn't have to thread
-// section data through on every render.
+// ── Bulk-assign plantation panel ───────────────────────────────────────
+// Fetches plantations lazily when opened so the sidebar doesn't have to thread
+// plantation data through on every render.
 
-function AssignToSectionPanel({
+function AssignToPlantationPanel({
   onCancel,
   onAssign,
 }: {
   onCancel: () => void
-  onAssign: (sectionId: string | null) => Promise<void>
+  onAssign: (plantationId: string | null) => Promise<void>
 }) {
-  const [sections, setSections] = useState<Section[] | null>(null)
+  const [plantations, setPlantations] = useState<Plantation[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
@@ -368,11 +368,11 @@ function AssignToSectionPanel({
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/sections')
+    fetch('/api/plantations')
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return
-        setSections((data.sections ?? []) as Section[])
+        setPlantations((data.plantations ?? []) as Plantation[])
         setLoading(false)
       })
       .catch((e) => {
@@ -391,14 +391,14 @@ function AssignToSectionPanel({
     setCreating(true)
     setError(null)
     try {
-      const res = await fetch('/api/sections', {
+      const res = await fetch('/api/plantations', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Failed to create section')
+        throw new Error(err.message || 'Failed to create plantation')
       }
       const { id } = await res.json()
       await onAssign(id)
@@ -412,7 +412,7 @@ function AssignToSectionPanel({
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-primary">Assign to…</p>
-      {loading && <p className="text-xs text-gray-500">Loading sections…</p>}
+      {loading && <p className="text-xs text-gray-500">Loading plantations…</p>}
       {error && (
         <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1">
           {error}
@@ -427,7 +427,7 @@ function AssignToSectionPanel({
           >
             — Unassigned
           </button>
-          {sections?.map((s) => (
+          {plantations?.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -437,8 +437,8 @@ function AssignToSectionPanel({
               {s.name}
             </button>
           ))}
-          {sections?.length === 0 && (
-            <p className="text-xs text-gray-500 px-2 py-1">No sections yet — create one below.</p>
+          {plantations?.length === 0 && (
+            <p className="text-xs text-gray-500 px-2 py-1">No plantations yet — create one below.</p>
           )}
         </div>
       )}
@@ -448,7 +448,7 @@ function AssignToSectionPanel({
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           maxLength={100}
-          placeholder="New section name"
+          placeholder="New plantation name"
           className="flex-1 input text-xs py-1.5"
           disabled={creating}
         />
@@ -469,7 +469,7 @@ function AssignToSectionPanel({
         Cancel
       </button>
       <p className="text-[11px] text-gray-400">
-        Manage sections at <Link href="/app/sections" className="hover:underline">/app/sections</Link>
+        Manage plantations at <Link href="/app/plantations" className="hover:underline">/app/plantations</Link>
       </p>
     </div>
   )

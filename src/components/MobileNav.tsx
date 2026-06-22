@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 
 const LINKS: [string, string][] = [
   ['/app/map', 'Map'],
-  ['/app/sections', 'Sections'],
+  ['/app/plantations', 'Plantations'],
   ['/app/import', 'Import'],
   ['/app/export', 'Export'],
   ['/app/billing', 'Billing'],

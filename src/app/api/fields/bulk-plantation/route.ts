@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { bulkAssignSection } from '@/lib/fields'
-import { getSection } from '@/lib/sections'
+import { bulkAssignPlantation } from '@/lib/fields'
+import { getPlantation } from '@/lib/plantations'
 
 const BodySchema = z.object({
   field_ids: z.array(z.string().uuid()).min(1).max(500),
-  // null = unassign all selected fields from any section.
-  section_id: z.string().uuid().nullable(),
+  // null = unassign all selected fields from any plantation.
+  plantation_id: z.string().uuid().nullable(),
 })
 
 export async function POST(request: NextRequest) {
@@ -21,20 +21,20 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // If a section was supplied, defense-in-depth check that it belongs to this
+  // If a plantation was supplied, defense-in-depth check that it belongs to this
   // org. RLS would block the update anyway, but a clean 404 is friendlier.
-  if (parsed.data.section_id) {
-    const section = await getSection(parsed.data.section_id)
-    if (!section || section.org_id !== org.id) {
-      return NextResponse.json({ error: 'section_not_found' }, { status: 404 })
+  if (parsed.data.plantation_id) {
+    const plantation = await getPlantation(parsed.data.plantation_id)
+    if (!plantation || plantation.org_id !== org.id) {
+      return NextResponse.json({ error: 'plantation_not_found' }, { status: 404 })
     }
   }
 
   try {
-    const updated = await bulkAssignSection({
+    const updated = await bulkAssignPlantation({
       orgId: org.id,
       fieldIds: parsed.data.field_ids,
-      sectionId: parsed.data.section_id,
+      plantationId: parsed.data.plantation_id,
     })
     return NextResponse.json({ updated })
   } catch (err) {

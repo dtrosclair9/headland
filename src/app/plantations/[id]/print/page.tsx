@@ -1,28 +1,28 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { getSection } from '@/lib/sections'
-import { listFieldsBySection } from '@/lib/fields'
-import { buildSectionSvg } from '@/lib/section-map-svg'
+import { getPlantation } from '@/lib/plantations'
+import { listFieldsByPlantation } from '@/lib/fields'
+import { buildPlantationSvg } from '@/lib/plantation-map-svg'
 import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import { SITE_NAME } from '@/lib/site'
 import AutoPrint from './AutoPrint'
 
-export const metadata: Metadata = { title: 'Print section' }
+export const metadata: Metadata = { title: 'Print plantation' }
 
-export default async function SectionPrintPage({
+export default async function PlantationPrintPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
   const { org } = await requireUserAndOrg()
-  const section = await getSection(id)
-  if (!section || section.org_id !== org.id) notFound()
+  const plantation = await getPlantation(id)
+  if (!plantation || plantation.org_id !== org.id) notFound()
 
-  const blocks = await listFieldsBySection(id)
+  const blocks = await listFieldsByPlantation(id)
   const unitsArpents = org.units_default === 'arpents'
-  const svg = buildSectionSvg(blocks, { unitsArpents })
+  const svg = buildPlantationSvg(blocks, { unitsArpents })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
@@ -77,12 +77,12 @@ export default async function SectionPrintPage({
               {org.name}
             </p>
             <h1 style={{ fontSize: 26, color: '#1A3D2E', fontWeight: 700, margin: '2px 0' }}>
-              {section.name}
+              {plantation.name}
             </h1>
             <p style={{ fontSize: 11, color: '#6B6B6B', margin: 0 }}>
               {blocks.length} block{blocks.length === 1 ? '' : 's'} · {totalLabel}
-              {section.fsa_farm_number ? ` · Farm ${section.fsa_farm_number}` : ''}
-              {section.fsa_tract_number ? ` · Tract ${section.fsa_tract_number}` : ''}
+              {plantation.fsa_farm_number ? ` · Farm ${plantation.fsa_farm_number}` : ''}
+              {plantation.fsa_tract_number ? ` · Tract ${plantation.fsa_tract_number}` : ''}
             </p>
           </div>
           <div style={{ textAlign: 'right', fontSize: 10, color: '#6B6B6B' }}>
@@ -91,7 +91,7 @@ export default async function SectionPrintPage({
           </div>
         </div>
 
-        {/* Legend — only the cuts present in this section */}
+        {/* Legend — only the cuts present in this plantation */}
         {(legendItems.length > 0 || svg?.hasUnset) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10 }}>
             {legendItems.map((r) => (
@@ -150,7 +150,7 @@ export default async function SectionPrintPage({
           </svg>
         ) : (
           <div style={{ padding: 40, textAlign: 'center', color: '#6B6B6B', fontSize: 12 }}>
-            No blocks in this section yet. Assign blocks to it from the map, then print.
+            No blocks in this plantation yet. Assign blocks to it from the map, then print.
           </div>
         )}
 

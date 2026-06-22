@@ -14,14 +14,14 @@ export async function countActiveFields(orgId: string): Promise<number> {
 }
 
 // What the fields_view exposes. geometry is GeoJSON.Polygon serialized as JSONB.
-// section_name is denormalized from the join in fields_view for cheap grouping.
+// plantation_name is denormalized from the join in fields_view for cheap grouping.
 export interface FieldRow extends Omit<Field, 'geometry'> {
   geometry: GeoJSON.Polygon
   centroid_lng: number
   centroid_lat: number
-  section_name: string | null
+  plantation_name: string | null
   // Open to-do count, populated by listFields for the map sidebar badge.
-  // Other producers (getField, listFieldsBySection) leave it undefined.
+  // Other producers (getField, listFieldsByPlantation) leave it undefined.
   open_todo_count?: number
 }
 
@@ -39,12 +39,12 @@ export async function listFields(orgId: string): Promise<FieldRow[]> {
   return rows.map((r) => ({ ...r, open_todo_count: counts[r.id] ?? 0 }))
 }
 
-export async function listFieldsBySection(sectionId: string): Promise<FieldRow[]> {
+export async function listFieldsByPlantation(plantationId: string): Promise<FieldRow[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('fields_view')
     .select('*')
-    .eq('section_id', sectionId)
+    .eq('plantation_id', plantationId)
     .is('archived_at', null)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -99,7 +99,7 @@ export async function updateFieldMetadata(
     plant_date?: string | null
     current_ratoon?: RatoonStage | null
     notes?: string | null
-    section_id?: string | null
+    plantation_id?: string | null
   },
 ): Promise<void> {
   const supabase = await createClient()
@@ -107,19 +107,19 @@ export async function updateFieldMetadata(
   if (error) throw error
 }
 
-// Bulk-assign one section (or null to unassign) to many fields in a single
+// Bulk-assign one plantation (or null to unassign) to many fields in a single
 // statement. RLS still enforces the org boundary so callers can't reach into
 // another org's fields. Returns the number of rows updated.
-export async function bulkAssignSection(input: {
+export async function bulkAssignPlantation(input: {
   orgId: string
   fieldIds: string[]
-  sectionId: string | null
+  plantationId: string | null
 }): Promise<number> {
   if (input.fieldIds.length === 0) return 0
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('fields')
-    .update({ section_id: input.sectionId })
+    .update({ plantation_id: input.plantationId })
     .eq('org_id', input.orgId)
     .in('id', input.fieldIds)
     .select('id')

@@ -5,11 +5,11 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import {
-  archiveSection,
-  createSection,
-  getSection,
-  updateSection,
-} from '@/lib/sections'
+  archivePlantation,
+  createPlantation,
+  getPlantation,
+  updatePlantation,
+} from '@/lib/plantations'
 
 const NameSchema = z.string().trim().min(1).max(100)
 const OptionalTextSchema = z
@@ -32,16 +32,16 @@ const CreateSchema = z.object({
 
 const UpdateSchema = CreateSchema
 
-async function requireOwnedSection(sectionId: string) {
+async function requireOwnedPlantation(plantationId: string) {
   const { org } = await requireUserAndOrg()
-  const section = await getSection(sectionId)
-  if (!section || section.org_id !== org.id) {
-    redirect('/app/sections?error=' + encodeURIComponent('Section not found.'))
+  const plantation = await getPlantation(plantationId)
+  if (!plantation || plantation.org_id !== org.id) {
+    redirect('/app/plantations?error=' + encodeURIComponent('Plantation not found.'))
   }
-  return { org, section }
+  return { org, plantation }
 }
 
-export async function createSectionAction(formData: FormData) {
+export async function createPlantationAction(formData: FormData) {
   const { org } = await requireUserAndOrg()
   const parsed = CreateSchema.safeParse({
     name: formData.get('name'),
@@ -50,10 +50,10 @@ export async function createSectionAction(formData: FormData) {
     notes: formData.get('notes'),
   })
   if (!parsed.success) {
-    redirect('/app/sections?error=' + encodeURIComponent('Please enter a section name.'))
+    redirect('/app/plantations?error=' + encodeURIComponent('Please enter a plantation name.'))
   }
   try {
-    await createSection({
+    await createPlantation({
       orgId: org.id,
       name: parsed.data.name,
       fsa_tract_number: parsed.data.fsa_tract_number,
@@ -64,17 +64,17 @@ export async function createSectionAction(formData: FormData) {
     // Most common: unique (org_id, name) violation.
     const msg = e instanceof Error ? e.message : String(e)
     const friendly = msg.includes('unique')
-      ? 'A section with that name already exists.'
+      ? 'A plantation with that name already exists.'
       : msg
-    redirect('/app/sections?error=' + encodeURIComponent(friendly))
+    redirect('/app/plantations?error=' + encodeURIComponent(friendly))
   }
-  revalidatePath('/app/sections')
+  revalidatePath('/app/plantations')
   revalidatePath('/app/map')
-  redirect('/app/sections?saved=1')
+  redirect('/app/plantations?saved=1')
 }
 
-export async function updateSectionAction(sectionId: string, formData: FormData) {
-  await requireOwnedSection(sectionId)
+export async function updatePlantationAction(plantationId: string, formData: FormData) {
+  await requireOwnedPlantation(plantationId)
   const parsed = UpdateSchema.safeParse({
     name: formData.get('name'),
     fsa_tract_number: formData.get('fsa_tract_number'),
@@ -82,28 +82,28 @@ export async function updateSectionAction(sectionId: string, formData: FormData)
     notes: formData.get('notes'),
   })
   if (!parsed.success) {
-    redirect('/app/sections?error=' + encodeURIComponent('Please enter a section name.'))
+    redirect('/app/plantations?error=' + encodeURIComponent('Please enter a plantation name.'))
   }
   try {
-    await updateSection(sectionId, parsed.data)
+    await updatePlantation(plantationId, parsed.data)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    redirect('/app/sections?error=' + encodeURIComponent(msg))
+    redirect('/app/plantations?error=' + encodeURIComponent(msg))
   }
-  revalidatePath('/app/sections')
+  revalidatePath('/app/plantations')
   revalidatePath('/app/map')
-  redirect('/app/sections?saved=1')
+  redirect('/app/plantations?saved=1')
 }
 
-export async function archiveSectionAction(sectionId: string) {
-  await requireOwnedSection(sectionId)
+export async function archivePlantationAction(plantationId: string) {
+  await requireOwnedPlantation(plantationId)
   try {
-    await archiveSection(sectionId)
+    await archivePlantation(plantationId)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    redirect('/app/sections?error=' + encodeURIComponent(msg))
+    redirect('/app/plantations?error=' + encodeURIComponent(msg))
   }
-  revalidatePath('/app/sections')
+  revalidatePath('/app/plantations')
   revalidatePath('/app/map')
-  redirect('/app/sections?saved=1')
+  redirect('/app/plantations?saved=1')
 }

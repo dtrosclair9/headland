@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getField } from '@/lib/fields'
 import { listHarvests, listRecentApplications } from '@/lib/records'
-import { buildSectionSvg } from '@/lib/section-map-svg'
+import { buildPlantationSvg } from '@/lib/plantation-map-svg'
 import { acresToArpents } from '@/lib/units'
 import { OPERATION_TYPE_LABEL } from '@/lib/records'
 import { SITE_NAME } from '@/lib/site'
@@ -62,7 +62,7 @@ export default async function FieldPrintPage({
         day: 'numeric',
       })
     : '—'
-  const svg = buildSectionSvg([field], { unitsArpents: org.units_default === 'arpents' })
+  const svg = buildPlantationSvg([field], { unitsArpents: org.units_default === 'arpents' })
 
   return (
     <>
@@ -145,7 +145,7 @@ export default async function FieldPrintPage({
 
         {recentHarvests.length > 0 && (
           <>
-            <SectionLabel>Recent harvests</SectionLabel>
+            <PlantationLabel>Recent harvests</PlantationLabel>
             <table style={tableStyle}>
               <thead>
                 <tr>
@@ -171,7 +171,7 @@ export default async function FieldPrintPage({
 
         {recentApplications.length > 0 && (
           <>
-            <SectionLabel>Recent operations</SectionLabel>
+            <PlantationLabel>Recent operations</PlantationLabel>
             <table style={tableStyle}>
               <thead>
                 <tr>
@@ -203,7 +203,7 @@ export default async function FieldPrintPage({
           </>
         )}
 
-        <SectionLabel>Notes</SectionLabel>
+        <PlantationLabel>Notes</PlantationLabel>
         <div style={{ border: '0.75px solid #D9D9D9', borderRadius: 4, minHeight: 120, padding: 12, marginBottom: 12, fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
           {field.notes ?? ''}
         </div>
@@ -228,7 +228,7 @@ function MetaCell({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function PlantationLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 9, letterSpacing: 1.5, fontWeight: 700, color: '#6B6B6B', margin: '10px 0 5px 0', textTransform: 'uppercase' }}>
       {children}

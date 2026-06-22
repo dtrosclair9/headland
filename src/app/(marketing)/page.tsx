@@ -20,7 +20,7 @@ const features = [
   },
   {
     title: 'Print maps for the crew',
-    body: 'Print a clean crop map — blocks colored by cut, no satellite clutter. Hand the crew exactly what to run, section by section.',
+    body: 'Print a clean crop map — blocks colored by cut, no satellite clutter. Hand the crew exactly what to run, plantation by plantation.',
   },
   {
     title: 'Scout from the truck',

@@ -31,7 +31,7 @@ const PatchSchema = z.object({
     .nullable()
     .optional(),
   notes: z.string().max(2000).nullable().optional(),
-  section_id: z.string().uuid().nullable().optional(),
+  plantation_id: z.string().uuid().nullable().optional(),
   geometry: PolygonSchema.optional(),
 })
 

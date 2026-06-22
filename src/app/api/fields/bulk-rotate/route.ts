@@ -2,16 +2,16 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { rotateBlocks } from '@/lib/rotation'
-import { getSection } from '@/lib/sections'
+import { getPlantation } from '@/lib/plantations'
 
 const BodySchema = z
   .object({
     field_ids: z.array(z.string().uuid()).max(2000).optional(),
-    section_id: z.string().uuid().optional(),
+    plantation_id: z.string().uuid().optional(),
     crop_year: z.number().int().min(1980).max(2100).optional(),
   })
-  .refine((b) => (b.field_ids && b.field_ids.length > 0) || b.section_id, {
-    message: 'Provide field_ids or section_id',
+  .refine((b) => (b.field_ids && b.field_ids.length > 0) || b.plantation_id, {
+    message: 'Provide field_ids or plantation_id',
   })
 
 export async function POST(request: NextRequest) {
@@ -25,11 +25,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // If a section was supplied, confirm it belongs to this org.
-  if (parsed.data.section_id) {
-    const section = await getSection(parsed.data.section_id)
-    if (!section || section.org_id !== org.id) {
-      return NextResponse.json({ error: 'section_not_found' }, { status: 404 })
+  // If a plantation was supplied, confirm it belongs to this org.
+  if (parsed.data.plantation_id) {
+    const plantation = await getPlantation(parsed.data.plantation_id)
+    if (!plantation || plantation.org_id !== org.id) {
+      return NextResponse.json({ error: 'plantation_not_found' }, { status: 404 })
     }
   }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const result = await rotateBlocks({
       orgId: org.id,
       fieldIds: parsed.data.field_ids,
-      sectionId: parsed.data.section_id,
+      plantationId: parsed.data.plantation_id,
       cropYear: parsed.data.crop_year,
     })
     return NextResponse.json(result)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Section } from '@/lib/types'
+import type { Plantation } from '@/lib/types'
 
 // Stubble / cut options — mirrors the field detail page.
 const RATOON_OPTIONS: { value: string; label: string }[] = [
@@ -29,19 +29,19 @@ export default function NewBlockModal({
   onClose: () => void
 }) {
   const [name, setName] = useState(defaultName)
-  const [sectionId, setSectionId] = useState('')
+  const [plantationId, setPlantationId] = useState('')
   const [variety, setVariety] = useState('')
   const [ratoon, setRatoon] = useState('')
-  const [sections, setSections] = useState<Section[]>([])
+  const [plantations, setPlantations] = useState<Plantation[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/sections')
+    fetch('/api/plantations')
       .then((r) => r.json())
       .then((d) => {
-        if (!cancelled) setSections((d.sections ?? []) as Section[])
+        if (!cancelled) setPlantations((d.plantations ?? []) as Plantation[])
       })
       .catch(() => {})
     return () => {
@@ -58,7 +58,7 @@ export default function NewBlockModal({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: name.trim() || defaultName,
-          section_id: sectionId || null,
+          plantation_id: plantationId || null,
           variety: variety.trim() || null,
           current_ratoon: ratoon || null,
         }),
@@ -97,15 +97,15 @@ export default function NewBlockModal({
         </div>
 
         <div>
-          <label className="label" htmlFor="nb-section">Section</label>
+          <label className="label" htmlFor="nb-plantation">Plantation</label>
           <select
-            id="nb-section"
-            value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
+            id="nb-plantation"
+            value={plantationId}
+            onChange={(e) => setPlantationId(e.target.value)}
             className="input"
           >
             <option value="">— Unassigned</option>
-            {sections.map((s) => (
+            {plantations.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>

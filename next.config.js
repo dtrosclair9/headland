@@ -16,6 +16,14 @@ const nextConfig = {
     // Server actions handle scouting photo uploads — give them headroom.
     serverActions: { bodySizeLimit: '15mb' },
   },
+  // "Sections" was renamed to "Plantations" (grower terminology). Redirect the
+  // old URLs so any bookmarks / printed links keep working.
+  async redirects() {
+    return [
+      { source: '/app/sections', destination: '/app/plantations', permanent: true },
+      { source: '/sections/:id/print', destination: '/plantations/:id/print', permanent: true },
+    ]
+  },
 }
 
 module.exports = nextConfig

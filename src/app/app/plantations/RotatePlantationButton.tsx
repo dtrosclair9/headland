@@ -3,16 +3,16 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-// Advances every block in a section to its next year cane, after a clear
-// confirmation. Used on the Sections page so a grower can roll a whole farm
+// Advances every block in a plantation to its next year cane, after a clear
+// confirmation. Used on the Plantations page so a grower can roll a whole farm
 // forward at season's end instead of editing each block by hand.
-export default function RotateSectionButton({
-  sectionId,
-  sectionName,
+export default function RotatePlantationButton({
+  plantationId,
+  plantationName,
   fieldCount,
 }: {
-  sectionId: string
-  sectionName: string
+  plantationId: string
+  plantationName: string
   fieldCount: number
 }) {
   const router = useRouter()
@@ -28,7 +28,7 @@ export default function RotateSectionButton({
       const res = await fetch('/api/fields/bulk-rotate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ section_id: sectionId }),
+        body: JSON.stringify({ plantation_id: plantationId }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -66,7 +66,7 @@ export default function RotateSectionButton({
       ) : (
         <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-left">
           <p className="text-sm font-semibold text-amber-900">
-            Roll <span className="underline">{sectionName}</span> forward one year cane?
+            Roll <span className="underline">{plantationName}</span> forward one year cane?
           </p>
           <p className="mt-1 text-xs text-amber-800 leading-relaxed">
             Every block here moves to its next cut — plant cane → 1st stubble, 1st → 2nd, and so

@@ -31,7 +31,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
 
   const [nameCol, setNameCol] = useState('')
   const [varietyCol, setVarietyCol] = useState('')
-  const [sectionCol, setSectionCol] = useState('')
+  const [plantationCol, setPlantationCol] = useState('')
   const [cutCol, setCutCol] = useState('')
   const [cutMap, setCutMap] = useState<Record<string, string>>({})
   const [imported, setImported] = useState<number | null>(null)
@@ -70,7 +70,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
         JSON.stringify({
           nameColumn: nameCol || null,
           varietyColumn: varietyCol || null,
-          sectionColumn: sectionCol || null,
+          plantationColumn: plantationCol || null,
           cutColumn: cutCol || null,
           cutValueMap: cutMap,
         }),
@@ -117,7 +117,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
         <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-5">
           <ColumnSelect label="Field name" hint="What labels each block (optional)" cols={cols} samples={parse.samples} value={nameCol} onChange={setNameCol} />
           <ColumnSelect label="Variety" hint="Cane variety (optional)" cols={cols} samples={parse.samples} value={varietyCol} onChange={setVarietyCol} />
-          <ColumnSelect label="Section" hint="Groups blocks — we'll create these sections (optional)" cols={cols} samples={parse.samples} value={sectionCol} onChange={setSectionCol} />
+          <ColumnSelect label="Plantation" hint="Groups blocks — we'll create these plantations (optional)" cols={cols} samples={parse.samples} value={plantationCol} onChange={setPlantationCol} />
           <ColumnSelect label="Cut / ratoon" hint="Which column holds the year-cane / stubble (optional)" cols={cols} samples={parse.samples} value={cutCol} onChange={(v) => { setCutCol(v); setCutMap({}) }} />
 
           {cutCol && cutValues.length > 0 && (

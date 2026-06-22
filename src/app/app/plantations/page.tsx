@@ -1,27 +1,27 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { listSections } from '@/lib/sections'
+import { listPlantations } from '@/lib/plantations'
 import {
-  archiveSectionAction,
-  createSectionAction,
-  updateSectionAction,
+  archivePlantationAction,
+  createPlantationAction,
+  updatePlantationAction,
 } from './actions'
-import RotateSectionButton from './RotateSectionButton'
+import RotatePlantationButton from './RotatePlantationButton'
 
-export const metadata: Metadata = { title: 'Sections' }
+export const metadata: Metadata = { title: 'Plantations' }
 
-export default async function SectionsPage({
+export default async function PlantationsPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; saved?: string }>
 }) {
   const { org } = await requireUserAndOrg()
-  const sections = await listSections(org.id)
+  const plantations = await listPlantations(org.id)
   const { error, saved } = await searchParams
 
   return (
     <div className="container-wide py-8 max-w-3xl">
-      <h1 className="text-2xl font-bold text-primary mb-1">Sections</h1>
+      <h1 className="text-2xl font-bold text-primary mb-1">Plantations</h1>
       <p className="text-sm text-gray-600 mb-6">
         Group your blocks by location (e.g. <em>Rosedale</em>, <em>Woodlawn</em>). Lines up with
         the FSA Farm / Tract concept — add the farm and tract numbers if you have them.
@@ -39,10 +39,10 @@ export default async function SectionsPage({
       )}
 
       <form
-        action={createSectionAction}
+        action={createPlantationAction}
         className="bg-white border border-gray-100 rounded-xl p-5 mb-6 space-y-3"
       >
-        <h2 className="text-base font-bold text-primary">New section</h2>
+        <h2 className="text-base font-bold text-primary">New plantation</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label" htmlFor="new-name">Name</label>
@@ -95,80 +95,80 @@ export default async function SectionsPage({
             rows={2}
             maxLength={1000}
             className="input"
-            placeholder="Anything worth remembering about this section"
+            placeholder="Anything worth remembering about this plantation"
           />
         </div>
-        <button type="submit" className="btn-primary">Create section</button>
+        <button type="submit" className="btn-primary">Create plantation</button>
       </form>
 
-      {sections.length === 0 ? (
+      {plantations.length === 0 ? (
         <div className="text-center text-sm text-gray-500 py-8">
-          No sections yet. Create one above, then assign blocks to it from the map.
+          No plantations yet. Create one above, then assign blocks to it from the map.
         </div>
       ) : (
         <ul className="space-y-3">
-          {sections.map((section) => {
-            const updateAction = updateSectionAction.bind(null, section.id)
-            const archiveAction = archiveSectionAction.bind(null, section.id)
+          {plantations.map((plantation) => {
+            const updateAction = updatePlantationAction.bind(null, plantation.id)
+            const archiveAction = archivePlantationAction.bind(null, plantation.id)
             return (
               <li
-                key={section.id}
+                key={plantation.id}
                 className="bg-white border border-gray-100 rounded-xl p-5"
               >
                 <form action={updateAction} className="space-y-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="flex-1">
-                      <label className="label" htmlFor={`name-${section.id}`}>Name</label>
+                      <label className="label" htmlFor={`name-${plantation.id}`}>Name</label>
                       <input
-                        id={`name-${section.id}`}
+                        id={`name-${plantation.id}`}
                         name="name"
                         type="text"
                         required
                         maxLength={100}
-                        defaultValue={section.name}
+                        defaultValue={plantation.name}
                         className="input"
                       />
                     </div>
                     <p className="text-xs text-gray-500 whitespace-nowrap pt-6">
-                      {section.field_count} block{section.field_count === 1 ? '' : 's'}
+                      {plantation.field_count} block{plantation.field_count === 1 ? '' : 's'}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="label" htmlFor={`farm-${section.id}`}>
+                      <label className="label" htmlFor={`farm-${plantation.id}`}>
                         FSA farm #
                       </label>
                       <input
-                        id={`farm-${section.id}`}
+                        id={`farm-${plantation.id}`}
                         name="fsa_farm_number"
                         type="text"
                         maxLength={50}
-                        defaultValue={section.fsa_farm_number ?? ''}
+                        defaultValue={plantation.fsa_farm_number ?? ''}
                         className="input"
                       />
                     </div>
                     <div>
-                      <label className="label" htmlFor={`tract-${section.id}`}>
+                      <label className="label" htmlFor={`tract-${plantation.id}`}>
                         FSA tract #
                       </label>
                       <input
-                        id={`tract-${section.id}`}
+                        id={`tract-${plantation.id}`}
                         name="fsa_tract_number"
                         type="text"
                         maxLength={50}
-                        defaultValue={section.fsa_tract_number ?? ''}
+                        defaultValue={plantation.fsa_tract_number ?? ''}
                         className="input"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="label" htmlFor={`notes-${section.id}`}>Notes</label>
+                    <label className="label" htmlFor={`notes-${plantation.id}`}>Notes</label>
                     <textarea
-                      id={`notes-${section.id}`}
+                      id={`notes-${plantation.id}`}
                       name="notes"
                       rows={2}
                       maxLength={1000}
-                      defaultValue={section.notes ?? ''}
+                      defaultValue={plantation.notes ?? ''}
                       className="input"
                     />
                   </div>
@@ -179,14 +179,14 @@ export default async function SectionsPage({
                       formAction={archiveAction}
                       className="text-sm text-red-600 hover:underline"
                     >
-                      Archive section
+                      Archive plantation
                     </button>
                   </div>
                 </form>
                 <div className="mt-3 pt-3 border-t border-gray-100 flex items-start justify-between gap-3">
-                  {section.field_count > 0 ? (
+                  {plantation.field_count > 0 ? (
                     <a
-                      href={`/sections/${section.id}/print`}
+                      href={`/plantations/${plantation.id}/print`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs font-semibold text-primary hover:underline whitespace-nowrap"
@@ -196,10 +196,10 @@ export default async function SectionsPage({
                   ) : (
                     <span />
                   )}
-                  <RotateSectionButton
-                    sectionId={section.id}
-                    sectionName={section.name}
-                    fieldCount={section.field_count}
+                  <RotatePlantationButton
+                    plantationId={plantation.id}
+                    plantationName={plantation.name}
+                    fieldCount={plantation.field_count}
                   />
                 </div>
               </li>
@@ -209,7 +209,7 @@ export default async function SectionsPage({
       )}
 
       <p className="mt-8 text-xs text-gray-500 leading-relaxed">
-        Archiving a section unassigns its blocks (they revert to <em>Unassigned</em>) but doesn&apos;t
+        Archiving a plantation unassigns its blocks (they revert to <em>Unassigned</em>) but doesn&apos;t
         delete them. Blocks can be reassigned anytime from the map sidebar.
       </p>
     </div>

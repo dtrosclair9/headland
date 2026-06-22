@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { createSection, listSections } from '@/lib/sections'
+import { createPlantation, listPlantations } from '@/lib/plantations'
 
 export async function GET() {
   const { org } = await requireUserAndOrg()
-  const sections = await listSections(org.id)
-  return NextResponse.json({ sections })
+  const plantations = await listPlantations(org.id)
+  return NextResponse.json({ plantations })
 }
 
 const CreateSchema = z.object({
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     )
   }
   try {
-    const { id } = await createSection({
+    const { id } = await createPlantation({
       orgId: org.id,
       name: parsed.data.name,
       fsa_tract_number: parsed.data.fsa_tract_number ?? null,

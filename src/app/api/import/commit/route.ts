@@ -19,14 +19,14 @@ const RATOON = new Set([
 interface Mapping {
   nameColumn?: string | null
   varietyColumn?: string | null
-  sectionColumn?: string | null
+  plantationColumn?: string | null
   cutColumn?: string | null
   // Maps a raw cut value (e.g. "4") to a ratoon_stage (e.g. "fourth_stubble").
   cutValueMap?: Record<string, string>
 }
 
 // Step 2 of import: re-parse the file, apply the column mapping, and bulk-create
-// the fields (auto-creating sections). Re-parsing avoids holding ~500 polygons
+// the fields (auto-creating plantations). Re-parsing avoids holding ~500 polygons
 // in client state between steps.
 export async function POST(request: NextRequest) {
   const { org } = await requireUserAndOrg()
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       geometry: f.geometry,
       variety: val(f.properties, mapping.varietyColumn),
       ratoon: ratoon && RATOON.has(ratoon) ? ratoon : '',
-      section: val(f.properties, mapping.sectionColumn),
+      plantation: val(f.properties, mapping.plantationColumn),
     }
   })
 

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import JSZip from 'jszip'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields } from '@/lib/fields'
-import { listSections } from '@/lib/sections'
+import { listPlantations } from '@/lib/plantations'
 import { buildShapefile, type ShpField } from '@/lib/shapefile'
 
 // NAD83 (EPSG:4269) — the datum USDA FSA uses. Coordinates are lat/lng degrees.
@@ -19,7 +19,7 @@ const FIELDS: ShpField[] = [
   { name: 'variety', type: 'C', length: 20 },
   { name: 'plant_dt', type: 'C', length: 10 },
   { name: 'cut', type: 'C', length: 20 },
-  { name: 'section', type: 'C', length: 50 },
+  { name: 'plantation', type: 'C', length: 50 },
   { name: 'farm', type: 'C', length: 10 },
   { name: 'tract', type: 'C', length: 10 },
   { name: 'notes', type: 'C', length: 100 },
@@ -27,15 +27,15 @@ const FIELDS: ShpField[] = [
 
 export async function GET() {
   const { org } = await requireUserAndOrg()
-  const [fields, sections] = await Promise.all([
+  const [fields, plantations] = await Promise.all([
     listFields(org.id),
-    listSections(org.id),
+    listPlantations(org.id),
   ])
-  const tractByName = new Map(sections.map((s) => [s.name, s.fsa_tract_number ?? '']))
-  // Farm number lives on the section (each section ≈ one FSA farm); fall back
-  // to the org-level farm number when the section doesn't have its own.
+  const tractByName = new Map(plantations.map((s) => [s.name, s.fsa_tract_number ?? '']))
+  // Farm number lives on the plantation (each plantation ≈ one FSA farm); fall back
+  // to the org-level farm number when the plantation doesn't have its own.
   const farmByName = new Map(
-    sections.map((s) => [s.name, s.fsa_farm_number ?? org.fsa_farm_number ?? '']),
+    plantations.map((s) => [s.name, s.fsa_farm_number ?? org.fsa_farm_number ?? '']),
   )
 
   const features = fields
@@ -49,11 +49,11 @@ export async function GET() {
         f.variety ?? '',
         f.plant_date ?? '',
         f.current_ratoon ? f.current_ratoon.replace(/_/g, ' ') : '',
-        f.section_name ?? '',
-        f.section_name
-          ? (farmByName.get(f.section_name) ?? org.fsa_farm_number ?? '')
+        f.plantation_name ?? '',
+        f.plantation_name
+          ? (farmByName.get(f.plantation_name) ?? org.fsa_farm_number ?? '')
           : (org.fsa_farm_number ?? ''),
-        f.section_name ? (tractByName.get(f.section_name) ?? '') : '',
+        f.plantation_name ? (tractByName.get(f.plantation_name) ?? '') : '',
         f.notes ?? '',
       ],
     }))

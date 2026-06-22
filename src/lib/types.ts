@@ -67,7 +67,7 @@ export interface Organization {
   created_at: string
 }
 
-export interface Section {
+export interface Plantation {
   id: string
   org_id: string
   name: string
@@ -107,7 +107,7 @@ export interface Field {
   plant_date: string | null
   current_ratoon: RatoonStage | null
   notes: string | null
-  section_id: string | null
+  plantation_id: string | null
   archived_at: string | null
   created_at: string
 }
