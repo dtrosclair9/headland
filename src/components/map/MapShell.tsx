@@ -262,6 +262,16 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         onUpdateField={handleUpdate}
         onDrawingChange={setDrawing}
         onShowFields={!sidebarOpen ? () => setSidebarOpen(true) : undefined}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleFieldSelected={(id) =>
+          setSelectedIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+          })
+        }
         repositionIds={repositionIds}
         onSaveReposition={handleSaveReposition}
         onCancelReposition={() => setRepositionIds(null)}

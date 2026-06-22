@@ -127,6 +127,10 @@ export interface FieldMapProps {
   onUpdateField: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
   onDrawingChange?: (drawing: boolean) => void
   onShowFields?: () => void
+  // Bulk-select mode: tapping a block on the map toggles it in/out of the set.
+  selectMode: boolean
+  selectedIds: Set<string>
+  onToggleFieldSelected: (id: string) => void
   // Reposition mode: the ids of blocks to move/rotate as a rigid group, or null.
   repositionIds: Set<string> | null
   onSaveReposition: (features: { id: string; geometry: GeoJSON.Polygon }[]) => Promise<void>
@@ -142,6 +146,9 @@ export default function FieldMap({
   onUpdateField,
   onDrawingChange,
   onShowFields,
+  selectMode,
+  selectedIds,
+  onToggleFieldSelected,
   repositionIds,
   onSaveReposition,
   onCancelReposition,
@@ -161,6 +168,11 @@ export default function FieldMap({
   const repositioningRef = useRef(false)
   const rotateMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const viewModeRef = useRef<ViewMode>('satellite')
+  // Map click handlers are bound once; read live select-mode state via refs.
+  const selectModeRef = useRef(selectMode)
+  const onToggleSelectedRef = useRef(onToggleFieldSelected)
+  selectModeRef.current = selectMode
+  onToggleSelectedRef.current = onToggleFieldSelected
   const [savingReposition, setSavingReposition] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -300,6 +312,17 @@ export default function FieldMap({
           'line-width': 2,
         },
       })
+      // Bulk-select highlight — bright outline on blocks toggled on in the map.
+      map.addSource('selected-highlight', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'selected-highlight-line',
+        type: 'line',
+        source: 'selected-highlight',
+        paint: { 'line-color': '#22D3EE', 'line-width': 4 },
+      })
       map.addLayer({
         id: 'fields-label',
         type: 'symbol',
@@ -358,7 +381,15 @@ export default function FieldMap({
           .addTo(map)
       }
 
-      map.on('click', 'fields-fill', (e) => openFieldInfo(e.features?.[0]?.properties, e.lngLat))
+      map.on('click', 'fields-fill', (e) => {
+        const props = e.features?.[0]?.properties
+        // In bulk-select mode, a click toggles the block in/out of the set.
+        if (selectModeRef.current && typeof props?.id === 'string') {
+          onToggleSelectedRef.current(props.id)
+          return
+        }
+        openFieldInfo(props, e.lngLat)
+      })
 
       // mapbox-gl-draw is added full-time in simple_select and swallows the
       // synthesized click on touch, so tapping a block did nothing on mobile.
@@ -385,7 +416,13 @@ export default function FieldMap({
         const rect = canvasEl.getBoundingClientRect()
         const pt: [number, number] = [tch.clientX - rect.left, tch.clientY - rect.top]
         const feats = map.queryRenderedFeatures(pt, { layers: ['fields-fill'] })
-        if (feats.length) openFieldInfo(feats[0].properties, map.unproject(pt))
+        if (!feats.length) return
+        const props = feats[0].properties
+        if (selectModeRef.current && typeof props?.id === 'string') {
+          onToggleSelectedRef.current(props.id)
+          return
+        }
+        openFieldInfo(props, map.unproject(pt))
       }
       canvasEl.addEventListener('touchstart', onTapStart, { passive: true })
       canvasEl.addEventListener('touchend', onTapEnd, { passive: true })
@@ -528,6 +565,23 @@ export default function FieldMap({
       }
     }
   }, [fields, ready])
+
+  // Bright outline on the bulk-selected blocks (cleared when not selecting).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    const src = map.getSource('selected-highlight') as mapboxgl.GeoJSONSource | undefined
+    if (!src) return
+    const chosen = selectMode ? fields.filter((f) => selectedIds.has(f.id)) : []
+    src.setData({
+      type: 'FeatureCollection',
+      features: chosen.map((f) => ({
+        type: 'Feature',
+        geometry: f.geometry,
+        properties: { id: f.id },
+      })),
+    })
+  }, [selectedIds, selectMode, fields, ready])
 
   // Recolor selection + apply the active view mode. In crop mode we hide the
   // satellite raster, lighten the background, and crank fill opacity so blocks
