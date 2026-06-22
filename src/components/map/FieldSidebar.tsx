@@ -96,7 +96,6 @@ export default function FieldSidebar({
           <p className="text-2xl font-bold text-primary mt-1">{fields.length}</p>
           <p className="text-xs text-gray-500">
             Total: <span className="font-semibold text-gray-700">{total.primary}</span>
-            {fields.length > 0 && <span className="text-gray-400"> · {total.alt}</span>}
           </p>
         </div>
         {onClose && (
@@ -228,10 +227,7 @@ export default function FieldSidebar({
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              {area.primary}
-                              <span className="text-gray-400"> · {area.alt}</span>
-                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">{area.primary}</p>
                             {f.variety && (
                               <p className="text-xs text-gray-500">
                                 {f.variety}
@@ -293,10 +289,7 @@ export default function FieldSidebar({
             <span className="text-sm font-semibold text-primary">
               {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} selected
             </span>
-            <span className="text-sm font-bold text-primary">
-              {selectedArea.primary}
-              <span className="text-xs font-normal text-gray-400"> · {selectedArea.alt}</span>
-            </span>
+            <span className="text-sm font-bold text-primary">{selectedArea.primary}</span>
           </div>
           {assignOpen ? (
             <AssignToPlantationPanel
