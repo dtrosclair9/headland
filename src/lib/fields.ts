@@ -51,6 +51,21 @@ export async function listFieldsByPlantation(plantationId: string): Promise<Fiel
   return (data ?? []) as FieldRow[]
 }
 
+// Fetch a specific set of blocks (RLS scopes to the caller's org). Used by the
+// "print selected blocks" view.
+export async function listFieldsByIds(ids: string[]): Promise<FieldRow[]> {
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('fields_view')
+    .select('*')
+    .in('id', ids)
+    .is('archived_at', null)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as FieldRow[]
+}
+
 export async function getField(fieldId: string): Promise<FieldRow | null> {
   const supabase = await createClient()
   const { data, error } = await supabase

@@ -26,9 +26,15 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n))
 }
 
+// Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
+// wide × ≈6.3in tall after the title/legend). The farm is auto-rotated to best
+// fill this, so a long diagonal farm prints across the page (like FarmWorks).
+const PRINT_AREA_ASPECT = 1.59
+
 // Project blocks (lng/lat) onto a flat white canvas — local equirectangular
 // with a cos(lat) longitude correction, accurate for a single farm/plantation.
-// North is up. No basemap; this is the plat-map schematic.
+// The whole farm is rotated to the orientation that maximizes printed area on a
+// landscape page; block labels stay upright. No basemap; plat-map schematic.
 export function buildPlantationSvg(
   blocks: FieldRow[],
   opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
@@ -47,26 +53,74 @@ export function buildPlantationSvg(
   const lats = pts.map((p) => p[1])
   const meanLat = (Math.min(...lats) + Math.max(...lats)) / 2
   const k = Math.cos((meanLat * Math.PI) / 180) || 1
-  const projX = (lng: number) => lng * k
+  // Local equirectangular planar coords (consistent distances within one farm).
+  const proj = (lng: number, lat: number): [number, number] => [lng * k, lat]
+
+  // Center to rotate about.
+  const planar = pts.map(([lng, lat]) => proj(lng, lat))
+  const cx = (Math.min(...planar.map((p) => p[0])) + Math.max(...planar.map((p) => p[0]))) / 2
+  const cy = (Math.min(...planar.map((p) => p[1])) + Math.max(...planar.map((p) => p[1]))) / 2
+
+  // Find the rotation that lets the farm be largest on the landscape page —
+  // maximize the fit scale = min(pageW/w, pageH/h) of the rotated bounding box.
+  let bestAngle = 0
+  let bestScore = -Infinity
+  for (let deg = 0; deg < 180; deg += 1) {
+    const t = (deg * Math.PI) / 180
+    const cos = Math.cos(t)
+    const sin = Math.sin(t)
+    let mnx = Infinity,
+      mxx = -Infinity,
+      mny = Infinity,
+      mxy = -Infinity
+    for (const [px, py] of planar) {
+      const dx = px - cx
+      const dy = py - cy
+      const rx = dx * cos - dy * sin
+      const ry = dx * sin + dy * cos
+      if (rx < mnx) mnx = rx
+      if (rx > mxx) mxx = rx
+      if (ry < mny) mny = ry
+      if (ry > mxy) mxy = ry
+    }
+    const w = mxx - mnx || 1e-9
+    const h = mxy - mny || 1e-9
+    const score = Math.min(PRINT_AREA_ASPECT / w, 1 / h)
+    if (score > bestScore) {
+      bestScore = score
+      bestAngle = t
+    }
+  }
+  const ca = Math.cos(bestAngle)
+  const sa = Math.sin(bestAngle)
+  // Rotated planar coords (relative to center).
+  const rot = (lng: number, lat: number): [number, number] => {
+    const [px, py] = proj(lng, lat)
+    const dx = px - cx
+    const dy = py - cy
+    return [dx * ca - dy * sa, dx * sa + dy * ca]
+  }
 
   let minX = Infinity,
     maxX = -Infinity,
     minY = Infinity,
     maxY = -Infinity
   for (const [lng, lat] of pts) {
-    const x = projX(lng)
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (lat < minY) minY = lat
-    if (lat > maxY) maxY = lat
+    const [rx, ry] = rot(lng, lat)
+    if (rx < minX) minX = rx
+    if (rx > maxX) maxX = rx
+    if (ry < minY) minY = ry
+    if (ry > maxY) maxY = ry
   }
 
   const spanX = maxX - minX || 1e-6
   const spanY = maxY - minY || 1e-6
   const scale = (canvasWidth - 2 * pad) / spanX
   const height = spanY * scale + 2 * pad
-  const toX = (lng: number) => pad + (projX(lng) - minX) * scale
-  const toY = (lat: number) => pad + (maxY - lat) * scale // flip Y for SVG
+  const toXY = (lng: number, lat: number): [number, number] => {
+    const [rx, ry] = rot(lng, lat)
+    return [pad + (rx - minX) * scale, pad + (maxY - ry) * scale] // flip Y for SVG
+  }
 
   const stages = new Set<string>()
   let hasUnset = false
@@ -78,8 +132,7 @@ export function buildPlantationSvg(
       bMinY = Infinity,
       bMaxY = -Infinity
     const coords = outer.map(([lng, lat]) => {
-      const x = toX(lng)
-      const y = toY(lat)
+      const [x, y] = toXY(lng, lat)
       if (x < bMinX) bMinX = x
       if (x > bMaxX) bMaxX = x
       if (y < bMinY) bMinY = y
@@ -96,12 +149,13 @@ export function buildPlantationSvg(
       ? Number(b.arpents_cached || 0).toFixed(2)
       : Number(b.acreage_cached || 0).toFixed(2)
 
+    const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
     return {
       id: b.id,
       points: coords.join(' '),
       color: colorForRatoon(b.current_ratoon),
-      labelX: toX(b.centroid_lng),
-      labelY: toY(b.centroid_lat),
+      labelX: lx,
+      labelY: ly,
       fontSize,
       showName: minDim > 40,
       name: b.name,

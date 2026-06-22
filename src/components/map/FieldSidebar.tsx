@@ -355,6 +355,14 @@ export default function FieldSidebar({
               >
                 Move / rotate {selectedIds.size} on map →
               </button>
+              <a
+                href={`/blocks/print?ids=${Array.from(selectedIds).join(',')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-center w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
+              >
+                Print {selectedIds.size} selected →
+              </a>
             </>
           )}
         </div>
