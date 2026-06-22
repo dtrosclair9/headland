@@ -39,9 +39,10 @@ export default function PlatSheet({
       <AutoPrint />
 
       <style>{`
-        @page { size: letter landscape; margin: 0.35in; }
+        @page { size: letter landscape; margin: 0.3in; }
         @media print {
           .no-print { display: none !important; }
+          html, body { margin: 0 !important; padding: 0 !important; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .sheet { padding: 0 !important; box-shadow: none !important; margin: 0 !important; width: 100% !important; }
         }
@@ -120,7 +121,7 @@ export default function PlatSheet({
           <svg
             viewBox={`0 0 ${svg.width} ${svg.height}`}
             preserveAspectRatio="xMidYMid meet"
-            style={{ width: '100%', height: 'auto', maxHeight: '6.6in', display: 'block', margin: '0 auto' }}
+            style={{ width: '100%', height: 'auto', maxHeight: '5.9in', display: 'block', margin: '0 auto' }}
           >
             {svg.blocks.map((b) => (
               <polygon
