@@ -102,14 +102,52 @@ export default function HomePage() {
           </h1>
           <p className="mt-6 text-lg md:text-xl text-gray-200 max-w-2xl leading-relaxed">
             Map every acre. Track every ratoon. Scout from the truck.
-            Export for FSA in one click. From plant cane to last stubble — {SITE_NAME} keeps every field on one map.
+            Export for FSA in one click. From plant cane to last stubble, {SITE_NAME} keeps every field on one map.
           </p>
           <p className="mt-4 text-base text-gray-300 max-w-2xl">
-            Simple enough for anyone on the crew — no training, no manual, no middleman.
+            Simple enough for anyone on the crew. No training, no manual, no middleman.
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <Link href="/signup" className="btn-accent">Start free trial</Link>
             <Link href="/#features" className="btn-outline">See features</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Positioning: the perfect medium */}
+      <section className="section-padding bg-gray-50">
+        <div className="container-wide max-w-5xl">
+          <div className="max-w-2xl mb-10">
+            <p className="section-label">Why Headland</p>
+            <h2 className="mt-2 text-3xl md:text-4xl font-bold text-primary">
+              The middle ground cane farming never had
+            </h2>
+            <p className="mt-3 text-gray-600">
+              Farmers got handed two bad options. Headland is the one in between.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-6">
+              <p className="font-bold text-primary mb-2">The old stuff</p>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Desktop programs from the 2000s, stuck on one aging PC. Slow, hard to get help
+                with, and one dead hard drive away from losing ten years of records.
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-6">
+              <p className="font-bold text-primary mb-2">The new stuff</p>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Bloated platforms stuffed with AI buzzwords that look great in a demo and do
+                nothing in the field. You need a consultant before you can map a single block.
+              </p>
+            </div>
+            <div className="rounded-lg border-2 border-accent bg-white p-6 shadow-sm">
+              <p className="font-bold text-primary mb-2">Headland</p>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                The middle. Modern and cloud-backed, opens on any phone, and simple enough to
+                use the day you sign up. Everything you need to run your cane, nothing you don&apos;t.
+              </p>
+            </div>
           </div>
         </div>
       </section>

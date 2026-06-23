@@ -41,7 +41,7 @@ export default function MobileMenu() {
         aria-label="Open menu"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className="lg:hidden p-2 -mr-2 text-primary rounded"
+        className="md:hidden p-2 -mr-2 text-primary rounded"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -51,7 +51,7 @@ export default function MobileMenu() {
       {mounted &&
         open &&
         createPortal(
-          <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="fixed inset-0 z-50 md:hidden">
             <div
               className="absolute inset-0 bg-primary-dark/60"
               onClick={() => setOpen(false)}

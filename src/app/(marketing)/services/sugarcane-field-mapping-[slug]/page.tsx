@@ -131,7 +131,7 @@ export default async function RegionLandingPage({
             What you get
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Feature title="Draw fields on satellite" body="Mapbox satellite + drawing tools. Auto-computed acreage in PostGIS, never client-side guesswork." />
+            <Feature title="Draw fields on satellite" body="Trace your blocks right on the satellite map and the acreage is figured for you, down to the tenth. No guesswork, no calculator." />
             <Feature title="Print one sheet per field" body="One click → PDF with the field map, variety, plant date, current cut, recent operations, and a notes box. Hand it to whoever needs to look at a field." />
             <Feature title="Color-coded by cycle" body="Plant cane is bright green, fifth stubble is red. See at a glance which fields are nearing plow-out. No more spreadsheet juggling to remember which field is on what cut." />
             <Feature title="Track every cut" body="Plant cane through fifth stubble, with the variety lineage right there. Ratoon cycle defaults match your state's practice." />
@@ -147,8 +147,8 @@ export default async function RegionLandingPage({
               Service area in {region.state}
             </h2>
             <p className="text-gray-700 mb-6">
-              {SITE_NAME} works the same way across every {region.state} cane parish/county.
-              Headquartered in {region.kind === 'parish' ? 'parishes' : 'counties'} like:
+              {SITE_NAME} works the same way across every {region.state} cane{' '}
+              {region.kind === 'parish' ? 'parish' : 'county'}, including:
             </p>
             <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {otherRegions.map((r) => (

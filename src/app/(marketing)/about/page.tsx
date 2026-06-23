@@ -31,9 +31,9 @@ export default function AboutPage() {
         <div className="container-wide max-w-3xl prose prose-gray text-gray-700 leading-relaxed space-y-5">
           <h2 className="text-2xl font-bold text-primary">Why we built it</h2>
           <p>
-            The programs farmers were handed are either dead or dying — Windows
-            desktop tools from the 2000s that barely run on a modern machine, no
-            support, no updates. When the hard drive goes, ten years of records go
+            The programs farmers were handed are mostly dead or dying. Windows
+            desktop tools from the 2000s that barely run on a modern machine and are
+            hard to get help with. When the hard drive goes, ten years of records can go
             with it.
           </p>
           <p>

@@ -18,14 +18,14 @@ export default function MarketingNav() {
           />
           <span className="font-serif text-2xl font-bold text-primary uppercase tracking-wide">{SITE_NAME}</span>
         </Link>
-        <nav aria-label="Main" className="hidden lg:flex items-center gap-8 text-sm font-medium text-gray-700">
+        <nav aria-label="Main" className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium text-gray-700">
           <Link href="/#features" className="hover:text-primary">Features</Link>
           <Link href="/pricing" className="hover:text-primary">Pricing</Link>
           <Link href="/about" className="hover:text-primary">About</Link>
           <Link href="/contact" className="hover:text-primary">Contact</Link>
         </nav>
         <div className="flex items-center gap-3">
-          <Link href="/login" className="hidden lg:inline-flex btn-ghost text-sm">Log in</Link>
+          <Link href="/login" className="hidden md:inline-flex btn-ghost text-sm">Log in</Link>
           <Link href="/signup" className="btn-accent text-sm !px-4 !py-2">Start free</Link>
           <MobileMenu />
         </div>
