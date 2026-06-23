@@ -146,7 +146,7 @@ export default function HomePage() {
               <details key={f.q} className="group border-b border-gray-200 pb-4">
                 <summary className="font-semibold text-primary cursor-pointer list-none flex justify-between items-center gap-4">
                   {f.q}
-                  <span className="text-accent-dark text-xl leading-none transition-transform group-open:rotate-45">+</span>
+                  <span className="text-accent-text text-xl leading-none transition-transform group-open:rotate-45">+</span>
                 </summary>
                 <p className="mt-2 text-gray-600 leading-relaxed">{f.a}</p>
               </details>
