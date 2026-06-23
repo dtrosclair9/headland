@@ -136,7 +136,6 @@ export default async function RegionLandingPage({
             <Feature title="Color-coded by cycle" body="Plant cane is bright green, fifth stubble is red. See at a glance which fields are nearing plow-out. No more spreadsheet juggling to remember which field is on what cut." />
             <Feature title="Track every cut" body="Plant cane through fifth stubble, with the variety lineage right there. Ratoon cycle defaults match your state's practice." />
             <Feature title="Records that travel" body="Harvests by year, applications by date — accessible from any device, with an FSA acreage export and printable crop maps on demand." />
-            <Feature title="Vigor from the sky" body="Sentinel-2 NDVI overlays clipped to your field boundary, refreshed every few days." />
           </div>
         </div>
       </section>

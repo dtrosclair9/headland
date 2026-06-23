@@ -31,7 +31,6 @@ export default function PrivacyPage() {
             <li><strong>Supabase</strong> — database, authentication, file storage. Hosted on AWS US-East.</li>
             <li><strong>Mapbox</strong> — satellite map tiles and geocoding.</li>
             <li><strong>Open-Meteo</strong> — public weather forecasts (no account, queried by lat/lng only).</li>
-            <li><strong>Sentinel Hub / Copernicus Data Space</strong> — Sentinel-2 NDVI imagery (queried by polygon, no account data shared).</li>
             <li><strong>Vercel</strong> — hosting and edge delivery.</li>
             <li><strong>Stripe</strong> — payments and subscription management (when you upgrade to a paid plan).</li>
           </ul>

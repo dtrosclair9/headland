@@ -11,14 +11,12 @@ import { listBlockTasks } from '@/lib/block-tasks'
 import { listVarietiesForState, findVariety, isRipenerSensitive } from '@/lib/varieties'
 import { formatArea } from '@/lib/units'
 import { fetchWeather } from '@/lib/weather'
-import { isSentinelHubConfigured } from '@/lib/sentinel-hub'
 import { updateField, deleteField } from './actions'
 import { HarvestsCard } from '@/components/fields/HarvestsCard'
 import { ApplicationsCard } from '@/components/fields/ApplicationsCard'
 import { ScoutingCard } from '@/components/fields/ScoutingCard'
 import { TodoCard } from '@/components/fields/TodoCard'
 import { WeatherCard } from '@/components/fields/WeatherCard'
-import { FieldImageryCard } from '@/components/fields/FieldImageryCard'
 
 export const metadata: Metadata = { title: 'Block' }
 
@@ -274,7 +272,6 @@ export default async function FieldDetailPage({
       />
       <HarvestsCard fieldId={field.id} harvests={harvests} />
       <WeatherCard weather={weather} />
-      <FieldImageryCard fieldId={field.id} configured={isSentinelHubConfigured()} />
     </div>
   )
 }

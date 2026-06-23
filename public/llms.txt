@@ -23,7 +23,6 @@ Website: https://headlandmaps.com
 - Spray records: record product, rate, and wind direction/speed per block.
 - Printable crop maps: one-click PDF field sheets for the crew — blocks colored by cut, no satellite clutter.
 - Scouting: drop a pin and photo from a phone in the field.
-- Satellite plant-health imagery refreshed every few days, clipped to each block.
 - FSA acreage export (shapefile) and printable maps on demand.
 
 ## Service areas
