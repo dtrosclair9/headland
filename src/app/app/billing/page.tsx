@@ -136,7 +136,7 @@ export default async function BillingPage({
             <span className="font-semibold text-primary">
               {mappedAcres > 0 ? `${mappedAcres.toLocaleString()} mapped acres` : 'mapped acreage'}
             </span>
-            , whole crew included.
+, with free printed sheets for your crew.
             {mappedAcres === 0 && <> Import or draw your blocks to size your plan exactly.</>}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -159,8 +159,8 @@ export default async function BillingPage({
             />
           </div>
           <p className="mt-4 text-xs text-gray-500">
-            No setup fee. Every acre, your whole crew, and free migration from your old
-            software — all included.
+            No setup fee. Every acre, unlimited printed sheets for your crew, and free
+            migration from your old software — all included.
           </p>
         </section>
       )}

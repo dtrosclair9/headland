@@ -6,13 +6,13 @@ import { PRICING, annualPrice, monthlyPrice, formatUSD } from '@/lib/billing'
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Fifty cents an acre, per year. Covers every acre you farm and your whole crew — field logins and printed sheets included free. No setup fee. 14-day free trial, no card to start.',
+    'Fifty cents an acre, per year. One price covers your whole operation, with free printed field sheets for your entire crew. No setup fee. 14-day free trial, no card to start.',
   alternates: { canonical: `${BASE_URL}/pricing` },
 }
 
 const features = [
   'Every acre you farm — one price',
-  'Your whole crew included, free',
+  'Free printed field sheets for your whole crew',
   'Crop-stage map + printable plantation sheets',
   'Harvest, operation & spray records (with wind)',
   'FSA acreage export (shapefile)',
@@ -35,12 +35,11 @@ export default function PricingPage() {
         <div className="container-wide py-16 md:py-20 text-center max-w-3xl mx-auto">
           <p className="section-label text-accent">Pricing</p>
           <h1 className="mt-3 text-4xl md:text-5xl font-bold">
-            Fifty cents an acre. Your whole crew, included.
+            Fifty cents an acre. Your whole operation.
           </h1>
           <p className="mt-4 text-lg text-gray-200">
-            One simple price covers every acre you farm — and every hand on your crew gets
-            their own login and their printed field sheets at no extra charge. No setup fee,
-            no surprises.
+            One simple price covers every acre you farm — and you can print as many field
+            sheets for your crew as you want, free. No setup fee, no surprises.
           </p>
           <div className="mt-6 inline-flex items-center gap-2 rounded-md bg-primary/40 border border-primary-light/40 px-4 py-2 text-sm text-gray-100">
             <span className="font-semibold">{PRICING.trialDays}-day free trial.</span>
@@ -60,11 +59,10 @@ export default function PricingPage() {
             <span className="text-gray-500 text-lg mb-2">/ acre / year</span>
           </div>
           <p className="mt-4 text-gray-600 max-w-xl mx-auto">
-            That&apos;s the whole bill for a one-office operation. Pay annually and get{' '}
+            That&apos;s the whole bill — every acre, mapped and recorded, with unlimited
+            printed sheets for your crew. Pay annually and get{' '}
             <span className="font-semibold text-primary">two months free</span> versus
-            month-to-month. Running more than one office? Extra manager logins — full run of
-            the books — are {formatUSD(PRICING.managerSeatAnnual)}/year. Most farms never
-            need more than one.
+            paying month-to-month.
           </p>
 
           <ul className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-gray-700 text-left max-w-xl mx-auto">
@@ -128,14 +126,14 @@ export default function PricingPage() {
           <div className="space-y-5 text-gray-700">
             <Faq q="How does the pricing work?">
               Fifty cents per acre, per year, on the acreage you farm. That one price covers
-              every acre and gives your whole crew their own logins — no per-person charge for
-              your field hands. A 1,000-acre farm is $500 a year; 4,000 acres is $2,000.
+              your whole operation — every block mapped, every record kept. A 1,000-acre farm
+              is $500 a year; 4,000 acres is $2,000.
             </Faq>
-            <Faq q="Is my crew really included?">
-              Yes. Every hand who needs to pull up a field or grab a printed sheet gets a login
-              at no extra cost. You only pay more if you want a second person with full run of
-              the books (manager logins are {formatUSD(PRICING.managerSeatAnnual)}/year) — and
-              most operations never need that.
+            <Faq q="What about my crew?">
+              Print as many field sheets as you need for your hands — no per-person charge,
+              ever. Your crew works off the printed sheet; you run the records. Need a second
+              person with their own full login (a partner or your records hand)? Just reach
+              out and we&apos;ll add it — most operations never need to.
             </Faq>
             <Faq q="Is there a setup fee?">
               No. Some farm software charges thousands of dollars just to get set up and your
