@@ -17,6 +17,9 @@ const config: Config = {
           DEFAULT: '#E8A33D',
           light: '#F2BC68',
           dark: '#C7841A',
+          // AA-compliant gold for TEXT on white/light backgrounds (~5:1).
+          // DEFAULT/dark are too light as small text on white (~2–3:1).
+          text: '#7D5612',
         },
         soil: {
           DEFAULT: '#5C4A36',

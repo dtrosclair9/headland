@@ -30,7 +30,6 @@ const features = [
   'Crop-stage map + printable plantation sheets',
   'Harvest, operation & spray records (with wind)',
   'FSA acreage export (shapefile)',
-  'Sentinel-2 NDVI + latest imagery',
   'Free migration from your old software',
   'No setup fee — ever',
 ]
@@ -91,17 +90,14 @@ export default function PricingPage() {
           <ul className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-gray-700 text-left max-w-xl mx-auto">
             {features.map((f) => (
               <li key={f} className="flex gap-2">
-                <span className="text-accent-dark">✓</span>
+                <span className="text-accent-text">✓</span>
                 <span>{f}</span>
               </li>
             ))}
           </ul>
 
           <div className="mt-8">
-            <Link
-              href="/signup"
-              className="inline-block font-semibold py-2.5 px-6 rounded-md bg-accent text-primary-dark hover:bg-accent-dark transition"
-            >
+            <Link href="/signup" className="btn-accent">
               Start free trial
             </Link>
           </div>

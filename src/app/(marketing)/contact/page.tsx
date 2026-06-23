@@ -35,7 +35,7 @@ export default async function ContactPage({
       <section className="section-padding bg-white">
         <div className="container-wide max-w-2xl">
           {sent === '1' && (
-            <div className="mb-6 rounded-md bg-green-50 border border-green-100 px-4 py-3 text-sm text-green-800">
+            <div role="status" aria-live="polite" className="mb-6 rounded-md bg-green-50 border border-green-100 px-4 py-3 text-sm text-green-800">
               <strong>Thanks — message sent.</strong> We&apos;ll reply within a business day.
             </div>
           )}
@@ -89,7 +89,7 @@ export default async function ContactPage({
               </div>
               <div>
                 <label className="label" htmlFor="state">State</label>
-                <select id="state" name="state" className="input" defaultValue="">
+                <select id="state" name="state" required className="input" defaultValue="">
                   <option value="" disabled>Pick one</option>
                   <option value="Louisiana">Louisiana</option>
                   <option value="Florida">Florida</option>

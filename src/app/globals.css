@@ -3,12 +3,27 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
+  /* Smooth anchor scrolling, but never for users who ask for reduced motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif;
+  }
+
+  /* Visible keyboard focus everywhere — gold ring reads on both white and the
+     navy sections. (Mouse users still get no ring via :focus-visible.) */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
+    @apply outline-none ring-2 ring-offset-2 ring-accent;
   }
 }
 
@@ -38,7 +53,7 @@
   }
 
   .section-label {
-    @apply text-accent-dark uppercase tracking-widest text-sm font-semibold;
+    @apply text-accent-text uppercase tracking-widest text-sm font-semibold;
   }
 
   .input {

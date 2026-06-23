@@ -7,8 +7,8 @@ export default function MarketingFooter() {
 
   return (
     <footer className="bg-primary-dark text-gray-300">
-      <div className="container-wide py-16 grid grid-cols-1 md:grid-cols-5 gap-10">
-        <div className="md:col-span-2">
+      <div className="container-wide py-16 grid grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-10">
+        <div className="col-span-2">
           <p className="font-serif text-2xl text-white font-bold uppercase tracking-wide">{SITE_NAME}</p>
           <p className="mt-3 text-sm leading-relaxed">
             Field mapping &amp; records built for sugarcane growers across the US cane belt.

@@ -202,7 +202,7 @@ function PlanCard({
   return (
     <div className={`bg-white rounded-xl p-5 flex flex-col border ${badge ? 'border-accent ring-1 ring-accent/40' : 'border-gray-100'}`}>
       {badge && (
-        <p className="text-xs font-bold uppercase tracking-wider text-accent-dark mb-1">{badge}</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-accent-text mb-1">{badge}</p>
       )}
       <h3 className="text-lg font-bold text-primary">{title}</h3>
       <p className="text-2xl font-bold text-primary mt-1">
