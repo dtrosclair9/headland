@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { SITE_NAME, SITE_TAGLINE } from '@/lib/site'
 import JsonLd from '@/components/JsonLd'
 import {
@@ -95,21 +96,40 @@ export default function HomePage() {
       <section className="relative bg-primary-dark text-white overflow-hidden">
         <div className="absolute inset-0 opacity-20"
              style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, #2A5A45 0%, transparent 50%), radial-gradient(circle at 80% 70%, #E8A33D 0%, transparent 50%)' }} />
-        <div className="relative container-wide py-24 md:py-32">
-          <p className="section-label text-accent">For US Sugarcane Growers · Louisiana &amp; Florida</p>
-          <h1 className="mt-4 text-4xl md:text-6xl font-bold leading-tight max-w-3xl">
-            {SITE_TAGLINE}.
-          </h1>
-          <p className="mt-6 text-lg md:text-xl text-gray-200 max-w-2xl leading-relaxed">
-            Map every acre. Track every ratoon. Scout from the truck.
-            Export for FSA in one click. From plant cane to last stubble, {SITE_NAME} keeps every field on one map.
-          </p>
-          <p className="mt-4 text-base text-gray-300 max-w-2xl">
-            Simple enough for anyone on the crew. No training, no manual, no middleman.
-          </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <Link href="/signup" className="btn-accent">Start free trial</Link>
-            <Link href="/#features" className="btn-outline">See features</Link>
+        <div className="relative container-wide py-20 md:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <p className="section-label text-accent">For US Sugarcane Growers · Louisiana &amp; Florida</p>
+              <h1 className="mt-4 text-4xl md:text-5xl xl:text-6xl font-bold leading-tight">
+                {SITE_TAGLINE}.
+              </h1>
+              <p className="mt-6 text-lg text-gray-200 leading-relaxed">
+                Map every acre. Track every ratoon. Scout from the truck.
+                Export for FSA in one click. From plant cane to last stubble, {SITE_NAME} keeps every field on one map.
+              </p>
+              <p className="mt-4 text-base text-gray-300">
+                Simple enough for anyone on the crew. No training, no manual, no middleman.
+              </p>
+              <div className="mt-10 flex flex-wrap gap-4">
+                <Link href="/signup" className="btn-accent">Start free trial</Link>
+                <Link href="/#features" className="btn-outline">See features</Link>
+              </div>
+            </div>
+            <div className="lg:justify-self-end">
+              <div className="overflow-hidden rounded-xl border border-white/15 shadow-2xl">
+                <Image
+                  src="/images/app-map.png"
+                  alt={`${SITE_NAME} crop map: every block colored by its cut, from plant cane to last stubble`}
+                  width={1600}
+                  height={1053}
+                  className="h-auto w-full"
+                  priority
+                />
+              </div>
+              <p className="mt-3 text-center text-xs text-gray-400 lg:text-right">
+                A real Headland crop map. Block colors show each field&apos;s cut.
+              </p>
+            </div>
           </div>
         </div>
       </section>
