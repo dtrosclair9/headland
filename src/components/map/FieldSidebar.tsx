@@ -156,7 +156,7 @@ export default function FieldSidebar({
                   <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-2">
                     <span>{group.fields.length} · {groupArea.primary}</span>
                     {plantationId && !selectMode && (
-                      <>
+                      <span className="flex items-center gap-4 pl-1">
                         <button
                           type="button"
                           onClick={() => onRepositionPlantation(plantationId)}
@@ -174,7 +174,7 @@ export default function FieldSidebar({
                         >
                           Print
                         </a>
-                      </>
+                      </span>
                     )}
                   </span>
                 </div>
