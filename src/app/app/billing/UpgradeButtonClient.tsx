@@ -4,14 +4,23 @@ import { useState } from 'react'
 
 type Interval = 'monthly' | 'annual'
 
+// Map server error codes to plain-English messages.
+const ERROR_MESSAGES: Record<string, string> = {
+  no_acreage: 'Map your farm first — import or draw your blocks, then subscribe so we price it right.',
+  price_not_configured: 'Pricing isn’t set up on this environment yet.',
+  stripe_not_configured: 'Payments aren’t enabled on this environment yet.',
+}
+
 export default function UpgradeButtonClient({
   interval,
   label,
   variant = 'primary',
+  disabled = false,
 }: {
   interval: Interval
   label: string
   variant?: 'primary' | 'ghost'
+  disabled?: boolean
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +36,8 @@ export default function UpgradeButtonClient({
       })
       const data = await res.json()
       if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Checkout failed')
+        const code = data.error || 'Checkout failed'
+        throw new Error(ERROR_MESSAGES[code] || code)
       }
       window.location.href = data.url
     } catch (e) {
@@ -42,8 +52,8 @@ export default function UpgradeButtonClient({
       <button
         type="button"
         onClick={go}
-        disabled={loading}
-        className={`w-full text-sm disabled:opacity-50 ${
+        disabled={loading || disabled}
+        className={`w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
           variant === 'primary'
             ? 'btn-primary'
             : 'rounded-md border-2 border-primary text-primary font-semibold px-4 py-2 hover:bg-primary/5'

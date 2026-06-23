@@ -131,37 +131,47 @@ export default async function BillingPage({
       ) : (
         <section>
           <h2 className="text-lg font-bold text-primary mb-1">Subscribe</h2>
-          <p className="text-sm text-gray-600 mb-3">
-            {formatUSD(perAcre)}/acre/year on your{' '}
-            <span className="font-semibold text-primary">
-              {mappedAcres > 0 ? `${mappedAcres.toLocaleString()} mapped acres` : 'mapped acreage'}
-            </span>
-, with free printed sheets for your crew.
-            {mappedAcres === 0 && <> Import or draw your blocks to size your plan exactly.</>}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <PlanCard
-              title="Monthly"
-              price={formatUSD(monthly)}
-              cadence="/ month"
-              blurb="Billed monthly on your acreage. Cancel anytime."
-              interval="monthly"
-              variant="primary"
-            />
-            <PlanCard
-              title="Annual"
-              price={formatUSD(annual)}
-              cadence="/ year"
-              blurb={`Two months free vs monthly (${formatUSD(monthly * 12)}/yr).`}
-              interval="annual"
-              variant="ghost"
-              badge="Best value"
-            />
-          </div>
-          <p className="mt-4 text-xs text-gray-500">
-            No setup fee. Every acre, unlimited printed sheets for your crew, and free
-            migration from your old software — all included.
-          </p>
+          {mappedAcres === 0 ? (
+            <div className="rounded-md bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-900">
+              <span className="font-semibold">Map your farm first.</span> Headland is priced
+              by the acre, so{' '}
+              <Link href="/app/import" className="underline font-semibold">import your blocks</Link>{' '}
+              (or draw them on the map), then come back here and we&apos;ll size your plan exactly.
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-3">
+                {formatUSD(perAcre)}/acre/year on your{' '}
+                <span className="font-semibold text-primary">
+                  {mappedAcres.toLocaleString()} mapped acres
+                </span>
+                , with free printed sheets for your crew.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PlanCard
+                  title="Monthly"
+                  price={formatUSD(monthly)}
+                  cadence="/ month"
+                  blurb="Billed monthly on your acreage. Cancel anytime."
+                  interval="monthly"
+                  variant="primary"
+                />
+                <PlanCard
+                  title="Annual"
+                  price={formatUSD(annual)}
+                  cadence="/ year"
+                  blurb={`Two months free vs monthly (${formatUSD(monthly * 12)}/yr).`}
+                  interval="annual"
+                  variant="ghost"
+                  badge="Best value"
+                />
+              </div>
+              <p className="mt-4 text-xs text-gray-500">
+                No setup fee. Every acre, unlimited printed sheets for your crew, and free
+                migration from your old software — all included.
+              </p>
+            </>
+          )}
         </section>
       )}
 

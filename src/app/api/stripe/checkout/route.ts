@@ -47,10 +47,13 @@ export async function POST(request: NextRequest) {
       .eq('id', org.id)
   }
 
-  // Per-acre, graduated price: quantity = the org's total mapped acreage.
-  // Floor at 1 so a brand-new org (nothing imported yet) still lands in the
-  // first tier and pays the flat floor rather than $0.
-  const acres = Math.max(1, await getBillableAcres(org.id))
+  // Per-acre price: quantity = the org's total mapped acreage. Block checkout
+  // if nothing's mapped yet — otherwise they'd subscribe at quantity 1 ($0.50)
+  // and underpay until the next renewal true-up. Send them to import first.
+  const acres = await getBillableAcres(org.id)
+  if (acres < 1) {
+    return NextResponse.json({ error: 'no_acreage' }, { status: 422 })
+  }
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,

@@ -1,5 +1,7 @@
 import type Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getStripe } from '@/lib/stripe'
+import { getBillableAcres } from '@/lib/acreage'
 
 // Writes a Stripe subscription's current state onto its org row. Shared by the
 // async webhook (lifecycle events) and the synchronous confirm route (the
@@ -46,4 +48,26 @@ export async function syncSubscriptionToOrg(subscription: Stripe.Subscription) {
       .update(updates)
       .eq('stripe_customer_id', customerId)
   }
+}
+
+// Recompute the org's mapped acreage and update the Stripe subscription
+// quantity to match, so the upcoming renewal bills the CURRENT acreage. Called
+// from the invoice.upcoming webhook (true-up at renewal). proration_behavior
+// 'none' means no mid-cycle charge — the new quantity lands on the next invoice,
+// which (at invoice.upcoming time) is the renewal about to be created.
+export async function trueUpAcreage(subscription: Stripe.Subscription): Promise<void> {
+  const orgId = (subscription.metadata?.org_id as string | undefined) ?? null
+  const item = subscription.items.data[0]
+  if (!orgId || !item) return
+
+  const currentQty = item.quantity ?? 0
+  const acres = await getBillableAcres(orgId)
+  // Never push the meter below 1 (or to 0) on an active sub — keep last good.
+  if (acres < 1 || acres === currentQty) return
+
+  const stripe = getStripe()
+  await stripe.subscriptions.update(subscription.id, {
+    items: [{ id: item.id, quantity: acres }],
+    proration_behavior: 'none',
+  })
 }
