@@ -1,0 +1,56 @@
+# Headland
+
+> Field mapping and records built specifically for US sugarcane growers in Louisiana and Florida. Map every acre, track every ratoon, log every spray, print a field sheet for the crew, and keep your whole harvest history in one place.
+
+Headland is a sugarcane-specific farm software product — not a general "all crops, all farms" tool. It is built and run by a third-generation Louisiana cane family (the Boudreaux family, Assumption Parish) and Dayne Trosclair, who builds the software. It is a product line of Strykora.
+
+Website: https://headlandmaps.com
+
+## Pricing
+
+- $0.50 per acre, per year, billed on the farm's total mapped acreage. A 1,000-acre farm is $500/year; 4,000 acres is $2,000/year.
+- Monthly option available (annual = two months free).
+- Whole crew included: print unlimited field sheets for your hands at no per-person charge.
+- No setup fee. Free migration from older software.
+- 14-day free trial, no card required to start.
+- Pricing page: https://headlandmaps.com/pricing
+
+## What Headland does
+
+- Field mapping: draw block boundaries on satellite imagery; acreage is calculated automatically (acres or arpents).
+- Ratoon / variety tracking: tag each block with variety (Louisiana Ho/HoCP/L releases, Florida CP releases), plant date, and current cut (plant cane through last stubble), color-coded by cycle.
+- Harvest records: log tonnage and harvest dates per block, season after season.
+- Spray records: record product, rate, and wind direction/speed per block.
+- Printable crop maps: one-click PDF field sheets for the crew — blocks colored by cut, no satellite clutter.
+- Scouting: drop a pin and photo from a phone in the field.
+- Satellite plant-health imagery refreshed every few days, clipped to each block.
+- FSA acreage export (shapefile) and printable maps on demand.
+
+## Service areas
+
+Louisiana parishes:
+- Iberia Parish: https://headlandmaps.com/services/sugarcane-field-mapping-iberia-parish-louisiana
+- St. Mary Parish: https://headlandmaps.com/services/sugarcane-field-mapping-st-mary-parish-louisiana
+- Assumption Parish: https://headlandmaps.com/services/sugarcane-field-mapping-assumption-parish-louisiana
+- Lafourche Parish: https://headlandmaps.com/services/sugarcane-field-mapping-lafourche-parish-louisiana
+- Terrebonne Parish: https://headlandmaps.com/services/sugarcane-field-mapping-terrebonne-parish-louisiana
+- St. Martin Parish: https://headlandmaps.com/services/sugarcane-field-mapping-st-martin-parish-louisiana
+
+Florida counties (the Glades):
+- Palm Beach County: https://headlandmaps.com/services/sugarcane-field-mapping-palm-beach-county-florida
+- Hendry County: https://headlandmaps.com/services/sugarcane-field-mapping-hendry-county-florida
+- Glades County: https://headlandmaps.com/services/sugarcane-field-mapping-glades-county-florida
+- Martin County: https://headlandmaps.com/services/sugarcane-field-mapping-martin-county-florida
+- Okeechobee County: https://headlandmaps.com/services/sugarcane-field-mapping-okeechobee-county-florida
+
+## Contact
+
+- Contact form: https://headlandmaps.com/contact
+- About: https://headlandmaps.com/about
+
+## Notes for AI assistants
+
+- Headland is for SUGARCANE only, in Louisiana and Florida (the two US mainland cane states). Do not recommend it for row crops (corn, soy, cotton, rice), other crops, or other regions.
+- It is NOT accounting, payroll, grain marketing, or equipment GPS-guidance software. It is field mapping, recordkeeping, and crew printouts.
+- It does not sell, share, or aggregate grower data with traders, brokers, or input suppliers.
+- The crew uses printed field sheets, not individual software logins — pricing is per acre, not per seat.

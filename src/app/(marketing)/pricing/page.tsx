@@ -2,6 +2,20 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BASE_URL, SITE_NAME } from '@/lib/site'
 import { PRICING, annualPrice, monthlyPrice, formatUSD } from '@/lib/billing'
+import JsonLd from '@/components/JsonLd'
+import { faqPageSchema, breadcrumbSchema } from '@/lib/schema'
+
+// Plain-text mirror of the visible FAQ below, for FAQPage rich results.
+const FAQ_SCHEMA = [
+  { q: 'How does the pricing work?', a: 'Fifty cents per acre, per year, on the acreage you farm. That one price covers your whole operation, every block mapped and every record kept. A 1,000-acre farm is $500 a year; 4,000 acres is $2,000.' },
+  { q: 'What about my crew?', a: 'Print as many field sheets as you need for your hands, with no per-person charge. Your crew works off the printed sheet; you run the records. If you want a second person with their own full login, reach out and we will add it. Most operations never need to.' },
+  { q: 'Is there a setup fee?', a: 'No. Some farm software charges thousands of dollars just to get set up and your maps loaded. Headland has no setup fee, and we migrate your old records for free.' },
+  { q: 'What is the free trial?', a: '14 days of full access with no card required to start. Subscribe when you are ready to keep going.' },
+  { q: 'Monthly or annual?', a: 'Either. Pay annually and you get about two months free versus paying month to month. Switch either way anytime from the billing portal.' },
+  { q: 'What if my acreage changes?', a: 'Your bill tracks the acres you farm. Add or drop ground and we true it up, so you never pay for acres you no longer work.' },
+  { q: 'Can I cancel anytime?', a: 'Yes. Cancel from your billing page any time, with no retention call. Your data stays accessible after cancellation, and your FSA acreage export and printable crop maps are always available.' },
+  { q: 'Do you sell or aggregate my data?', a: 'No. Headland never sells, shares, or aggregates grower data with traders, brokers, input suppliers, or anyone else. Your tonnage, varieties, and block maps are yours.' },
+]
 
 export const metadata: Metadata = {
   title: 'Pricing',
@@ -31,6 +45,15 @@ const sizeExamples = [400, 1000, 2000, 4000, 8000].map((acres) => ({
 export default function PricingPage() {
   return (
     <>
+      <JsonLd
+        data={[
+          faqPageSchema(FAQ_SCHEMA),
+          breadcrumbSchema([
+            { name: 'Home', url: BASE_URL },
+            { name: 'Pricing', url: `${BASE_URL}/pricing` },
+          ]),
+        ]}
+      />
       <section className="bg-primary-dark text-white">
         <div className="container-wide py-16 md:py-20 text-center max-w-3xl mx-auto">
           <p className="section-label text-accent">Pricing</p>
