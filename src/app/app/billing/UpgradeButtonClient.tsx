@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { friendlyError } from '@/lib/errors'
 
 type Interval = 'monthly' | 'annual'
 
@@ -41,7 +42,7 @@ export default function UpgradeButtonClient({
       }
       window.location.href = data.url
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
       setLoading(false)
     }
   }

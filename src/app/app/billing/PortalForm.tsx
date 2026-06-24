@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { friendlyError } from '@/lib/errors'
 
 export default function PortalForm() {
   const [loading, setLoading] = useState(false)
@@ -17,7 +18,7 @@ export default function PortalForm() {
       }
       window.location.href = data.url
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
       setLoading(false)
     }
   }

@@ -26,8 +26,9 @@ export async function POST(request: NextRequest) {
   try {
     parsed = await parseShapefileBuffers(extractShapefileComponents(files))
   } catch (e) {
+    console.error('[import/parse] parse failed', e)
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Could not read that file.' },
+      { error: 'We could not read that file. Make sure it is a zipped shapefile or a KML, then try again.' },
       { status: 400 },
     )
   }

@@ -127,8 +127,9 @@ export async function POST(request: NextRequest) {
   try {
     parsed = await parseShapefileBuffers(extractShapefileComponents(files))
   } catch (e) {
+    console.error('[import/commit] parse failed', e)
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Could not read that file.' },
+      { error: 'We could not read that file. Make sure it is a zipped shapefile or a KML, then try again.' },
       { status: 400 },
     )
   }
@@ -165,7 +166,11 @@ export async function POST(request: NextRequest) {
     p_features: features,
   })
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('[import/commit] bulk_import_fields failed', error)
+    return NextResponse.json(
+      { error: 'Something went wrong saving your fields. Please try again.' },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({ imported: typeof data === 'number' ? data : features.length })

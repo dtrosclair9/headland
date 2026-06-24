@@ -7,6 +7,7 @@ import FieldSidebar from './FieldSidebar'
 import NewBlockModal from './NewBlockModal'
 import type { FieldRow } from '@/lib/fields'
 import type { Units, CaneState } from '@/lib/types'
+import { friendlyError } from '@/lib/errors'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -76,7 +77,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       setRepositionIds(null)
       startTransition(() => router.refresh())
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }
@@ -104,7 +105,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       // Pop the details modal so the grower names/tags the block while it's fresh.
       setNewBlock({ id, name })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }
@@ -131,7 +132,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       setSelectMode(false)
       startTransition(() => router.refresh())
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }
@@ -158,7 +159,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       startTransition(() => router.refresh())
       return result
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
       return null
     } finally {
       setBusy(false)
@@ -180,7 +181,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
       }
       startTransition(() => router.refresh())
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }

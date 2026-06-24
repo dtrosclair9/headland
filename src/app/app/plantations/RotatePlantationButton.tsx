@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { friendlyError } from '@/lib/errors'
 
 // Advances every block in a plantation to its next year cane, after a clear
 // confirmation. Used on the Plantations page so a grower can roll a whole farm
@@ -42,7 +43,7 @@ export default function RotatePlantationButton({
       setConfirming(false)
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }

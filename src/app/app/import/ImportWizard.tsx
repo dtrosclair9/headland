@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { friendlyError } from '@/lib/errors'
 
 interface ParseResult {
   count: number
@@ -68,7 +69,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       setCutCol(pick(/year\s*cane/i, /ratoon/i, /stubble/i, /^cut$/i, /cycle/i))
       setStep(2)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }
@@ -97,7 +98,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       setImported(data.imported as number)
       setStep(3)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setBusy(false)
     }

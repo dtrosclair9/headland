@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FieldRow } from '@/lib/fields'
 import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
+import { friendlyError } from '@/lib/errors'
 
 interface FieldSidebarProps {
   fields: FieldRow[]
@@ -399,7 +400,7 @@ function AssignToPlantationPanel({
       })
       .catch((e) => {
         if (cancelled) return
-        setError(e instanceof Error ? e.message : String(e))
+        setError(friendlyError(e))
         setLoading(false)
       })
     return () => {
@@ -425,7 +426,7 @@ function AssignToPlantationPanel({
       const { id } = await res.json()
       await onAssign(id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setCreating(false)
     }

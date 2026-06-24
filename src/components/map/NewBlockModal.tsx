@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { Plantation } from '@/lib/types'
+import { friendlyError } from '@/lib/errors'
 
 // Stubble / cut options — mirrors the field detail page.
 const RATOON_OPTIONS: { value: string; label: string }[] = [
@@ -69,7 +70,7 @@ export default function NewBlockModal({
       }
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e))
     } finally {
       setSaving(false)
     }
