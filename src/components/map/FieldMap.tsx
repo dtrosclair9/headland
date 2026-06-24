@@ -982,21 +982,24 @@ export default function FieldMap({
   }
 
   if (error) {
+    // Friendly, farmer-facing message only. The technical detail (Mapbox URL,
+    // status, etc.) is logged to the console at the 'error' handler above for
+    // debugging — never shown in the UI.
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-100 p-8">
-        <div className="max-w-lg">
-          <p className="text-primary font-semibold mb-2">Map can&apos;t load</p>
-          <pre className="text-xs text-red-700 bg-red-50 border border-red-100 rounded p-3 whitespace-pre-wrap break-words">
-            {error}
-          </pre>
-          <p className="text-xs text-gray-500 mt-4">
-            If the error mentions a token, get a free public token at{' '}
-            <a href="https://account.mapbox.com/" className="underline" target="_blank" rel="noreferrer">
-              account.mapbox.com
-            </a>
-            , paste into <code className="bg-gray-100 px-1 rounded">.env.local</code>, and
-            restart <code className="bg-gray-100 px-1 rounded">npm run dev</code>.
+        <div className="max-w-sm text-center">
+          <p className="text-primary font-semibold text-lg mb-2">Map couldn&apos;t load</p>
+          <p className="text-sm text-gray-600 mb-5">
+            Check your internet connection and refresh the page. If it keeps happening,
+            give it a minute and try again.
           </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="btn-primary text-sm"
+          >
+            Refresh
+          </button>
         </div>
       </div>
     )
