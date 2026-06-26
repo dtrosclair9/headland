@@ -173,11 +173,9 @@ export default function PricingPage() {
               up — you never pay for acres you no longer work.
             </Faq>
             <Faq q="Can I cancel anytime?">
-              Yes. Cancel from{' '}
-              <code className="bg-gray-100 px-1 rounded text-sm">/app/billing</code> any time —
-              no retention call, no dark patterns. Your data stays accessible after
-              cancellation, and your FSA acreage export and printable crop maps are always
-              available.
+              Yes. Cancel from your billing page any time, with no retention call and no
+              dark patterns. Your data stays accessible after cancellation, and your FSA
+              acreage export and printable crop maps are always available.
             </Faq>
             <Faq q="Do you sell or aggregate my data?">
               No. {SITE_NAME} never sells, shares, or aggregates grower data with traders,

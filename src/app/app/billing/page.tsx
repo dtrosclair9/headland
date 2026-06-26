@@ -174,10 +174,6 @@ export default async function BillingPage({
           )}
         </section>
       )}
-
-      <p className="text-xs text-gray-500">
-        Public pricing: <Link href="/pricing" className="underline">/pricing</Link>
-      </p>
     </div>
   )
 }
