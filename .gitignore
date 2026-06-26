@@ -48,3 +48,4 @@ supabase/.temp
 # UI self-test screenshots (scripts/ui-check.mjs)
 .ui-check/
 public/images/logo-icon.original.png
+.superpowers/
