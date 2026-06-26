@@ -12,7 +12,11 @@ export async function GET(req: NextRequest) {
   }
   const admin = createAdminClient()
   // Orgs with at least one live block.
-  const { data: rows } = await admin.from('fields').select('org_id').is('archived_at', null)
+  const { data: rows, error: rowsError } = await admin.from('fields').select('org_id').is('archived_at', null)
+  if (rowsError) {
+    console.error('[snapshots/run] org query failed', rowsError)
+    return NextResponse.json({ error: 'db_error' }, { status: 500 })
+  }
   const orgIds = Array.from(new Set((rows ?? []).map((r) => r.org_id)))
 
   let created = 0, skipped = 0, failed = 0

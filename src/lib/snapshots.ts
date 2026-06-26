@@ -190,21 +190,23 @@ export async function generateFarmSnapshot(
 
 export async function listSnapshots(orgId: string): Promise<FarmSnapshotRow[]> {
   const admin = createAdminClient()
-  const { data } = await admin
+  const { data, error } = await admin
     .from('farm_snapshots')
     .select('*')
     .eq('org_id', orgId)
     .order('period', { ascending: false })
     .order('created_at', { ascending: false })
+  if (error) throw new Error(`listSnapshots failed: ${error.message}`)
   return (data ?? []) as FarmSnapshotRow[]
 }
 
 export async function getSnapshot(id: string): Promise<FarmSnapshotRow | null> {
   const admin = createAdminClient()
-  const { data } = await admin
+  const { data, error } = await admin
     .from('farm_snapshots')
     .select('*')
     .eq('id', id)
     .maybeSingle()
+  if (error) throw new Error(`getSnapshot failed: ${error.message}`)
   return (data as FarmSnapshotRow) ?? null
 }
