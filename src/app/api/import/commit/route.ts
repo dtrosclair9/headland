@@ -3,6 +3,7 @@ import { area as turfArea } from '@turf/turf'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createClient } from '@/lib/supabase/server'
 import { extractShapefileComponents, parseShapefileBuffers } from '@/lib/shapefile-import'
+import { syncSubscriptionAcreage } from '@/lib/stripe-sync'
 
 export const runtime = 'nodejs'
 
@@ -171,6 +172,15 @@ export async function POST(request: NextRequest) {
       { error: 'Something went wrong saving your fields. Please try again.' },
       { status: 500 },
     )
+  }
+
+  // Catch the bill up to the freshly-imported acreage immediately (prorated),
+  // so a token-acreage subscribe + big import can't ride the low price to
+  // renewal. Best-effort: never fail the import if the billing sync hiccups.
+  try {
+    await syncSubscriptionAcreage(org.id)
+  } catch (e) {
+    console.error('[import/commit] acreage billing sync failed', e)
   }
 
   return NextResponse.json({ imported: typeof data === 'number' ? data : features.length })

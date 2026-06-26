@@ -71,3 +71,36 @@ export async function trueUpAcreage(subscription: Stripe.Subscription): Promise<
     proration_behavior: 'none',
   })
 }
+
+// Re-sync a paid subscription's quantity to the org's CURRENT mapped acreage and
+// bill any INCREASE immediately (prorated). Called after an import so a grower
+// can't subscribe at a token acreage, then import their whole farm and ride the
+// low price until renewal — the moment they import, the bill catches up.
+// Reductions defer to the next renewal (no mid-term refund). No-op unless the
+// org is on a live paid subscription (comped/trial/none have nothing to bill).
+export async function syncSubscriptionAcreage(orgId: string): Promise<void> {
+  const admin = createAdminClient()
+  const { data: org } = await admin
+    .from('organizations')
+    .select('subscription_status, stripe_subscription_id')
+    .eq('id', orgId)
+    .maybeSingle()
+  if (!org?.stripe_subscription_id) return
+  if (org.subscription_status !== 'active' && org.subscription_status !== 'trialing') return
+
+  const acres = await getBillableAcres(orgId)
+  if (acres < 1) return
+
+  const stripe = getStripe()
+  const sub = await stripe.subscriptions.retrieve(org.stripe_subscription_id)
+  const item = sub.items.data[0]
+  if (!item) return
+  const currentQty = item.quantity ?? 0
+  if (acres === currentQty) return
+
+  await stripe.subscriptions.update(sub.id, {
+    items: [{ id: item.id, quantity: acres }],
+    // Bill added acreage now (prorated); defer reductions to the next renewal.
+    proration_behavior: acres > currentQty ? 'always_invoice' : 'none',
+  })
+}
