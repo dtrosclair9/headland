@@ -7,6 +7,11 @@ import SnapshotButton from './SnapshotButton'
 
 export const metadata: Metadata = { title: 'Export' }
 
+function periodLabel(period: string) {
+  const [y, m] = period.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
 export default async function ExportPage() {
   const { org } = await requireUserAndOrg()
   const [fields, snapshots] = await Promise.all([
@@ -78,7 +83,7 @@ export default async function ExportPage() {
               <li key={s.id} className="flex items-center justify-between px-4 py-3 text-sm">
                 <span>
                   <span className="font-semibold text-primary">
-                    {new Date(s.period).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {periodLabel(s.period)}
                   </span>
                   <span className="text-gray-500">
                     {' '}· {s.block_count} block{s.block_count === 1 ? '' : 's'} · {Number(s.acreage).toLocaleString()} ac

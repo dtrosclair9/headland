@@ -14,7 +14,7 @@ export default function SnapshotButton() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Snapshot failed')
       router.refresh()
-    } catch (e) { setError(friendlyError(e, 'Couldn’t create the snapshot. Please try again.')) }
+    } catch (e) { setError(friendlyError(e, "Couldn’t create the snapshot. Please try again.")) }
     finally { setLoading(false) }
   }
   return (
