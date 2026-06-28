@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import FieldSidebar from './FieldSidebar'
 import NewBlockModal from './NewBlockModal'
+import type { ViewMode } from './FieldMap'
 import type { FieldRow } from '@/lib/fields'
 import type { Units, CaneState } from '@/lib/types'
 import { friendlyError } from '@/lib/errors'
@@ -42,6 +43,9 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   const [newBlock, setNewBlock] = useState<{ id: string; name: string } | null>(null)
   // Reposition mode: the set of block ids being moved/rotated as a group.
   const [repositionIds, setRepositionIds] = useState<Set<string> | null>(null)
+  // Map view mode is owned here so the sidebar's print links can follow it
+  // (spray-map view → the print links output the B&W spray sheet).
+  const [viewMode, setViewMode] = useState<ViewMode>('satellite')
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -201,6 +205,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         <FieldSidebar
           fields={fields}
           units={units}
+          viewMode={viewMode}
           selectedFieldId={selectedFieldId}
           onSelectField={(id) => {
             setSelectedFieldId(id)
@@ -276,6 +281,8 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         repositionIds={repositionIds}
         onSaveReposition={handleSaveReposition}
         onCancelReposition={() => setRepositionIds(null)}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       {(busy || error) && (

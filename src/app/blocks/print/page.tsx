@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { listFieldsByIds } from '@/lib/fields'
-import { buildPlantationSvg } from '@/lib/plantation-map-svg'
+import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
 import { RATOON_COLORS } from '@/lib/ratoon-colors'
 import PlatSheet from '@/components/print/PlatSheet'
 
@@ -10,10 +10,11 @@ export const metadata: Metadata = { title: 'Print selected blocks' }
 export default async function SelectedBlocksPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ids?: string }>
+  searchParams: Promise<{ ids?: string; style?: string }>
 }) {
-  const { ids: idsRaw } = await searchParams
+  const { ids: idsRaw, style: styleRaw } = await searchParams
   const { org } = await requireUserAndOrg()
+  const isSpray = styleRaw === 'spray'
 
   const ids = (idsRaw ?? '')
     .split(',')
@@ -22,7 +23,9 @@ export default async function SelectedBlocksPrintPage({
   const blocks = await listFieldsByIds(ids)
 
   const unitsArpents = org.units_default === 'arpents'
-  const svg = buildPlantationSvg(blocks, { unitsArpents })
+  const svg = isSpray
+    ? buildSpraySvg(blocks, { unitsArpents })
+    : buildPlantationSvg(blocks, { unitsArpents })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
@@ -30,12 +33,12 @@ export default async function SelectedBlocksPrintPage({
   const meta = `${blocks.length} block${blocks.length === 1 ? '' : 's'} · ${totalLabel}`
 
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-  const legendItems = svg ? RATOON_COLORS.filter((r) => svg.stagesPresent.includes(r.key)) : []
+  const legendItems = isSpray || !svg ? [] : RATOON_COLORS.filter((r) => svg.stagesPresent.includes(r.key))
 
   return (
     <PlatSheet
       orgName={org.name}
-      title="Selected blocks"
+      title={isSpray ? 'Spray map' : 'Selected blocks'}
       meta={meta}
       svg={svg}
       legendItems={legendItems}
@@ -43,6 +46,7 @@ export default async function SelectedBlocksPrintPage({
       today={today}
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks selected to print."
+      style={isSpray ? 'spray' : 'crop'}
     />
   )
 }

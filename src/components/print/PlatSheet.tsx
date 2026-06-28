@@ -23,6 +23,7 @@ export default function PlatSheet({
   today,
   unitWord,
   emptyMessage,
+  style = 'crop',
 }: {
   orgName: string
   title: string
@@ -33,7 +34,11 @@ export default function PlatSheet({
   today: string
   unitWord: string
   emptyMessage: string
+  // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
+  // black boundaries, no ratoon legend). 'crop' = colored plat map.
+  style?: 'crop' | 'spray'
 }) {
+  const isSpray = style === 'spray'
   return (
     <>
       <AutoPrint />
@@ -99,13 +104,13 @@ export default function PlatSheet({
               color: '#374151',
             }}
           >
-            {legendItems.map((r) => (
+            {!isSpray && legendItems.map((r) => (
               <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 11, height: 11, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
                 {r.label}
               </span>
             ))}
-            {hasUnset && (
+            {!isSpray && hasUnset && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 11, height: 11, background: UNSET_RATOON_COLOR, border: '1px solid #00000022', display: 'inline-block' }} />
                 No cut set
@@ -128,8 +133,8 @@ export default function PlatSheet({
                 key={b.id}
                 points={b.points}
                 fill={b.color}
-                stroke="#1f2937"
-                strokeWidth={0.8}
+                stroke={isSpray ? '#000000' : '#1f2937'}
+                strokeWidth={isSpray ? 1.2 : 0.8}
                 strokeLinejoin="round"
               />
             ))}
@@ -156,7 +161,9 @@ export default function PlatSheet({
         )}
 
         <p style={{ fontSize: 8, color: '#9CA3AF', marginTop: 6 }}>
-          Acreage shown in {unitWord}. Colored by year cane. {SITE_NAME} · headland.farm
+          Acreage shown in {unitWord}.{' '}
+          {isSpray ? 'Outline map for spraying — blocks by name and acreage.' : 'Colored by year cane.'}{' '}
+          {SITE_NAME} · headland.farm
         </p>
       </div>
     </>
