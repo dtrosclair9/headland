@@ -35,8 +35,33 @@ const PRINT_AREA_ASPECT = 1.59
 // with a cos(lat) longitude correction, accurate for a single farm/plantation.
 // The whole farm is rotated to the orientation that maximizes printed area on a
 // landscape page; block labels stay upright. No basemap; plat-map schematic.
+//
+// Two render styles share all the geometry:
+//  - 'crop'  → each block filled with its ratoon color; small blocks drop their
+//              name to avoid clutter.
+//  - 'spray' → every block white (the pilot colors it in); EVERY block keeps its
+//              name (font shrinks to a lower floor to fit slivers).
+type SvgStyle = 'crop' | 'spray'
+
+// Colored plat map (blocks by year cane). Default print/screen schematic.
 export function buildPlantationSvg(
   blocks: FieldRow[],
+  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
+): PlantationSvg | null {
+  return buildSvg(blocks, 'crop', opts)
+}
+
+// Black-and-white outline map for sprayer pilots: white fill, every block named.
+export function buildSpraySvg(
+  blocks: FieldRow[],
+  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
+): PlantationSvg | null {
+  return buildSvg(blocks, 'spray', opts)
+}
+
+function buildSvg(
+  blocks: FieldRow[],
+  style: SvgStyle,
   opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
 ): PlantationSvg | null {
   const canvasWidth = opts.canvasWidth ?? 1100
@@ -140,7 +165,9 @@ export function buildPlantationSvg(
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     const minDim = Math.min(bMaxX - bMinX, bMaxY - bMinY)
-    const fontSize = clamp(minDim * 0.16, 6, 15)
+    // Spray sheets must name every block, so they allow a smaller font floor to
+    // fit slivers; the crop sheet keeps a larger floor and hides tiny names.
+    const fontSize = clamp(minDim * 0.16, style === 'spray' ? 4.5 : 6, 15)
 
     if (b.current_ratoon) stages.add(b.current_ratoon)
     else hasUnset = true
@@ -153,11 +180,11 @@ export function buildPlantationSvg(
     return {
       id: b.id,
       points: coords.join(' '),
-      color: colorForRatoon(b.current_ratoon),
+      color: style === 'spray' ? '#FFFFFF' : colorForRatoon(b.current_ratoon),
       labelX: lx,
       labelY: ly,
       fontSize,
-      showName: minDim > 40,
+      showName: style === 'spray' ? true : minDim > 40,
       name: b.name,
       acreageLabel,
     }

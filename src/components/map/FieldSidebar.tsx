@@ -6,10 +6,13 @@ import type { FieldRow } from '@/lib/fields'
 import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { friendlyError } from '@/lib/errors'
+import type { ViewMode } from './FieldMap'
 
 interface FieldSidebarProps {
   fields: FieldRow[]
   units: Units
+  // Active map view; when 'spray', the print links output the B&W spray sheet.
+  viewMode: ViewMode
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
   totalAcres: number
@@ -31,6 +34,7 @@ interface FieldSidebarProps {
 export default function FieldSidebar({
   fields,
   units,
+  viewMode,
   selectedFieldId,
   onSelectField,
   totalAcres,
@@ -45,6 +49,9 @@ export default function FieldSidebar({
   onRepositionPlantation,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
+  // In spray-map view the print links output the B&W spray sheet (and say so).
+  const isSpray = viewMode === 'spray'
+  const sprayParam = isSpray ? '&style=spray' : ''
   // Combined acreage of the bulk-selected blocks (live as you tap blocks).
   const selectedArea = useMemo(
     () =>
@@ -167,13 +174,13 @@ export default function FieldSidebar({
                           Move
                         </button>
                         <a
-                          href={`/plantations/${plantationId}/print`}
+                          href={`/plantations/${plantationId}/print${isSpray ? '?style=spray' : ''}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-primary font-semibold hover:underline"
-                          title={`Print ${group.name}`}
+                          title={isSpray ? `Print spray map of ${group.name}` : `Print ${group.name}`}
                         >
-                          Print
+                          {isSpray ? 'Spray map' : 'Print'}
                         </a>
                       </span>
                     )}
@@ -357,12 +364,12 @@ export default function FieldSidebar({
                 Move / rotate {selectedIds.size} on map →
               </button>
               <a
-                href={`/blocks/print?ids=${Array.from(selectedIds).join(',')}`}
+                href={`/blocks/print?ids=${Array.from(selectedIds).join(',')}${sprayParam}`}
                 target="_blank"
                 rel="noreferrer"
                 className="block text-center w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
               >
-                Print {selectedIds.size} selected →
+                {isSpray ? `Spray map of ${selectedIds.size} selected →` : `Print ${selectedIds.size} selected →`}
               </a>
             </>
           )}
