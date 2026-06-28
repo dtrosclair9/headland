@@ -165,14 +165,16 @@ export default function FieldSidebar({
                     <span>{group.fields.length} · {groupArea.primary}</span>
                     {plantationId && !selectMode && (
                       <span className="flex items-center gap-4 pl-1">
-                        <button
-                          type="button"
-                          onClick={() => onRepositionPlantation(plantationId)}
-                          className="text-primary font-semibold hover:underline"
-                          title={`Move/rotate all of ${group.name} on the map`}
-                        >
-                          Move
-                        </button>
+                        {!isSpray && (
+                          <button
+                            type="button"
+                            onClick={() => onRepositionPlantation(plantationId)}
+                            className="text-primary font-semibold hover:underline"
+                            title={`Move/rotate all of ${group.name} on the map`}
+                          >
+                            Move
+                          </button>
+                        )}
                         <a
                           href={`/plantations/${plantationId}/print${isSpray ? '?style=spray' : ''}`}
                           target="_blank"
@@ -342,27 +344,33 @@ export default function FieldSidebar({
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setAssignOpen(true)}
-                className="btn-primary w-full text-sm"
-              >
-                Assign {selectedIds.size} to plantation…
-              </button>
-              <button
-                type="button"
-                onClick={() => setRotateOpen(true)}
-                className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
-              >
-                Rotate {selectedIds.size} to next cycle →
-              </button>
-              <button
-                type="button"
-                onClick={onStartReposition}
-                className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
-              >
-                Move / rotate {selectedIds.size} on map →
-              </button>
+              {/* Spray map is view-and-print only — hide the editing actions
+                  (assign / rotate / move) and leave just the spray-map export. */}
+              {!isSpray && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAssignOpen(true)}
+                    className="btn-primary w-full text-sm"
+                  >
+                    Assign {selectedIds.size} to plantation…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRotateOpen(true)}
+                    className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
+                  >
+                    Rotate {selectedIds.size} to next cycle →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onStartReposition}
+                    className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
+                  >
+                    Move / rotate {selectedIds.size} on map →
+                  </button>
+                </>
+              )}
               <a
                 href={`/blocks/print?ids=${Array.from(selectedIds).join(',')}${sprayParam}`}
                 target="_blank"
