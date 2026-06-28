@@ -182,7 +182,7 @@ export default function FieldSidebar({
                           className="text-primary font-semibold hover:underline"
                           title={isSpray ? `Print spray map of ${group.name}` : `Print ${group.name}`}
                         >
-                          {isSpray ? 'Spray map' : 'Print'}
+                          {isSpray ? 'Print spray map' : 'Print'}
                         </a>
                       </span>
                     )}
@@ -377,7 +377,7 @@ export default function FieldSidebar({
                 rel="noreferrer"
                 className="block text-center w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
               >
-                {isSpray ? `Spray map of ${selectedIds.size} selected →` : `Print ${selectedIds.size} selected →`}
+                {isSpray ? `Print spray map of ${selectedIds.size} selected →` : `Print ${selectedIds.size} selected →`}
               </a>
             </>
           )}
