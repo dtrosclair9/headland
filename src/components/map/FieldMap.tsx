@@ -368,6 +368,22 @@ export default function FieldMap({
         paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#0F2A1F', 'text-halo-width': 1.5 },
       })
       map.addLayer({
+        id: 'field-label-variety',
+        type: 'symbol',
+        source: 'field-corner-labels',
+        filter: ['==', ['get', 'corner'], 'variety'],
+        minzoom: 14,
+        layout: {
+          'text-field': ['get', 'text'],
+          'text-size': labelSize(false),
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top-right',
+          'text-offset': [-0.3, 0.3],
+          'text-max-width': 8,
+        },
+        paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#0F2A1F', 'text-halo-width': 1.5 },
+      })
+      map.addLayer({
         id: 'field-label-acres',
         type: 'symbol',
         source: 'field-corner-labels',
@@ -618,6 +634,11 @@ export default function FieldMap({
           },
           {
             type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [maxLng, maxLat] },
+            properties: { corner: 'variety', text: f.variety ?? '' },
+          },
+          {
+            type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: [maxLng, minLat] },
             properties: { corner: 'acres', text: `${acres.toFixed(2)} ac` },
           },
@@ -678,7 +699,7 @@ export default function FieldMap({
     // sheet). Applies to the center cut label AND both corner labels.
     const textColor = isSpray ? '#111827' : '#FFFFFF'
     const haloColor = isSpray ? '#FFFFFF' : '#0F2A1F'
-    for (const id of ['fields-label', 'field-label-id', 'field-label-acres']) {
+    for (const id of ['fields-label', 'field-label-id', 'field-label-variety', 'field-label-acres']) {
       map.setPaintProperty(id, 'text-color', textColor)
       map.setPaintProperty(id, 'text-halo-color', haloColor)
     }
@@ -692,6 +713,7 @@ export default function FieldMap({
       'fields-outline',
       'fields-label',
       'field-label-id',
+      'field-label-variety',
       'field-label-acres',
       'selected-highlight-line',
       'reposition-fill',
