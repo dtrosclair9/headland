@@ -1,16 +1,34 @@
 import type { FieldRow } from '@/lib/fields'
-import { colorForRatoon } from '@/lib/ratoon-colors'
+import { colorForRatoon, cutAbbrev } from '@/lib/ratoon-colors'
+import { cornerLabelAnchors } from '@/components/map/cornerLabels'
 
 export interface SvgBlock {
   id: string
   points: string
   color: string
+  /** center point — cut label (when showCorners) or the small-block fallback */
   labelX: number
   labelY: number
   fontSize: number
-  showName: boolean
   name: string
+  variety: string
   acreageLabel: string
+  /** abbreviated cut for the center of the block (P / 1st / … / F), '' if unset */
+  cutLabel: string
+  /**
+   * Big enough to carry the map's 4-label layout: name top-left, variety
+   * top-right, acres bottom-right, cut in the center. Small blocks fall back to
+   * a centered name + acreage so slivers don't turn to mush.
+   */
+  showCorners: boolean
+  /** small-block fallback still names the block (always true on spray sheets) */
+  showName: boolean
+  nameX: number
+  nameY: number
+  varietyX: number
+  varietyY: number
+  acresX: number
+  acresY: number
 }
 
 export interface PlantationSvg {
@@ -146,6 +164,13 @@ function buildSvg(
     const [rx, ry] = rot(lng, lat)
     return [pad + (rx - minX) * scale, pad + (maxY - ry) * scale] // flip Y for SVG
   }
+  // Same flip, but from already-rotated planar coords — used to place the corner
+  // label anchors, which are computed in rotated-planar space (+Y up) so the
+  // top/bottom corners land correctly before this Y-flip.
+  const planarToSvg = (rx: number, ry: number): [number, number] => [
+    pad + (rx - minX) * scale,
+    pad + (maxY - ry) * scale,
+  ]
 
   const stages = new Set<string>()
   let hasUnset = false
@@ -156,8 +181,13 @@ function buildSvg(
       bMaxX = -Infinity,
       bMinY = Infinity,
       bMaxY = -Infinity
+    // Rotated-planar ring (+Y up) for the corner-anchor math; SVG coords for the
+    // drawn polygon come from the same points via the Y-flip.
+    const planarRing: [number, number][] = []
     const coords = outer.map(([lng, lat]) => {
-      const [x, y] = toXY(lng, lat)
+      const [rx, ry] = rot(lng, lat)
+      planarRing.push([rx, ry])
+      const [x, y] = planarToSvg(rx, ry)
       if (x < bMinX) bMinX = x
       if (x > bMaxX) bMaxX = x
       if (y < bMinY) bMinY = y
@@ -176,17 +206,35 @@ function buildSvg(
       ? Number(b.arpents_cached || 0).toFixed(2)
       : Number(b.acreage_cached || 0).toFixed(2)
 
-    const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
+    // Corner anchors, mirroring the interactive map (name TL, variety TR, acres
+    // BR, cut center). Only used when the block is large enough to read 4 labels;
+    // otherwise fall back to a centered name + acreage.
+    const anchors = cornerLabelAnchors(planarRing)
+    const showCorners = minDim > 60 && anchors !== null
+    const [cutX, cutY] = anchors ? planarToSvg(anchors.center[0], anchors.center[1]) : toXY(b.centroid_lng, b.centroid_lat)
+    const [nameX, nameY] = anchors ? planarToSvg(anchors.id[0], anchors.id[1]) : [cutX, cutY]
+    const [varietyX, varietyY] = anchors ? planarToSvg(anchors.variety[0], anchors.variety[1]) : [cutX, cutY]
+    const [acresX, acresY] = anchors ? planarToSvg(anchors.acres[0], anchors.acres[1]) : [cutX, cutY]
+
     return {
       id: b.id,
       points: coords.join(' '),
       color: style === 'spray' ? '#FFFFFF' : colorForRatoon(b.current_ratoon),
-      labelX: lx,
-      labelY: ly,
+      labelX: cutX,
+      labelY: cutY,
       fontSize,
+      showCorners,
       showName: style === 'spray' ? true : minDim > 40,
       name: b.name,
+      variety: b.variety ?? '',
       acreageLabel,
+      cutLabel: cutAbbrev(b.current_ratoon),
+      nameX,
+      nameY,
+      varietyX,
+      varietyY,
+      acresX,
+      acresY,
     }
   })
 

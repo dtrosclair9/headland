@@ -22,3 +22,22 @@ export function colorForRatoon(stage: string | null | undefined): string {
   if (!stage) return UNSET_RATOON_COLOR
   return RATOON_COLORS.find((r) => r.key === stage)?.color ?? UNSET_RATOON_COLOR
 }
+
+// Short cut label that sits in the center of a block (P / 1st / … / 6th+ / F).
+// Same mapping the interactive map uses, shared so the printed sheet matches.
+// Empty string when no cut is set.
+const CUT_ABBREV: Record<string, string> = {
+  plant_cane: 'P',
+  first_stubble: '1st',
+  second_stubble: '2nd',
+  third_stubble: '3rd',
+  fourth_stubble: '4th',
+  fifth_stubble_plus: '5th',
+  sixth_stubble_plus: '6th+',
+  fallow: 'F',
+}
+
+export function cutAbbrev(stage: string | null | undefined): string {
+  if (!stage) return ''
+  return CUT_ABBREV[stage] ?? ''
+}
