@@ -9,6 +9,7 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import type { FieldRow } from '@/lib/fields'
 import type { CaneState } from '@/lib/types'
 import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import { cornerLabelAnchors } from './cornerLabels'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const SELECTED_COLOR = '#E8A33D'
@@ -605,41 +606,34 @@ export default function FieldMap({
       })),
     })
 
-    // Corner label points: for each block, id at the top-left bbox corner and
-    // acreage at the bottom-right, so they read inside opposite corners.
+    // Corner label points: cut in the block's center, id / variety / acres
+    // anchored to three actual corners (see cornerLabelAnchors — bbox corners
+    // land outside angled cane blocks).
     const cornerSrc = map.getSource('field-corner-labels') as mapboxgl.GeoJSONSource | undefined
     if (cornerSrc) {
       const cornerFeatures = fields.flatMap((f) => {
-        let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
-        for (const ring of f.geometry.coordinates) {
-          for (const [lng, lat] of ring) {
-            if (lng < minLng) minLng = lng
-            if (lat < minLat) minLat = lat
-            if (lng > maxLng) maxLng = lng
-            if (lat > maxLat) maxLat = lat
-          }
-        }
-        if (!Number.isFinite(minLng)) return []
+        const anchors = cornerLabelAnchors(f.geometry.coordinates[0] as [number, number][] | undefined)
+        if (!anchors) return []
         const acres = Number(f.acreage_cached || 0)
         return [
           {
             type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [(minLng + maxLng) / 2, (minLat + maxLat) / 2] },
+            geometry: { type: 'Point' as const, coordinates: anchors.center },
             properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset' },
           },
           {
             type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [minLng, maxLat] },
+            geometry: { type: 'Point' as const, coordinates: anchors.id },
             properties: { corner: 'id', text: f.name ?? '' },
           },
           {
             type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [maxLng, maxLat] },
+            geometry: { type: 'Point' as const, coordinates: anchors.variety },
             properties: { corner: 'variety', text: f.variety ?? '' },
           },
           {
             type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [maxLng, minLat] },
+            geometry: { type: 'Point' as const, coordinates: anchors.acres },
             properties: { corner: 'acres', text: `${acres.toFixed(2)} ac` },
           },
         ]

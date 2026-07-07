@@ -82,31 +82,45 @@ async function main() {
   console.log('ensured membership')
 
   // 4. Seed a few fake blocks (only if the org has none yet) in open LA farmland.
+  //    These are ANGLED parallelograms, not axis-aligned squares — real cane
+  //    blocks are skewed, and that skew is what exercises corner-label placement
+  //    (a bbox corner lands outside an angled block). Each carries a variety and
+  //    a cut so the id / variety / acres / center-cut labels have real content.
   const have = (await pg.query('select count(*)::int n from fields where org_id=$1', [org.id])).rows[0].n
   if (have === 0) {
     const baseLng = -91.05
     const baseLat = 29.95
+    const varieties = ['L 01-299', 'HoCP 96-540', 'L 12-201', 'L 01-283', 'HoCP 04-838', 'L 11-183']
+    const ratoons = [
+      'plant_cane', 'first_stubble', 'second_stubble', 'third_stubble', 'fourth_stubble', 'fallow',
+    ]
     for (let i = 0; i < 6; i++) {
-      const ox = baseLng + (i % 3) * 0.004
-      const oy = baseLat + Math.floor(i / 3) * 0.004
+      const ox = baseLng + (i % 3) * 0.005
+      const oy = baseLat + Math.floor(i / 3) * 0.0045
+      // Per-block skew so no two blocks share a shape, matching how real rows
+      // lean at different angles across a farm.
+      const skew = 0.0006 + (i % 3) * 0.0004 // horizontal lean of the top edge
+      const rise = 0.0003 * (i % 2 === 0 ? 1 : -1) // slight vertical tilt
+      const w = 0.0034
+      const h = 0.0032
       const ring = [
         [ox, oy],
-        [ox + 0.0032, oy],
-        [ox + 0.0032, oy + 0.003],
-        [ox, oy + 0.003],
+        [ox + w, oy + rise],
+        [ox + w + skew, oy + h + rise],
+        [ox + skew, oy + h],
         [ox, oy],
       ]
       const gj = JSON.stringify({ type: 'Polygon', coordinates: [ring] })
       await pg.query(
-        `insert into fields (org_id, name, geometry, acreage_cached, arpents_cached)
-         select $1, $2, g::geography,
+        `insert into fields (org_id, name, variety, current_ratoon, geometry, acreage_cached, arpents_cached)
+         select $1, $2, $3, $4::ratoon_stage, g::geography,
                 round((ST_Area(g::geography)*0.000247105)::numeric,2),
                 round((ST_Area(g::geography)*0.000247105/0.84628)::numeric,2)
-         from (select ST_GeomFromGeoJSON($3) g) s`,
-        [org.id, 'Test ' + (i + 1), gj],
+         from (select ST_GeomFromGeoJSON($5) g) s`,
+        [org.id, 'Test ' + (i + 1), varieties[i], ratoons[i], gj],
       )
     }
-    console.log('seeded 6 test blocks')
+    console.log('seeded 6 angled test blocks (with variety + cut)')
   } else {
     console.log('blocks already present:', have)
   }
