@@ -87,37 +87,31 @@ function translatePolygon(geom: GeoJSON.Polygon, dLng: number, dLat: number): Ge
 
 export type ViewMode = 'satellite' | 'crop' | 'spray'
 
-// Satellite label: name + variety + truncated note (ground-truth context while
-// drawing / scouting). Each optional line gets a conditional newline so empty
-// values don't leave blank gaps.
-function satelliteLabelExpression(): mapboxgl.ExpressionSpecification {
+// Center label: the cut/ratoon abbreviated to sit in the middle of the block
+// (P = plant cane, 1st–5th stubble, 6th+, F = fallow). Blank when unset. Block
+// id and acreage go in the corners via a separate points layer.
+function cutLabelExpression(): mapboxgl.ExpressionSpecification {
   return [
-    'format',
-    ['get', 'name'],
-    { 'font-scale': 1 },
-    ['case', ['!=', ['get', 'variety'], ''], '\n', ''],
-    {},
-    ['get', 'variety'],
-    { 'font-scale': 0.75 },
-    ['case', ['!=', ['get', 'notes_short'], ''], '\n', ''],
-    {},
-    ['get', 'notes_short'],
-    { 'font-scale': 0.65 },
+    'match',
+    ['get', 'ratoon'],
+    'plant_cane', 'P',
+    'first_stubble', '1st',
+    'second_stubble', '2nd',
+    'third_stubble', '3rd',
+    'fourth_stubble', '4th',
+    'fifth_stubble_plus', '5th',
+    'sixth_stubble_plus', '6th+',
+    'fallow', 'F',
+    '',
   ] as unknown as mapboxgl.ExpressionSpecification
 }
 
-// Crop-map label: block name + acreage, matching the printed plat maps where
-// the acreage number is the headline figure inside each block.
-function cropLabelExpression(): mapboxgl.ExpressionSpecification {
-  return [
-    'format',
-    ['get', 'name'],
-    { 'font-scale': 0.85 },
-    '\n',
-    {},
-    ['concat', ['number-format', ['get', 'acreage'], { 'max-fraction-digits': 2 }], ' ac'],
-    { 'font-scale': 1 },
-  ] as unknown as mapboxgl.ExpressionSpecification
+// Zoom-scaled text size (grows as you zoom in). center=true is the big middle
+// cut label; the corner id/acres labels are smaller.
+function labelSize(center: boolean): mapboxgl.ExpressionSpecification {
+  return center
+    ? ['interpolate', ['linear'], ['zoom'], 13, 13, 17, 22]
+    : ['interpolate', ['linear'], ['zoom'], 14, 10, 17, 15]
 }
 
 export interface FieldMapProps {
@@ -330,26 +324,63 @@ export default function FieldMap({
         source: 'selected-highlight',
         paint: { 'line-color': '#22D3EE', 'line-width': 4 },
       })
+      // Per-block label points: a 'center' point (the cut) at the block's
+      // middle, plus 'id' (top-left) and 'acres' (bottom-right) corner points,
+      // all computed from each block's bounding box. Labeling POINTS instead of
+      // the polygon matters: a symbol on a big polygon gets its centroid label
+      // duplicated once per tile the polygon spans at high zoom — points don't.
+      map.addSource('field-corner-labels', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
       map.addLayer({
         id: 'fields-label',
         type: 'symbol',
-        source: 'fields',
+        source: 'field-corner-labels',
+        filter: ['==', ['get', 'corner'], 'center'],
         layout: {
-          // Default to the satellite label; the view-mode effect swaps to the
-          // acreage-forward crop label when needed.
-          'text-field': satelliteLabelExpression(),
-          'text-size': 13,
+          // Center of the block: the cut, abbreviated (P / 1st / … / F).
+          'text-field': cutLabelExpression(),
+          'text-size': labelSize(true),
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-line-height': 1.15,
-          // Wrap rather than overflow if Mapbox decides the line is too wide
-          // for the polygon. 10 ems ≈ 130px at our text-size, a sensible cap.
-          'text-max-width': 10,
         },
         paint: {
           'text-color': '#FFFFFF',
           'text-halo-color': '#0F2A1F',
           'text-halo-width': 1.5,
         },
+      })
+      // Corner labels only appear once zoomed in enough to fit: minzoom floor +
+      // Mapbox's built-in label collision (which hides a label until there's room).
+      map.addLayer({
+        id: 'field-label-id',
+        type: 'symbol',
+        source: 'field-corner-labels',
+        filter: ['==', ['get', 'corner'], 'id'],
+        minzoom: 14,
+        layout: {
+          'text-field': ['get', 'text'],
+          'text-size': labelSize(false),
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top-left',
+          'text-offset': [0.3, 0.3],
+        },
+        paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#0F2A1F', 'text-halo-width': 1.5 },
+      })
+      map.addLayer({
+        id: 'field-label-acres',
+        type: 'symbol',
+        source: 'field-corner-labels',
+        filter: ['==', ['get', 'corner'], 'acres'],
+        minzoom: 14,
+        layout: {
+          'text-field': ['get', 'text'],
+          'text-size': labelSize(false),
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'bottom-right',
+          'text-offset': [-0.3, -0.3],
+        },
+        paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#0F2A1F', 'text-halo-width': 1.5 },
       })
 
       // Tapping a block needs to DO something visible — on mobile the sidebar is
@@ -558,6 +589,43 @@ export default function FieldMap({
       })),
     })
 
+    // Corner label points: for each block, id at the top-left bbox corner and
+    // acreage at the bottom-right, so they read inside opposite corners.
+    const cornerSrc = map.getSource('field-corner-labels') as mapboxgl.GeoJSONSource | undefined
+    if (cornerSrc) {
+      const cornerFeatures = fields.flatMap((f) => {
+        let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+        for (const ring of f.geometry.coordinates) {
+          for (const [lng, lat] of ring) {
+            if (lng < minLng) minLng = lng
+            if (lat < minLat) minLat = lat
+            if (lng > maxLng) maxLng = lng
+            if (lat > maxLat) maxLat = lat
+          }
+        }
+        if (!Number.isFinite(minLng)) return []
+        const acres = Number(f.acreage_cached || 0)
+        return [
+          {
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [(minLng + maxLng) / 2, (minLat + maxLat) / 2] },
+            properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset' },
+          },
+          {
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [minLng, maxLat] },
+            properties: { corner: 'id', text: f.name ?? '' },
+          },
+          {
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [maxLng, minLat] },
+            properties: { corner: 'acres', text: `${acres.toFixed(2)} ac` },
+          },
+        ]
+      })
+      cornerSrc.setData({ type: 'FeatureCollection', features: cornerFeatures })
+    }
+
     if (fields.length > 0) {
       const bounds = new mapboxgl.LngLatBounds()
       for (const f of fields) {
@@ -605,14 +673,15 @@ export default function FieldMap({
     map.setPaintProperty('fields-fill', 'fill-opacity', isSpray ? 1 : isCrop ? 0.92 : 0.4)
     map.setPaintProperty('fields-outline', 'line-color', lineColorExpression(selectedFieldId, viewMode))
     map.setPaintProperty('fields-outline', 'line-width', isSpray ? 2.5 : isCrop ? 1.5 : 2)
-    map.setLayoutProperty(
-      'fields-label',
-      'text-field',
-      onWhiteSheet ? cropLabelExpression() : satelliteLabelExpression(),
-    )
-    // Black labels on the white spray sheet; white labels (dark halo) otherwise.
-    map.setPaintProperty('fields-label', 'text-color', isSpray ? '#111827' : '#FFFFFF')
-    map.setPaintProperty('fields-label', 'text-halo-color', isSpray ? '#FFFFFF' : '#0F2A1F')
+    // Label colors per mode: black text on the white spray sheet; white text
+    // with a dark halo otherwise (satellite imagery + the color-filled crop
+    // sheet). Applies to the center cut label AND both corner labels.
+    const textColor = isSpray ? '#111827' : '#FFFFFF'
+    const haloColor = isSpray ? '#FFFFFF' : '#0F2A1F'
+    for (const id of ['fields-label', 'field-label-id', 'field-label-acres']) {
+      map.setPaintProperty(id, 'text-color', textColor)
+      map.setPaintProperty(id, 'text-halo-color', haloColor)
+    }
 
     // Crop/spray = a blank white plat sheet: hide EVERY basemap layer (raster,
     // streets, labels, water) and leave only our block layers on a white
@@ -622,6 +691,8 @@ export default function FieldMap({
       'fields-fill',
       'fields-outline',
       'fields-label',
+      'field-label-id',
+      'field-label-acres',
       'selected-highlight-line',
       'reposition-fill',
       'reposition-outline',
