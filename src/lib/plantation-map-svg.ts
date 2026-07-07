@@ -1,34 +1,30 @@
 import type { FieldRow } from '@/lib/fields'
 import { colorForRatoon, cutAbbrev } from '@/lib/ratoon-colors'
-import { cornerLabelAnchors } from '@/components/map/cornerLabels'
+
+export interface LabelLine {
+  text: string
+  bold: boolean
+}
 
 export interface SvgBlock {
   id: string
   points: string
   color: string
-  /** center point — cut label (when showCorners) or the small-block fallback */
+  /** block center — anchor for both the single-field acreage and the stack */
   labelX: number
   labelY: number
+  /** base font (single-field print's centered acreage) */
   fontSize: number
-  name: string
-  variety: string
+  /** single-field print label */
   acreageLabel: string
-  /** abbreviated cut for the center of the block (P / 1st / … / F), '' if unset */
-  cutLabel: string
   /**
-   * Big enough to carry the map's 4-label layout: name top-left, variety
-   * top-right, acres bottom-right, cut in the center. Small blocks fall back to
-   * a centered name + acreage so slivers don't turn to mush.
+   * Plat-sheet label: the same info the interactive map shows (name, cut,
+   * variety, acres) as a centered vertical stack, sized to the block and
+   * trimmed to the lines that fit. Centered stacking is collision-proof — real
+   * cane blocks are narrow angled parallelograms where corner labels overlap.
    */
-  showCorners: boolean
-  /** small-block fallback still names the block (always true on spray sheets) */
-  showName: boolean
-  nameX: number
-  nameY: number
-  varietyX: number
-  varietyY: number
-  acresX: number
-  acresY: number
+  labelFont: number
+  lines: LabelLine[]
 }
 
 export interface PlantationSvg {
@@ -42,6 +38,87 @@ export interface PlantationSvg {
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n))
+}
+
+// The room a horizontally-centered label actually has inside a block. Rays cast
+// from the centroid to the polygon edges (horizontally for width, vertically for
+// height). This is the TRUE usable box — a block's axis-aligned bounding box
+// badly overestimates width once the farm is rotated and blocks become tilted
+// parallelograms (bbox width includes the shear, not the real cross-section).
+function centeredBox(ring: [number, number][], cx: number, cy: number): { w: number; h: number } {
+  // Intersections of the polygon edges with the line `along === value`.
+  const cross = (alongX: boolean, value: number): number[] => {
+    const out: number[] = []
+    for (let i = 0; i < ring.length - 1; i++) {
+      const a = ring[i]
+      const b = ring[i + 1]
+      const ca = alongX ? a[0] : a[1]
+      const cb = alongX ? b[0] : b[1]
+      if (ca === cb) continue
+      const t = (value - ca) / (cb - ca)
+      if (t < 0 || t > 1) continue
+      out.push(alongX ? a[1] + t * (b[1] - a[1]) : a[0] + t * (b[0] - a[0]))
+    }
+    return out
+  }
+  // Horizontal room: where the polygon crosses y = cy.
+  const xs = cross(false, cy)
+  const ys = cross(true, cx)
+  const w = xs.length >= 2 ? 2 * Math.min(cx - Math.min(...xs), Math.max(...xs) - cx) : 0
+  const h = ys.length >= 2 ? 2 * Math.min(cy - Math.min(...ys), Math.max(...ys) - cy) : 0
+  return { w: Math.max(0, w), h: Math.max(0, h) }
+}
+
+// Compact variety code for the plat sheet: 'v' + the last 3 digits of the
+// variety (e.g. 'HoCP 96-540' → 'v540', 'L 01-299' → 'v299', '838' → 'v838'),
+// so a variety never eats horizontal space in a narrow block. Empty when the
+// variety carries no digits (e.g. a stray 'Fallow' in the variety column).
+export function varietyCode(variety: string | null | undefined): string {
+  const digits = String(variety ?? '').replace(/\D/g, '')
+  return digits ? 'v' + digits.slice(-3) : ''
+}
+
+// Plan a block's centered label stack. Given the block's width/height in SVG px
+// and its parts, choose a font size and the lines that actually fit — dropping
+// the lowest-priority line (variety → cut → acres) until the stack fits both
+// vertically and horizontally. Display order is always name / cut / variety /
+// acres so identity reads on top and acreage on the bottom.
+function planLabel(
+  w: number,
+  h: number,
+  parts: { name: string; cut: string; variety: string; acres: string },
+  floor: number,
+  cutBeforeVariety: boolean,
+): { font: number; lines: LabelLine[] } {
+  const named = parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
+  const cand: { text: string; bold: boolean; prio: number; order: number }[] = []
+  if (named) cand.push({ text: parts.name, bold: true, prio: 1, order: 0 })
+  cand.push({ text: parts.acres, bold: false, prio: 2, order: 3 })
+  // On the spray sheet cut isn't shown by color, so keep it longer than variety;
+  // on the crop sheet the fill already encodes cut, so drop it first.
+  if (parts.cut) cand.push({ text: parts.cut, bold: true, prio: cutBeforeVariety ? 3 : 4, order: 1 })
+  if (parts.variety) cand.push({ text: parts.variety, bold: false, prio: cutBeforeVariety ? 4 : 3, order: 2 })
+
+  const CAP = 15
+  const CHAR_W = 0.6 // approx glyph advance as a fraction of font size
+  const LINE_H = 1.16
+  const base = clamp(Math.min(w, h) * 0.28, floor, CAP)
+
+  // Keep candidates by priority; drop the least important until it fits at a
+  // readable size (or only one line is left).
+  const keep = [...cand].sort((a, b) => a.prio - b.prio)
+  let font = base
+  while (keep.length) {
+    const fontV = (h * 0.9) / (keep.length * LINE_H)
+    const widest = Math.max(...keep.map((c) => c.text.length * CHAR_W))
+    const fontH = (w * 0.92) / widest
+    font = Math.min(base, fontV, fontH)
+    if (font >= floor || keep.length === 1) break
+    keep.pop()
+  }
+  font = clamp(font, floor, CAP)
+  const lines = keep.sort((a, b) => a.order - b.order).map((c) => ({ text: c.text, bold: c.bold }))
+  return { font, lines }
 }
 
 // Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
@@ -164,13 +241,6 @@ function buildSvg(
     const [rx, ry] = rot(lng, lat)
     return [pad + (rx - minX) * scale, pad + (maxY - ry) * scale] // flip Y for SVG
   }
-  // Same flip, but from already-rotated planar coords — used to place the corner
-  // label anchors, which are computed in rotated-planar space (+Y up) so the
-  // top/bottom corners land correctly before this Y-flip.
-  const planarToSvg = (rx: number, ry: number): [number, number] => [
-    pad + (rx - minX) * scale,
-    pad + (maxY - ry) * scale,
-  ]
 
   const stages = new Set<string>()
   let hasUnset = false
@@ -181,13 +251,10 @@ function buildSvg(
       bMaxX = -Infinity,
       bMinY = Infinity,
       bMaxY = -Infinity
-    // Rotated-planar ring (+Y up) for the corner-anchor math; SVG coords for the
-    // drawn polygon come from the same points via the Y-flip.
-    const planarRing: [number, number][] = []
+    const svgRing: [number, number][] = []
     const coords = outer.map(([lng, lat]) => {
-      const [rx, ry] = rot(lng, lat)
-      planarRing.push([rx, ry])
-      const [x, y] = planarToSvg(rx, ry)
+      const [x, y] = toXY(lng, lat)
+      svgRing.push([x, y])
       if (x < bMinX) bMinX = x
       if (x > bMaxX) bMaxX = x
       if (y < bMinY) bMinY = y
@@ -196,7 +263,7 @@ function buildSvg(
     })
     const minDim = Math.min(bMaxX - bMinX, bMaxY - bMinY)
     // Spray sheets must name every block, so they allow a smaller font floor to
-    // fit slivers; the crop sheet keeps a larger floor and hides tiny names.
+    // fit slivers; the crop sheet keeps a larger floor.
     const fontSize = clamp(minDim * 0.16, style === 'spray' ? 4.5 : 6, 15)
 
     if (b.current_ratoon) stages.add(b.current_ratoon)
@@ -206,35 +273,34 @@ function buildSvg(
       ? Number(b.arpents_cached || 0).toFixed(2)
       : Number(b.acreage_cached || 0).toFixed(2)
 
-    // Corner anchors, mirroring the interactive map (name TL, variety TR, acres
-    // BR, cut center). Only used when the block is large enough to read 4 labels;
-    // otherwise fall back to a centered name + acreage.
-    const anchors = cornerLabelAnchors(planarRing)
-    const showCorners = minDim > 60 && anchors !== null
-    const [cutX, cutY] = anchors ? planarToSvg(anchors.center[0], anchors.center[1]) : toXY(b.centroid_lng, b.centroid_lat)
-    const [nameX, nameY] = anchors ? planarToSvg(anchors.id[0], anchors.id[1]) : [cutX, cutY]
-    const [varietyX, varietyY] = anchors ? planarToSvg(anchors.variety[0], anchors.variety[1]) : [cutX, cutY]
-    const [acresX, acresY] = anchors ? planarToSvg(anchors.acres[0], anchors.acres[1]) : [cutX, cutY]
+    // Centered stack of the same info the map shows (name / cut / variety /
+    // acres), trimmed to what fits the block. Size to the block's true centered
+    // box (not its bbox — tilted blocks have a much wider bbox than real room).
+    const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
+    const box = centeredBox(svgRing, lx, ly)
+    const { font: labelFont, lines } = planLabel(
+      box.w,
+      box.h,
+      {
+        name: b.name ?? '',
+        cut: cutAbbrev(b.current_ratoon),
+        variety: varietyCode(b.variety),
+        acres: acreageLabel,
+      },
+      style === 'spray' ? 4.5 : 5.5,
+      style === 'spray',
+    )
 
     return {
       id: b.id,
       points: coords.join(' '),
       color: style === 'spray' ? '#FFFFFF' : colorForRatoon(b.current_ratoon),
-      labelX: cutX,
-      labelY: cutY,
+      labelX: lx,
+      labelY: ly,
       fontSize,
-      showCorners,
-      showName: style === 'spray' ? true : minDim > 40,
-      name: b.name,
-      variety: b.variety ?? '',
       acreageLabel,
-      cutLabel: cutAbbrev(b.current_ratoon),
-      nameX,
-      nameY,
-      varietyX,
-      varietyY,
-      acresX,
-      acresY,
+      labelFont,
+      lines,
     }
   })
 

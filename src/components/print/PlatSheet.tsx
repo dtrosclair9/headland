@@ -145,46 +145,23 @@ export default function PlatSheet({
               const textFill = isSpray ? '#111827' : '#FFFFFF'
               const halo = isSpray
                 ? {}
-                : { stroke: '#1f2937', strokeWidth: b.fontSize * 0.16, paintOrder: 'stroke' as const }
-              if (b.showCorners) {
-                return (
-                  <g key={`l-${b.id}`} fill={textFill} {...halo}>
-                    {b.cutLabel && (
-                      <text x={b.labelX} y={b.labelY} textAnchor="middle" dominantBaseline="central" fontSize={b.fontSize * 1.15} fontWeight={700}>
-                        {b.cutLabel}
-                      </text>
-                    )}
-                    {b.name && (
-                      <text x={b.nameX} y={b.nameY} textAnchor="start" dominantBaseline="hanging" fontSize={b.fontSize} fontWeight={700}>
-                        {b.name}
-                      </text>
-                    )}
-                    {b.variety && (
-                      <text x={b.varietyX} y={b.varietyY} textAnchor="end" dominantBaseline="hanging" fontSize={b.fontSize}>
-                        {b.variety}
-                      </text>
-                    )}
-                    <text x={b.acresX} y={b.acresY} textAnchor="end" fontSize={b.fontSize}>
-                      {b.acreageLabel}
-                    </text>
-                  </g>
-                )
-              }
-              // Small-block fallback: centered name + acreage.
+                : { stroke: '#1f2937', strokeWidth: b.labelFont * 0.16, paintOrder: 'stroke' as const }
+              const lh = b.labelFont * 1.16
+              const y0 = b.labelY - ((b.lines.length - 1) * lh) / 2
               return (
                 <g key={`l-${b.id}`} textAnchor="middle" fill={textFill} {...halo}>
-                  {b.showName && (
-                    <text x={b.labelX} y={b.labelY - b.fontSize * 0.35} fontSize={b.fontSize} fontWeight={700}>
-                      {b.name}
+                  {b.lines.map((line, i) => (
+                    <text
+                      key={i}
+                      x={b.labelX}
+                      y={y0 + i * lh}
+                      dominantBaseline="central"
+                      fontSize={b.labelFont}
+                      fontWeight={line.bold ? 700 : 400}
+                    >
+                      {line.text}
                     </text>
-                  )}
-                  <text
-                    x={b.labelX}
-                    y={b.showName ? b.labelY + b.fontSize * 0.8 : b.labelY + b.fontSize * 0.35}
-                    fontSize={b.fontSize}
-                  >
-                    {b.acreageLabel}
-                  </text>
+                  ))}
                 </g>
               )
             })}

@@ -67,37 +67,10 @@ for (const [name, ring] of Object.entries(CASES)) {
   }
 }
 
-// --- Print projection: the plat sheet computes anchors in rotated-planar space
-// (+Y up), then flips Y for SVG (svgY = maxY - ry). Prove the flip keeps the
-// vertical corner assignment correct (name/variety on top, acres on the
-// bottom) and that anchors stay inside the polygon after the flip. This is the
-// one behavior the print path adds on top of cornerLabelAnchors. ---
-console.log('\n--- print SVG projection (Y-flip) ---')
-for (const [name, ring] of Object.entries(CASES)) {
-  const a = cornerLabelAnchors(ring)
-  if (!a) continue
-  const verts = ring.slice(0, -1)
-  const maxY = Math.max(...verts.map((v) => v[1]))
-  const flip = (p) => [p[0], maxY - p[1]] // planar +Y-up -> SVG +Y-down
-  const s = { id: flip(a.id), variety: flip(a.variety), acres: flip(a.acres), center: flip(a.center) }
-  const flippedRing = verts.map(flip)
-  const allInside = ['id', 'variety', 'acres', 'center'].every((k) => inside(s[k], flippedRing))
-  // The corner layout only renders when a block is big enough in BOTH axes
-  // (showCorners: minDim > 60px). A near-degenerate sliver falls back to a
-  // centered label, so top/bottom ordering is only asserted for non-slivers.
-  const xs = verts.map((v) => v[0])
-  const ys = verts.map((v) => v[1])
-  const aspect = (Math.max(...ys) - Math.min(...ys)) / (Math.max(...xs) - Math.min(...xs))
-  const sliver = aspect < 0.15 || aspect > 1 / 0.15
-  // In SVG space, top = smaller y. name (id) and variety must sit above acres.
-  const topOrder = sliver || (s.id[1] < s.acres[1] && s.variety[1] < s.acres[1])
-  if (allInside && topOrder) {
-    console.log(`✓ ${name} — flip keeps anchors inside${sliver ? ' (sliver → centered fallback, order n/a)' : '; name/variety above acres'}`)
-  } else {
-    failed++
-    console.log(`✗ ${name}${allInside ? '' : ' — anchor outside after flip'}${topOrder ? '' : ' — vertical order inverted'}`)
-  }
-}
+// Note: the interactive map uses these corner anchors. The printed plat sheet
+// uses a centered label stack instead (real cane blocks are narrow angled
+// parallelograms where corner labels overlap) — see planLabel in
+// plantation-map-svg.ts.
 
 console.log(failed ? `\n${failed} case(s) FAILED` : '\nAll cases passed.')
 process.exit(failed ? 1 : 0)
