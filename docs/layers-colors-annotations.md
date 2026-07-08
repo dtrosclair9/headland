@@ -69,3 +69,23 @@ block interior so labels stay inside tilted parallelograms).
 
 Gotcha that bit twice: **never `npm run build` while `next dev` is running**
 (corrupts `.next`; MODULE_NOT_FOUND 500s — kill dev first).
+
+## 2026-07-07 restructure (farmer feedback round 2)
+
+- **Spray map view toggle removed.** Two views: Satellite | Crop map. The B&W
+  pilot look is now a *state*: Layers tab → Deselect all → every block white,
+  black outlines, ALL labels visible (`whiteMap` prop on FieldMap; `whiteout`
+  feature property whitens fill without hiding labels the way `dim` does).
+  Select all (the login default) restores full colors.
+- **Layers is the primary tab** (first + default); Blocks is the management
+  view.
+- **Fly plans** (`fly_plans` table, `/api/fly-plans`): named + colored block
+  selections for the pilot. Create: name + color → tap blocks on the map
+  (reuses bulk-select) → save. Viewing paints only the plan's blocks in the
+  plan color on the white map. Print: `/fly-plans/[id]/print`.
+- **Highlight prints**: `/blocks/print?ids=…&highlight=1` and the fly-plan
+  print draw EVERY block on the farm (white, black outline, id + acreage only)
+  with just the selection colored — a plant-cane print without the surrounding
+  blocks is useless on paper. Builder: `BuildOpts.highlight {ids, color?}`;
+  per-block `labelDark` on SvgBlock lets one sheet mix dark-on-white and
+  white-on-color labels.

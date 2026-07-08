@@ -104,7 +104,7 @@ export default function PlatSheet({
               color: '#374151',
             }}
           >
-            {!isSpray && legendItems.map((r) => (
+            {legendItems.map((r) => (
               <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 11, height: 11, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
                 {r.label}
@@ -170,10 +170,10 @@ export default function PlatSheet({
               ),
             )}
             {svg.blocks.map((b) => (
-              // Crop blocks are color-filled, so labels are white with a thin
-              // dark outline (matching the map). Spray blocks are white, so
-              // dark text reads best.
-              <g key={`l-${b.id}`} fill={isSpray ? '#111827' : '#FFFFFF'}>
+              // Per-block: dark text on white/uncolored fills, white text with
+              // a thin dark outline on colored fills. A highlight sheet mixes
+              // both on the same page.
+              <g key={`l-${b.id}`} fill={b.labelDark ? '#111827' : '#FFFFFF'}>
                 {b.labels.map((l, i) => (
                   <text
                     key={i}
@@ -183,7 +183,7 @@ export default function PlatSheet({
                     dominantBaseline="central"
                     fontSize={l.font}
                     fontWeight={l.bold ? 700 : 400}
-                    {...(isSpray
+                    {...(b.labelDark
                       ? {}
                       : { stroke: '#1f2937', strokeWidth: l.font * 0.14, paintOrder: 'stroke' as const })}
                   >

@@ -18,6 +18,11 @@ export interface SvgBlock {
   id: string
   points: string
   color: string
+  /**
+   * Dark label text (white/uncolored fill) vs white label text with a dark
+   * halo (colored fill). Per-block because a highlight sheet mixes both.
+   */
+  labelDark: boolean
   /** block center — anchor for the single-field print's acreage */
   labelX: number
   labelY: number
@@ -223,6 +228,13 @@ interface BuildOpts {
   stageColors?: Record<string, string>
   /** hand-drawn reference lines + text labels to print over the blocks */
   annotations?: AnnotationRow[]
+  /**
+   * Highlight sheet: EVERY block prints for context, but only these ids get
+   * color — `color` for a fly plan's single hue, or the stage palette for a
+   * layer selection. Everything else is white with black outlines and just
+   * its id + acreage, so the colored blocks read against the whole farm.
+   */
+  highlight?: { ids: Set<string>; color?: string }
 }
 
 export function buildPlantationSvg(blocks: FieldRow[], opts: BuildOpts = {}): PlantationSvg | null {
@@ -349,19 +361,32 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
       ? Number(b.arpents_cached || 0).toFixed(2)
       : Number(b.acreage_cached || 0).toFixed(2)
 
+    // Highlight sheets print the WHOLE farm for context: only members get
+    // color; everything else is a white context block.
+    const hl = opts.highlight
+    const member = hl ? hl.ids.has(b.id) : true
+    const fill = !member
+      ? '#FFFFFF'
+      : hl?.color
+        ? hl.color
+        : style === 'spray'
+          ? '#FFFFFF'
+          : stageColorFor(b.current_ratoon, opts.stageColors ?? {})
+
     // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
     // center), positioned against the block's real interior walls.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
-    // The spray sheet (fly plan) carries ONLY id + acreage + hand-drawn
-    // annotations — no cut or variety. Crop map keeps the full label set.
+    // Spray sheets and white context blocks carry ONLY id + acreage (+ any
+    // hand-drawn annotations); colored crop blocks keep the full label set.
+    const minimalLabels = style === 'spray' || !member
     const labels = planCornerLabels(
       svgRing,
       lx,
       ly,
       {
         name: b.name ?? '',
-        cut: style === 'spray' ? '' : cutAbbrev(b.current_ratoon),
-        variety: style === 'spray' ? '' : varietyCode(b.variety),
+        cut: minimalLabels ? '' : cutAbbrev(b.current_ratoon),
+        variety: minimalLabels ? '' : varietyCode(b.variety),
         acres: acreageLabel,
       },
       style === 'spray' ? 4.2 : 5,
@@ -370,8 +395,8 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     return {
       id: b.id,
       points: coords.join(' '),
-      color:
-        style === 'spray' ? '#FFFFFF' : stageColorFor(b.current_ratoon, opts.stageColors ?? {}),
+      color: fill,
+      labelDark: fill === '#FFFFFF',
       labelX: lx,
       labelY: ly,
       fontSize,

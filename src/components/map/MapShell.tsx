@@ -18,6 +18,7 @@ import {
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
 import type { OrgColorOverrides } from '@/lib/org-colors'
 import type { AnnotationRow } from '@/lib/annotations'
+import type { FlyPlanRow } from '@/lib/fly-plans'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -36,6 +37,8 @@ interface MapShellProps {
   colorOverrides: OrgColorOverrides
   // Hand-drawn reference lines + text labels, loaded server-side.
   initialAnnotations: AnnotationRow[]
+  // Saved fly plans, loaded server-side.
+  initialFlyPlans: FlyPlanRow[]
 }
 
 export default function MapShell({
@@ -44,6 +47,7 @@ export default function MapShell({
   state,
   colorOverrides,
   initialAnnotations,
+  initialFlyPlans,
 }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -68,13 +72,77 @@ export default function MapShell({
   // Layer selection (FarmWorks-style): which stages/varieties/plantations to
   // highlight. Matching ids feed the map; non-matches render white.
   const [layerFilter, setLayerFilter] = useState<LayerFilter>(EMPTY_LAYER_FILTER)
-  const filterIds = useMemo(
-    () =>
-      isLayerFilterActive(layerFilter)
-        ? new Set(fields.filter((f) => fieldMatchesFilter(f, layerFilter)).map((f) => f.id))
-        : null,
-    [fields, layerFilter],
-  )
+  // Deselect-all: everything white with all labels visible in black — the
+  // pilot map, live. "Select all" (the login default) shows the full colors.
+  const [deselected, setDeselected] = useState(false)
+  // Fly plans: saved pilot selections; viewing one paints its blocks the plan
+  // color on the white map. Drafting one reuses bulk-select to pick blocks.
+  const [flyPlans, setFlyPlans] = useState<FlyPlanRow[]>(initialFlyPlans)
+  const [activePlanId, setActivePlanId] = useState<string | null>(null)
+  const [planDraft, setPlanDraft] = useState<{ name: string; color: string } | null>(null)
+  const activePlan = activePlanId ? (flyPlans.find((p) => p.id === activePlanId) ?? null) : null
+
+  const filterIds = useMemo(() => {
+    if (activePlan) return new Set(activePlan.block_ids)
+    if (isLayerFilterActive(layerFilter))
+      return new Set(fields.filter((f) => fieldMatchesFilter(f, layerFilter)).map((f) => f.id))
+    if (deselected) return new Set<string>()
+    return null
+  }, [fields, layerFilter, deselected, activePlan])
+  // White-map look: deselect-all or a fly plan (labels stay, blocks whiten).
+  const whiteMap = deselected || activePlan !== null
+
+  async function handleCreatePlan(): Promise<boolean> {
+    if (!planDraft || selectedIds.size === 0) return false
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fly-plans', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: planDraft.name,
+          color: planDraft.color,
+          block_ids: Array.from(selectedIds),
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to save fly plan')
+      }
+      const { plan } = await res.json()
+      setFlyPlans((prev) => [...prev, plan as FlyPlanRow])
+      setPlanDraft(null)
+      setSelectMode(false)
+      setSelectedIds(new Set())
+      setActivePlanId((plan as FlyPlanRow).id)
+      setDeselected(false)
+      return true
+    } catch (e) {
+      setError(friendlyError(e))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeletePlan(id: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/fly-plans/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to delete fly plan')
+      }
+      setFlyPlans((prev) => prev.filter((p) => p.id !== id))
+      if (activePlanId === id) setActivePlanId(null)
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   // Which palette paints the blocks (filters pick WHICH blocks highlight;
   // colorBy picks the palette, so stage + variety filters never fight).
   const [colorBy, setColorBy] = useState<ColorBy>('stage')
@@ -293,7 +361,45 @@ export default function MapShell({
           units={units}
           viewMode={viewMode}
           layerFilter={layerFilter}
-          onLayerFilterChange={setLayerFilter}
+          onLayerFilterChange={(f) => {
+            setLayerFilter(f)
+            // Picking a layer takes over from deselect-all / a fly plan view.
+            setActivePlanId(null)
+          }}
+          deselected={deselected}
+          onSelectAll={() => {
+            setLayerFilter(EMPTY_LAYER_FILTER)
+            setDeselected(false)
+            setActivePlanId(null)
+          }}
+          onDeselectAll={() => {
+            setLayerFilter(EMPTY_LAYER_FILTER)
+            setDeselected(true)
+            setActivePlanId(null)
+          }}
+          flyPlans={flyPlans}
+          activePlanId={activePlanId}
+          onViewPlan={(id) => {
+            setActivePlanId(id)
+            setLayerFilter(EMPTY_LAYER_FILTER)
+          }}
+          onClosePlan={() => setActivePlanId(null)}
+          onDeletePlan={handleDeletePlan}
+          planDraft={planDraft}
+          onStartPlanDraft={(draft) => {
+            setPlanDraft(draft)
+            setActivePlanId(null)
+            setDeselected(true)
+            setLayerFilter(EMPTY_LAYER_FILTER)
+            setSelectMode(true)
+            setSelectedIds(new Set())
+          }}
+          onCancelPlanDraft={() => {
+            setPlanDraft(null)
+            setSelectMode(false)
+            setSelectedIds(new Set())
+          }}
+          onSavePlanDraft={handleCreatePlan}
           colorBy={colorBy}
           onColorByChange={setColorBy}
           stageColors={stageColors}
@@ -376,6 +482,8 @@ export default function MapShell({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         filterIds={filterIds}
+        whiteMap={whiteMap}
+        highlightColor={activePlan?.color ?? (planDraft ? planDraft.color : null)}
         colorBy={colorBy}
         stageColors={stageColors}
         varietyColors={varietyColors}

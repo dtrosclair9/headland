@@ -40,10 +40,13 @@ function fillColorExpression(
   colorBy: ColorBy,
   stageColors: StageColor[],
   varietyColors: Record<string, string>,
+  highlightColor: string | null,
 ): mapboxgl.ExpressionSpecification {
   const varietyPairs = Object.entries(varietyColors).flatMap(([k, c]) => [k, c])
-  const paletteExpr =
-    colorBy === 'variety' && varietyPairs.length > 0
+  // Fly-plan viewing paints every matching block ONE color (the plan's).
+  const paletteExpr = highlightColor
+    ? highlightColor
+    : colorBy === 'variety' && varietyPairs.length > 0
       ? ['match', ['coalesce', ['get', 'variety'], ''], ...varietyPairs, UNSET_COLOR]
       : [
           'match',
@@ -57,6 +60,8 @@ function fillColorExpression(
     SELECTED_COLOR,
     // Filtered-out blocks go white — the layer view highlights only matches.
     DIMMED,
+    '#FFFFFF',
+    ['to-boolean', ['get', 'whiteout']],
     '#FFFFFF',
     paletteExpr,
   ] as unknown as mapboxgl.ExpressionSpecification
@@ -82,13 +87,12 @@ function truncateNotesForLabel(notes: string | null, acres: number): string {
 }
 
 // Outline color depends on basemap: white reads on satellite, dark grey on the
-// light crop-map background, solid black on the spray sheet (matches the printed
-// B&W map). The selected block always shows the highlight color.
+// light crop-map background. The selected block always shows the highlight color.
 function lineColorExpression(
   selectedFieldId: string | null,
   viewMode: ViewMode,
 ): mapboxgl.ExpressionSpecification {
-  const base = viewMode === 'crop' ? '#374151' : viewMode === 'spray' ? '#000000' : '#FFFFFF'
+  const base = viewMode === 'crop' ? '#374151' : '#FFFFFF'
   return [
     'case',
     ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
@@ -110,7 +114,7 @@ function translatePolygon(geom: GeoJSON.Polygon, dLng: number, dLat: number): Ge
   }
 }
 
-export type ViewMode = 'satellite' | 'crop' | 'spray'
+export type ViewMode = 'satellite' | 'crop'
 
 // Center label: the cut/ratoon abbreviated to sit in the middle of the block
 // (P = plant cane, 1st–5th stubble, 6th+, F = fallow). Blank when unset. Block
@@ -156,13 +160,19 @@ export interface FieldMapProps {
   repositionIds: Set<string> | null
   onSaveReposition: (features: { id: string; geometry: GeoJSON.Polygon }[]) => Promise<void>
   onCancelReposition: () => void
-  // View mode is lifted to MapShell so the sidebar's print links can follow it
-  // (a spray-map view prints the B&W spray sheet).
+  // View mode is lifted to MapShell so the sidebar's print links can follow it.
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
   // Layer filter: ids of blocks matching the active layer selection, or null
   // when no filter is on. Non-matching blocks render white with labels hidden.
   filterIds: Set<string> | null
+  // White-map state (deselect-all or a fly plan): every non-matching block is
+  // white but ALL labels stay visible in black — the printed spray-sheet look,
+  // live. Replaces the old spray view mode.
+  whiteMap: boolean
+  // Fly-plan viewing: paint the matching blocks this single color instead of
+  // the stage/variety palette.
+  highlightColor: string | null
   // Palette that paints the blocks (stage = year cane colors, variety = variety
   // colors), with the farm's custom colors already resolved in.
   colorBy: ColorBy
@@ -196,6 +206,8 @@ export default function FieldMap({
   viewMode,
   onViewModeChange,
   filterIds,
+  whiteMap,
+  highlightColor,
   colorBy,
   stageColors,
   varietyColors,
@@ -366,7 +378,7 @@ export default function FieldMap({
         source: 'fields',
         paint: {
           // Initial paint; the view-mode effect re-applies the live palette.
-          'fill-color': fillColorExpression(selectedFieldId, 'stage', stageColors, {}),
+          'fill-color': fillColorExpression(selectedFieldId, 'stage', stageColors, {}, null),
           'fill-opacity': 0.4,
         },
       })
@@ -755,7 +767,12 @@ export default function FieldMap({
     if (!map || !ready) return
     const src = map.getSource('fields') as mapboxgl.GeoJSONSource | undefined
     if (!src) return
-    const isDim = (f: FieldRow) => (filterIds ? !filterIds.has(f.id) : false)
+    // Partial layer filter: non-matches are dimmed (white + labels hidden).
+    // White-map state (deselect-all / fly plan): non-matches are white but
+    // their labels STAY (the pilot needs every id + acreage), so they're
+    // stamped dim=false, plain=true.
+    const isMatch = (f: FieldRow) => (filterIds ? filterIds.has(f.id) : true)
+    const isDim = (f: FieldRow) => !whiteMap && !isMatch(f)
     src.setData({
       type: 'FeatureCollection',
       features: fields.map((f) => ({
@@ -767,7 +784,10 @@ export default function FieldMap({
           acreage: f.acreage_cached,
           ratoon: f.current_ratoon ?? 'unset',
           variety: f.variety ?? '',
+          // `dim` drives BOTH the white fill and label hiding; in whiteMap
+          // mode `whiteout` whitens the fill while labels stay.
           dim: isDim(f),
+          whiteout: whiteMap && !isMatch(f),
           // Truncate notes based on field acreage — bigger field = more room
           // for the label, so we can show more characters before adding '…'.
           // Full notes still live on the sidebar card and the print sheet.
@@ -814,7 +834,7 @@ export default function FieldMap({
       })
       cornerSrc.setData({ type: 'FeatureCollection', features: cornerFeatures })
     }
-  }, [fields, ready, filterIds])
+  }, [fields, ready, filterIds, whiteMap])
 
   // Fit the camera to the farm ONCE per fields change — deliberately not on
   // filter changes, so toggling layers never yanks the camera.
@@ -884,46 +904,62 @@ export default function FieldMap({
     }
   }, [textDraft])
 
-  // Recolor selection + apply the active view mode. Crop and spray both hide the
-  // satellite raster and lighten the background to a blank white plat sheet; crop
-  // fills blocks with ratoon colors, spray leaves them white (the pilot colors
-  // them in) with heavy black outlines and black labels.
+  // Recolor selection + apply the active view mode. Crop mode hides the
+  // satellite raster and lightens the background to a blank white plat sheet.
+  // whiteMap (deselect-all / fly plan) renders the spray-sheet look: white
+  // blocks, heavy black outlines, black labels.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
     const isCrop = viewMode === 'crop'
-    const isSpray = viewMode === 'spray'
-    const onWhiteSheet = isCrop || isSpray
+    const sheetLook = isCrop && whiteMap
+    const onWhiteSheet = isCrop
 
     map.setPaintProperty(
       'fields-fill',
       'fill-color',
-      isSpray ? '#FFFFFF' : fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors),
+      fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors, highlightColor),
     )
-    // Dimmed (filtered-out) blocks render more opaque on satellite so they read
+    // Dimmed / whited-out blocks render more opaque on satellite so they read
     // as solid white "off" blocks rather than a ghost tint.
     map.setPaintProperty(
       'fields-fill',
       'fill-opacity',
-      isSpray
-        ? 1
-        : isCrop
-          ? 0.92
-          : (['case', DIMMED, 0.75, 0.4] as unknown as mapboxgl.ExpressionSpecification),
+      isCrop
+        ? sheetLook
+          ? 1
+          : 0.92
+        : ([
+            'case',
+            ['any', DIMMED, ['to-boolean', ['get', 'whiteout']]],
+            0.75,
+            0.4,
+          ] as unknown as mapboxgl.ExpressionSpecification),
     )
-    map.setPaintProperty('fields-outline', 'line-color', lineColorExpression(selectedFieldId, viewMode))
-    map.setPaintProperty('fields-outline', 'line-width', isSpray ? 2.5 : isCrop ? 1.5 : 2)
-    // Label colors per mode: black text on the white spray sheet; white text
+    map.setPaintProperty(
+      'fields-outline',
+      'line-color',
+      sheetLook
+        ? ([
+            'case',
+            ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
+            SELECTED_COLOR,
+            '#000000',
+          ] as unknown as mapboxgl.ExpressionSpecification)
+        : lineColorExpression(selectedFieldId, viewMode),
+    )
+    map.setPaintProperty('fields-outline', 'line-width', sheetLook ? 2.5 : isCrop ? 1.5 : 2)
+    // Label colors per mode: black text on the white sheet look; white text
     // with a dark halo otherwise (satellite imagery + the color-filled crop
     // sheet). Applies to the center cut label AND both corner labels.
-    const textColor = isSpray ? '#111827' : '#FFFFFF'
-    const haloColor = isSpray ? '#FFFFFF' : '#0F2A1F'
+    const textColor = sheetLook ? '#111827' : '#FFFFFF'
+    const haloColor = sheetLook ? '#FFFFFF' : '#0F2A1F'
     for (const id of ['fields-label', 'field-label-id', 'field-label-variety', 'field-label-acres']) {
       map.setPaintProperty(id, 'text-color', textColor)
       map.setPaintProperty(id, 'text-halo-color', haloColor)
     }
 
-    // Crop/spray = a blank white plat sheet: hide EVERY basemap layer (raster,
+    // Crop = a blank white plat sheet: hide EVERY basemap layer (raster,
     // streets, labels, water) and leave only our block layers on a white
     // background. Satellite mode restores them. Swapping visibility (not
     // setStyle) keeps our layers + the draw control intact.
@@ -956,7 +992,7 @@ export default function FieldMap({
         /* layer may not support the property — ignore */
       }
     }
-  }, [selectedFieldId, ready, viewMode, colorBy, stageColors, varietyColors])
+  }, [selectedFieldId, ready, viewMode, whiteMap, highlightColor, colorBy, stageColors, varietyColors])
 
   // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
   // correct base-layer opacity without taking viewMode as a dependency (which
@@ -964,18 +1000,6 @@ export default function FieldMap({
   useEffect(() => {
     viewModeRef.current = viewMode
   }, [viewMode])
-
-  // Spray map is view-and-print only: if the grower flips to it mid-draw, exit
-  // the draw gesture so they can't sketch on the spray sheet.
-  useEffect(() => {
-    if (viewMode !== 'spray' || !drawing) return
-    setDrawKind(null)
-    setTextDraft(null)
-    drawRef.current?.changeMode('simple_select')
-    drawRef.current?.deleteAll()
-    setDrawing(false)
-    setDrawKind(null)
-  }, [viewMode, drawing])
 
   // ── Reposition mode ────────────────────────────────────────────────
   // Lift the chosen blocks into a bright, draggable working copy and let the
@@ -1407,9 +1431,9 @@ export default function FieldMap({
         style={{ width: '100%', height: '100%', backgroundColor: '#FFFFFF' }}
       />
 
-      {/* View-mode toggle — top-center. Satellite (for drawing / ground-truth),
-          the colored crop map (for reading / printing), and the black-and-white
-          spray map (hand to a sprayer pilot to mark as they fly). */}
+      {/* View-mode toggle — top-center. Satellite (for drawing / ground-truth)
+          and the crop map (the plat sheet; deselect-all in Layers turns it
+          into the white pilot map). */}
       <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 lg:bottom-auto lg:top-3">
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
           <button
@@ -1429,15 +1453,6 @@ export default function FieldMap({
             }`}
           >
             Crop map
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewModeChange('spray')}
-            className={`px-3 py-2 transition border-l border-gray-200 ${
-              viewMode === 'spray' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Spray map
           </button>
         </div>
       </div>
@@ -1465,8 +1480,7 @@ export default function FieldMap({
           <button
             type="button"
             onClick={toggleDraw}
-            disabled={!ready || viewMode === 'spray'}
-            title={viewMode === 'spray' ? 'Switch to Satellite to draw blocks' : undefined}
+            disabled={!ready}
             className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed ${
               drawKind === 'block'
                 ? 'bg-white text-primary border-2 border-primary hover:bg-gray-50'
@@ -1494,8 +1508,8 @@ export default function FieldMap({
           <button
             type="button"
             onClick={toggleLine}
-            disabled={!ready || viewMode === 'spray'}
-            title={viewMode === 'spray' ? 'Switch to Satellite to draw' : 'Draw a reference line (road, ditch)'}
+            disabled={!ready}
+            title="Draw a reference line (road, ditch)"
             className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed border-2 ${
               drawKind === 'line'
                 ? 'bg-primary text-white border-primary'
@@ -1512,8 +1526,8 @@ export default function FieldMap({
           <button
             type="button"
             onClick={toggleText}
-            disabled={!ready || viewMode === 'spray'}
-            title={viewMode === 'spray' ? 'Switch to Satellite to add text' : 'Add a text label (Hwy 308, Shop, N)'}
+            disabled={!ready}
+            title="Add a text label (Hwy 308, Shop, N)"
             className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed border-2 ${
               drawKind === 'text'
                 ? 'bg-primary text-white border-primary'

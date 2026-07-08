@@ -7,17 +7,31 @@ import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { friendlyError } from '@/lib/errors'
 import type { ViewMode, ColorBy } from './FieldMap'
+import type { FlyPlanRow } from '@/lib/fly-plans'
 import LayersPanel from './LayersPanel'
 import { type LayerFilter, isLayerFilterActive } from './layer-filter'
 
 interface FieldSidebarProps {
   fields: FieldRow[]
   units: Units
-  // Active map view; when 'spray', the print links output the B&W spray sheet.
   viewMode: ViewMode
   // Layer selection state (owned by MapShell so the map can read matches).
   layerFilter: LayerFilter
   onLayerFilterChange: (f: LayerFilter) => void
+  // Deselect-all (white pilot map) vs select-all (full colors, login default).
+  deselected: boolean
+  onSelectAll: () => void
+  onDeselectAll: () => void
+  // Fly plans: saved pilot selections.
+  flyPlans: FlyPlanRow[]
+  activePlanId: string | null
+  onViewPlan: (id: string) => void
+  onClosePlan: () => void
+  onDeletePlan: (id: string) => Promise<void>
+  planDraft: { name: string; color: string } | null
+  onStartPlanDraft: (draft: { name: string; color: string }) => void
+  onCancelPlanDraft: () => void
+  onSavePlanDraft: () => Promise<boolean>
   // Palette that paints the blocks + the resolved per-farm colors.
   colorBy: ColorBy
   onColorByChange: (c: ColorBy) => void
@@ -47,6 +61,18 @@ export default function FieldSidebar({
   viewMode,
   layerFilter,
   onLayerFilterChange,
+  deselected,
+  onSelectAll,
+  onDeselectAll,
+  flyPlans,
+  activePlanId,
+  onViewPlan,
+  onClosePlan,
+  onDeletePlan,
+  planDraft,
+  onStartPlanDraft,
+  onCancelPlanDraft,
+  onSavePlanDraft,
   colorBy,
   onColorByChange,
   stageColors,
@@ -65,8 +91,9 @@ export default function FieldSidebar({
   onRepositionPlantation,
 }: FieldSidebarProps) {
   const total = formatArea(totalAcres, units)
-  // In spray-map view the print links output the B&W spray sheet (and say so).
-  const isSpray = viewMode === 'spray'
+  // In the white-map state (deselect-all) the print links output the B&W
+  // spray-style sheet (and say so).
+  const isSpray = deselected && !activePlanId
   const sprayParam = isSpray ? '&style=spray' : ''
   // Combined acreage of the bulk-selected blocks (live as you tap blocks).
   const selectedArea = useMemo(
@@ -80,8 +107,9 @@ export default function FieldSidebar({
   const [assignOpen, setAssignOpen] = useState(false)
   const [rotateOpen, setRotateOpen] = useState(false)
   const [rotating, setRotating] = useState(false)
-  // Sidebar tab: the block list, or the FarmWorks-style layer selection.
-  const [tab, setTab] = useState<'blocks' | 'layers'>('blocks')
+  // Sidebar tab: layers is the primary working surface; the block list is
+  // the management view.
+  const [tab, setTab] = useState<'blocks' | 'layers'>('layers')
   const filterOn = isLayerFilterActive(layerFilter)
 
   // Group blocks by plantation (named plantations alpha, Unassigned last). Within
@@ -144,8 +172,8 @@ export default function FieldSidebar({
         <div className="px-2 pt-2 border-b border-gray-100 flex gap-1">
           {(
             [
-              ['blocks', 'Blocks'],
               ['layers', 'Layers'],
+              ['blocks', 'Blocks'],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -173,6 +201,19 @@ export default function FieldSidebar({
           units={units}
           filter={layerFilter}
           onFilterChange={onLayerFilterChange}
+          deselected={deselected}
+          onSelectAll={onSelectAll}
+          onDeselectAll={onDeselectAll}
+          flyPlans={flyPlans}
+          activePlanId={activePlanId}
+          onViewPlan={onViewPlan}
+          onClosePlan={onClosePlan}
+          onDeletePlan={onDeletePlan}
+          planDraft={planDraft}
+          onStartPlanDraft={onStartPlanDraft}
+          onCancelPlanDraft={onCancelPlanDraft}
+          onSavePlanDraft={onSavePlanDraft}
+          selectedIds={selectedIds}
           colorBy={colorBy}
           onColorByChange={onColorByChange}
           stageColors={stageColors}
