@@ -197,9 +197,36 @@ export default function PlatSheet({
           <div style={{ padding: 40, textAlign: 'center', color: '#6B6B6B', fontSize: 12 }}>{emptyMessage}</div>
         )}
 
-        <p style={{ fontSize: 8, color: '#9CA3AF', marginTop: 6 }}>
-          {unitWord === 'arpents' ? 'Acreage shown in arpents. ' : ''}
-          {SITE_NAME} · headlandmaps.com
+        <p
+          style={{
+            fontSize: 8,
+            color: '#9CA3AF',
+            marginTop: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          {unitWord === 'arpents' ? <span>Acreage shown in arpents.</span> : null}
+<span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 13,
+              height: 13,
+              background: '#143324',
+              borderRadius: 3,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
+            <img
+              src="/images/headland-logo-kit/svg/mark-white.svg"
+              alt="Headland"
+              style={{ height: 9, width: 9 }}
+            />
+          </span>
+          headlandmaps.com
         </p>
       </div>
     </>

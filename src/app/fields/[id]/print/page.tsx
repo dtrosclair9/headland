@@ -215,7 +215,27 @@ export default async function FieldPrintPage({
 
         <div style={{ position: 'absolute', bottom: 24, left: 36, right: 36, display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#6B6B6B', paddingTop: 6, borderTop: '0.5px solid #D9D9D9' }}>
           <span>{org.name} · {field.name}</span>
-          <span>{SITE_NAME} · headlandmaps.com</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+<span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 13,
+              height: 13,
+              background: '#143324',
+              borderRadius: 3,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
+            <img
+              src="/images/headland-logo-kit/svg/mark-white.svg"
+              alt="Headland"
+              style={{ height: 9, width: 9 }}
+            />
+          </span>
+            headlandmaps.com
+          </span>
         </div>
       </div>
     </>
