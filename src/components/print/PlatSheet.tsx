@@ -210,17 +210,17 @@ export default function PlatSheet({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 18,
-              height: 18,
+              width: 24,
+              height: 24,
               background: '#143324',
-              borderRadius: 4,
+              borderRadius: 5,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
             <img
               src="/images/headland-logo-kit/svg/mark-white.svg"
               alt="Headland"
-              style={{ height: 13, width: 13 }}
+              style={{ height: 17, width: 17 }}
             />
           </span>
           headlandmaps.com
