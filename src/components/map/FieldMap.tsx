@@ -225,6 +225,11 @@ export default function FieldMap({
   onToggleSelectedRef.current = onToggleFieldSelected
   // Live draw-kind + annotation callbacks for the once-bound map handlers.
   const drawKindRef = useRef<'block' | 'line' | 'text' | null>(null)
+  // True while a draw is being cancelled: mapbox-gl-draw COMMITS the
+  // in-progress shape when the mode is programmatically exited (same
+  // draw.create as a real finish), so cancel flags the exit and the create
+  // handler swallows it.
+  const cancelingDrawRef = useRef(false)
   const onCreateAnnotationRef = useRef(onCreateAnnotation)
   const onDeleteAnnotationRef = useRef(onDeleteAnnotation)
   onCreateAnnotationRef.current = onCreateAnnotation
@@ -651,6 +656,12 @@ export default function FieldMap({
     })
 
     map.on('draw.create', async (e: { features: GeoJSON.Feature[] }) => {
+      if (cancelingDrawRef.current) {
+        // Cancelled — discard whatever the mode exit tried to commit.
+        draw.deleteAll()
+        setDrawing(false)
+        return
+      }
       const feature = e.features[0]
       if (feature?.geometry?.type === 'Polygon') {
         await onCreateField(feature.geometry as GeoJSON.Polygon)
@@ -671,8 +682,13 @@ export default function FieldMap({
 
     onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
-        draw.changeMode('simple_select')
-        draw.deleteAll()
+        cancelingDrawRef.current = true
+        try {
+          draw.changeMode('simple_select')
+          draw.deleteAll()
+        } finally {
+          cancelingDrawRef.current = false
+        }
         setDrawing(false)
         setDrawKind(null)
         setTextDraft(null)
@@ -926,7 +942,10 @@ export default function FieldMap({
     ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {
-      if (ours.has(layer.id)) continue
+      // Ours + mapbox-gl-draw's own feedback layers (vertex dots + the
+      // in-progress line/polygon) — hiding those made drawing on the crop
+      // map invisible.
+      if (ours.has(layer.id) || layer.id.startsWith('gl-draw')) continue
       try {
         if (layer.type === 'background') {
           map.setPaintProperty(layer.id, 'background-color', onWhiteSheet ? '#FFFFFF' : '#0B0B0B')
@@ -1293,8 +1312,15 @@ export default function FieldMap({
 
   function cancelDraw() {
     const draw = drawRef.current
-    draw?.changeMode('simple_select')
-    draw?.deleteAll()
+    cancelingDrawRef.current = true
+    try {
+      // draw.create fires synchronously in here when a shape is in progress —
+      // the flagged handler discards it instead of saving.
+      draw?.changeMode('simple_select')
+      draw?.deleteAll()
+    } finally {
+      cancelingDrawRef.current = false
+    }
     setDrawing(false)
     setDrawKind(null)
     setTextDraft(null)
@@ -1305,6 +1331,8 @@ export default function FieldMap({
     if (drawKind === 'block') {
       cancelDraw()
     } else {
+      // Discard any in-progress line/text first (flagged, so nothing commits).
+      cancelDraw()
       drawRef.current.changeMode('draw_polygon')
       setDrawing(true)
       setDrawKind('block')
@@ -1316,6 +1344,7 @@ export default function FieldMap({
     if (drawKind === 'line') {
       cancelDraw()
     } else {
+      cancelDraw()
       drawRef.current.changeMode('draw_line_string')
       setDrawing(true)
       setDrawKind('line')
@@ -1326,9 +1355,8 @@ export default function FieldMap({
     if (drawKind === 'text') {
       cancelDraw()
     } else {
-      // Leave any in-progress shape, then arm the one-shot placement click.
-      drawRef.current?.changeMode('simple_select')
-      drawRef.current?.deleteAll()
+      // Discard any in-progress shape, then arm the one-shot placement click.
+      cancelDraw()
       setDrawing(true)
       setDrawKind('text')
       setTextDraft(null)
@@ -1421,7 +1449,7 @@ export default function FieldMap({
         {/* Cap the row width below lg so the buttons wrap into a tidy block at
             top-left instead of stretching across the tablet toward the zoom
             controls. Full single row on desktop. */}
-        <div className="flex flex-wrap gap-2 pointer-events-none max-w-[21rem] lg:max-w-none">
+        <div className="flex flex-wrap gap-2 pointer-events-none max-w-[21rem] lg:max-w-[27rem]">
           {onShowFields && (
             <button
               type="button"
