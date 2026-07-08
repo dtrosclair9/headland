@@ -303,6 +303,12 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
       bestAngle = t
     }
   }
+  // θ and θ+180° fill the page identically, and the 0–179° search sometimes
+  // lands on the upside-down twin — a whole farm printing rotated 180° from
+  // the on-screen map (Woodlawn bug: "blocks on the opposite side of the
+  // page"). Prefer the twin that keeps the farm's north pointing UP the page:
+  // north's rotated y-component is cos(θ), so flip when it's negative.
+  if (Math.cos(bestAngle) < 0) bestAngle += Math.PI
   const ca = Math.cos(bestAngle)
   const sa = Math.sin(bestAngle)
   // Rotated planar coords (relative to center).
