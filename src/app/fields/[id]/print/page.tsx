@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { getOrgColors } from '@/lib/org-colors'
 import { getField } from '@/lib/fields'
 import { listHarvests, listRecentApplications } from '@/lib/records'
 import { buildPlantationSvg } from '@/lib/plantation-map-svg'
@@ -62,7 +63,11 @@ export default async function FieldPrintPage({
         day: 'numeric',
       })
     : '—'
-  const svg = buildPlantationSvg([field], { unitsArpents: org.units_default === 'arpents' })
+  const colorOverrides = await getOrgColors(org.id)
+  const svg = buildPlantationSvg([field], {
+    unitsArpents: org.units_default === 'arpents',
+    stageColors: colorOverrides.stage,
+  })
 
   return (
     <>

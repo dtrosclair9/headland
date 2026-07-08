@@ -18,9 +18,10 @@ interface FieldSidebarProps {
   // Layer selection state (owned by MapShell so the map can read matches).
   layerFilter: LayerFilter
   onLayerFilterChange: (f: LayerFilter) => void
-  // Palette that paints the blocks + the per-variety default colors.
+  // Palette that paints the blocks + the resolved per-farm colors.
   colorBy: ColorBy
   onColorByChange: (c: ColorBy) => void
+  stageColors: import('@/lib/resolve-colors').StageColor[]
   varietyColors: Record<string, string>
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
@@ -48,6 +49,7 @@ export default function FieldSidebar({
   onLayerFilterChange,
   colorBy,
   onColorByChange,
+  stageColors,
   varietyColors,
   selectedFieldId,
   onSelectField,
@@ -173,6 +175,7 @@ export default function FieldSidebar({
           onFilterChange={onLayerFilterChange}
           colorBy={colorBy}
           onColorByChange={onColorByChange}
+          stageColors={stageColors}
           varietyColors={varietyColors}
           isSpray={isSpray}
         />

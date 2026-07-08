@@ -4,7 +4,8 @@ import { useMemo } from 'react'
 import type { FieldRow } from '@/lib/fields'
 import type { Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
-import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import type { StageColor } from '@/lib/resolve-colors'
 import {
   type LayerFilter,
   EMPTY_LAYER_FILTER,
@@ -22,6 +23,7 @@ export default function LayersPanel({
   onFilterChange,
   colorBy,
   onColorByChange,
+  stageColors,
   varietyColors,
   isSpray,
 }: {
@@ -31,6 +33,7 @@ export default function LayersPanel({
   onFilterChange: (f: LayerFilter) => void
   colorBy: 'stage' | 'variety'
   onColorByChange: (c: 'stage' | 'variety') => void
+  stageColors: StageColor[]
   varietyColors: Record<string, string>
   isSpray: boolean
 }) {
@@ -50,7 +53,7 @@ export default function LayersPanel({
       const k = f.current_ratoon ?? 'unset'
       counts.set(k, (counts.get(k) ?? 0) + 1)
     }
-    const opts = RATOON_COLORS.filter((r) => counts.has(r.key)).map((r) => ({
+    const opts = stageColors.filter((r) => counts.has(r.key)).map((r) => ({
       key: r.key,
       label: r.label,
       color: r.color,
@@ -60,7 +63,7 @@ export default function LayersPanel({
       opts.push({ key: 'unset', label: 'No cut set', color: UNSET_RATOON_COLOR, count: counts.get('unset')! })
     }
     return opts
-  }, [fields])
+  }, [fields, stageColors])
 
   const varietyOptions = useMemo(() => {
     const counts = new Map<string, number>()

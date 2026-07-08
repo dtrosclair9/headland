@@ -120,6 +120,20 @@ export default async function SettingsPage({
         </button>
       </form>
 
+      <a
+        href="/app/settings/colors"
+        className="mt-6 flex items-center justify-between bg-white border border-gray-100 rounded-xl p-6 hover:border-primary transition"
+      >
+        <div>
+          <h2 className="text-base font-bold text-primary">Map colors</h2>
+          <p className="text-sm text-gray-600 mt-0.5">
+            Pick your own colors for year-cane stages and varieties — they apply to the map and
+            every printed sheet.
+          </p>
+        </div>
+        <span className="text-primary font-bold text-xl" aria-hidden="true">→</span>
+      </a>
+
       <form action={updatePassword} className="mt-6 bg-white border border-gray-100 rounded-xl p-6 space-y-5">
         <div>
           <h2 className="text-base font-bold text-primary">Password</h2>

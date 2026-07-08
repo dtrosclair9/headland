@@ -1,5 +1,6 @@
 import type { FieldRow } from '@/lib/fields'
-import { colorForRatoon, cutAbbrev } from '@/lib/ratoon-colors'
+import { cutAbbrev } from '@/lib/ratoon-colors'
+import { stageColorFor } from '@/lib/resolve-colors'
 
 // A fully-positioned piece of text inside a block. The builder decides
 // placement, size, and anchoring; PlatSheet just draws the list.
@@ -200,26 +201,24 @@ const PRINT_AREA_ASPECT = 1.59
 type SvgStyle = 'crop' | 'spray'
 
 // Colored plat map (blocks by year cane). Default print/screen schematic.
-export function buildPlantationSvg(
-  blocks: FieldRow[],
-  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
-): PlantationSvg | null {
+interface BuildOpts {
+  canvasWidth?: number
+  pad?: number
+  unitsArpents?: boolean
+  /** the farm's custom stage colors (key -> hex); defaults used when absent */
+  stageColors?: Record<string, string>
+}
+
+export function buildPlantationSvg(blocks: FieldRow[], opts: BuildOpts = {}): PlantationSvg | null {
   return buildSvg(blocks, 'crop', opts)
 }
 
 // Black-and-white outline map for sprayer pilots: white fill, every block named.
-export function buildSpraySvg(
-  blocks: FieldRow[],
-  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
-): PlantationSvg | null {
+export function buildSpraySvg(blocks: FieldRow[], opts: BuildOpts = {}): PlantationSvg | null {
   return buildSvg(blocks, 'spray', opts)
 }
 
-function buildSvg(
-  blocks: FieldRow[],
-  style: SvgStyle,
-  opts: { canvasWidth?: number; pad?: number; unitsArpents?: boolean } = {},
-): PlantationSvg | null {
+function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): PlantationSvg | null {
   const canvasWidth = opts.canvasWidth ?? 1100
   const pad = opts.pad ?? 28
 
@@ -353,7 +352,8 @@ function buildSvg(
     return {
       id: b.id,
       points: coords.join(' '),
-      color: style === 'spray' ? '#FFFFFF' : colorForRatoon(b.current_ratoon),
+      color:
+        style === 'spray' ? '#FFFFFF' : stageColorFor(b.current_ratoon, opts.stageColors ?? {}),
       labelX: lx,
       labelY: ly,
       fontSize,

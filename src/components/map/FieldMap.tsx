@@ -8,7 +8,8 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import type { FieldRow } from '@/lib/fields'
 import type { CaneState } from '@/lib/types'
-import { RATOON_COLORS, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import type { StageColor } from '@/lib/resolve-colors'
 import { cornerLabelAnchors } from './cornerLabels'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
@@ -36,6 +37,7 @@ export type ColorBy = 'stage' | 'variety'
 function fillColorExpression(
   selectedFieldId: string | null,
   colorBy: ColorBy,
+  stageColors: StageColor[],
   varietyColors: Record<string, string>,
 ): mapboxgl.ExpressionSpecification {
   const varietyPairs = Object.entries(varietyColors).flatMap(([k, c]) => [k, c])
@@ -45,7 +47,7 @@ function fillColorExpression(
       : [
           'match',
           ['coalesce', ['get', 'ratoon'], 'unset'],
-          ...RATOON_COLORS.flatMap((r) => [r.key, r.color]),
+          ...stageColors.flatMap((r) => [r.key, r.color]),
           UNSET_COLOR,
         ]
   return [
@@ -161,8 +163,9 @@ export interface FieldMapProps {
   // when no filter is on. Non-matching blocks render white with labels hidden.
   filterIds: Set<string> | null
   // Palette that paints the blocks (stage = year cane colors, variety = variety
-  // colors). Owned by MapShell alongside the layer filter.
+  // colors), with the farm's custom colors already resolved in.
   colorBy: ColorBy
+  stageColors: StageColor[]
   varietyColors: Record<string, string>
 }
 
@@ -185,6 +188,7 @@ export default function FieldMap({
   onViewModeChange,
   filterIds,
   colorBy,
+  stageColors,
   varietyColors,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -331,7 +335,7 @@ export default function FieldMap({
         source: 'fields',
         paint: {
           // Initial paint; the view-mode effect re-applies the live palette.
-          'fill-color': fillColorExpression(selectedFieldId, 'stage', {}),
+          'fill-color': fillColorExpression(selectedFieldId, 'stage', stageColors, {}),
           'fill-opacity': 0.4,
         },
       })
@@ -727,7 +731,7 @@ export default function FieldMap({
     map.setPaintProperty(
       'fields-fill',
       'fill-color',
-      isSpray ? '#FFFFFF' : fillColorExpression(selectedFieldId, colorBy, varietyColors),
+      isSpray ? '#FFFFFF' : fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors),
     )
     // Dimmed (filtered-out) blocks render more opaque on satellite so they read
     // as solid white "off" blocks rather than a ghost tint.
@@ -780,7 +784,7 @@ export default function FieldMap({
         /* layer may not support the property — ignore */
       }
     }
-  }, [selectedFieldId, ready, viewMode, colorBy, varietyColors])
+  }, [selectedFieldId, ready, viewMode, colorBy, stageColors, varietyColors])
 
   // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
   // correct base-layer opacity without taking viewMode as a dependency (which
@@ -1397,7 +1401,7 @@ export default function FieldMap({
                         <span className="truncate">{name}</span>
                       </li>
                     ))
-                  : RATOON_COLORS.map((r) => (
+                  : stageColors.map((r) => (
                       <li key={r.key} className="flex items-center gap-2 text-xs text-gray-700">
                         <span
                           className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"

@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { listFieldsByIds } from '@/lib/fields'
 import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
-import { RATOON_COLORS } from '@/lib/ratoon-colors'
+import { getOrgColors } from '@/lib/org-colors'
+import { resolveStageColors } from '@/lib/resolve-colors'
 import PlatSheet from '@/components/print/PlatSheet'
 
 export const metadata: Metadata = { title: 'Print selected blocks' }
@@ -14,6 +15,8 @@ export default async function SelectedBlocksPrintPage({
 }) {
   const { ids: idsRaw, style: styleRaw } = await searchParams
   const { org } = await requireUserAndOrg()
+  const colorOverrides = await getOrgColors(org.id)
+  const stageColors = resolveStageColors(colorOverrides.stage)
   const isSpray = styleRaw === 'spray'
 
   const ids = (idsRaw ?? '')
@@ -25,7 +28,7 @@ export default async function SelectedBlocksPrintPage({
   const unitsArpents = org.units_default === 'arpents'
   const svg = isSpray
     ? buildSpraySvg(blocks, { unitsArpents })
-    : buildPlantationSvg(blocks, { unitsArpents })
+    : buildPlantationSvg(blocks, { unitsArpents, stageColors: colorOverrides.stage })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
@@ -33,7 +36,7 @@ export default async function SelectedBlocksPrintPage({
   const meta = `${blocks.length} block${blocks.length === 1 ? '' : 's'} · ${totalLabel}`
 
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-  const legendItems = isSpray || !svg ? [] : RATOON_COLORS.filter((r) => svg.stagesPresent.includes(r.key))
+  const legendItems = isSpray || !svg ? [] : stageColors.filter((r) => svg.stagesPresent.includes(r.key))
 
   return (
     <PlatSheet

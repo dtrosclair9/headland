@@ -15,7 +15,8 @@ import {
   isLayerFilterActive,
   fieldMatchesFilter,
 } from './layer-filter'
-import { defaultVarietyColors } from '@/lib/variety-colors'
+import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
+import type { OrgColorOverrides } from '@/lib/org-colors'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -30,9 +31,11 @@ interface MapShellProps {
   initialFields: FieldRow[]
   units: Units
   state: CaneState | null
+  // Per-farm custom color overrides (stage + variety), loaded server-side.
+  colorOverrides: OrgColorOverrides
 }
 
-export default function MapShell({ initialFields, units, state }: MapShellProps) {
+export default function MapShell({ initialFields, units, state, colorOverrides }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Use server data directly. router.refresh() flows new initialFields in.
@@ -66,9 +69,12 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   // Which palette paints the blocks (filters pick WHICH blocks highlight;
   // colorBy picks the palette, so stage + variety filters never fight).
   const [colorBy, setColorBy] = useState<ColorBy>('stage')
+  // Defaults merged with the farm's custom colors — one resolution point for
+  // the map fill, the legend, and the sidebar dots.
+  const stageColors = useMemo(() => resolveStageColors(colorOverrides.stage), [colorOverrides])
   const varietyColors = useMemo(
-    () => defaultVarietyColors(fields.map((f) => f.variety ?? '')),
-    [fields],
+    () => resolveVarietyColors(fields.map((f) => f.variety), colorOverrides.variety),
+    [fields, colorOverrides],
   )
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
@@ -234,6 +240,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
           onLayerFilterChange={setLayerFilter}
           colorBy={colorBy}
           onColorByChange={setColorBy}
+          stageColors={stageColors}
           varietyColors={varietyColors}
           selectedFieldId={selectedFieldId}
           onSelectField={(id) => {
@@ -314,6 +321,7 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         onViewModeChange={setViewMode}
         filterIds={filterIds}
         colorBy={colorBy}
+        stageColors={stageColors}
         varietyColors={varietyColors}
       />
 
