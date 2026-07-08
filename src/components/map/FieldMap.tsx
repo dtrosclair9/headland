@@ -1438,21 +1438,21 @@ export default function FieldMap({
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
           <button
             type="button"
-            onClick={() => onViewModeChange('satellite')}
-            className={`px-3 py-2 transition ${
-              viewMode === 'satellite' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Satellite
-          </button>
-          <button
-            type="button"
             onClick={() => onViewModeChange('crop')}
-            className={`px-3 py-2 transition border-l border-gray-200 ${
+            className={`px-3 py-2 transition ${
               viewMode === 'crop' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             Crop map
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange('satellite')}
+            className={`px-3 py-2 transition border-l border-gray-200 ${
+              viewMode === 'satellite' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Satellite
           </button>
         </div>
       </div>

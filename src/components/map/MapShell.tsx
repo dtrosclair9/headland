@@ -68,7 +68,9 @@ export default function MapShell({
   const [repositionIds, setRepositionIds] = useState<Set<string> | null>(null)
   // Map view mode is owned here so the sidebar's print links can follow it
   // (spray-map view → the print links output the B&W spray sheet).
-  const [viewMode, setViewMode] = useState<ViewMode>('satellite')
+  // Crop map is the login default — the working surface; satellite is for
+  // drawing / ground-truthing.
+  const [viewMode, setViewMode] = useState<ViewMode>('crop')
   // Layer selection (FarmWorks-style): which stages/varieties/plantations to
   // highlight. Matching ids feed the map; non-matches render white.
   const [layerFilter, setLayerFilter] = useState<LayerFilter>(EMPTY_LAYER_FILTER)
