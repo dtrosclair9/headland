@@ -106,10 +106,28 @@ export default async function SelectedBlocksPrintPage({
     }
   }
 
+  // When the selection was scoped to plantations, the sheet is titled by the
+  // plantation names ("Woodlawn", "Rosedale + Waverly") instead of a generic
+  // "Highlighted blocks".
+  const scopeNames =
+    isHighlight && scopeSet
+      ? Array.from(new Set(blocks.map((b) => b.plantation_name ?? 'Unassigned'))).sort((a, b) =>
+          a.localeCompare(b),
+        )
+      : []
+  const title =
+    scopeNames.length > 0
+      ? scopeNames.join(' + ')
+      : isSpray
+        ? 'Spray map'
+        : isHighlight
+          ? 'Highlighted blocks'
+          : 'Selected blocks'
+
   return (
     <PlatSheet
       orgName={org.name}
-      title={isSpray ? 'Spray map' : isHighlight ? 'Highlighted blocks' : 'Selected blocks'}
+      title={title}
       meta={meta}
       svg={svg}
       legendItems={legendItems}
@@ -118,7 +136,6 @@ export default async function SelectedBlocksPrintPage({
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks selected to print."
       style={isSpray ? 'spray' : 'crop'}
-      colorNote={byVariety ? 'Colored by variety.' : undefined}
     />
   )
 }

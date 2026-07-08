@@ -215,7 +215,7 @@ export default async function FieldPrintPage({
 
         <div style={{ position: 'absolute', bottom: 24, left: 36, right: 36, display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#6B6B6B', paddingTop: 6, borderTop: '0.5px solid #D9D9D9' }}>
           <span>{org.name} · {field.name}</span>
-          <span>{SITE_NAME} · headland.farm</span>
+          <span>{SITE_NAME} · headlandmaps.com</span>
         </div>
       </div>
     </>

@@ -24,7 +24,6 @@ export default function PlatSheet({
   unitWord,
   emptyMessage,
   style = 'crop',
-  colorNote,
 }: {
   orgName: string
   title: string
@@ -38,8 +37,6 @@ export default function PlatSheet({
   // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
   // black boundaries, no ratoon legend). 'crop' = colored plat map.
   style?: 'crop' | 'spray'
-  // Footer wording for what the colors mean (default: year cane).
-  colorNote?: string
 }) {
   const isSpray = style === 'spray'
   return (
@@ -201,11 +198,8 @@ export default function PlatSheet({
         )}
 
         <p style={{ fontSize: 8, color: '#9CA3AF', marginTop: 6 }}>
-          Acreage shown in {unitWord}.{' '}
-          {isSpray
-            ? 'Outline map for spraying — blocks by name and acreage.'
-            : (colorNote ?? 'Colored by year cane.')}{' '}
-          {SITE_NAME} · headland.farm
+          {unitWord === 'arpents' ? 'Acreage shown in arpents. ' : ''}
+          {SITE_NAME} · headlandmaps.com
         </p>
       </div>
     </>
