@@ -1,6 +1,6 @@
 import type { FieldRow } from '@/lib/fields'
 import type { AnnotationRow } from '@/lib/annotations'
-import { cutAbbrev } from '@/lib/ratoon-colors'
+import { cutAbbrev, UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import { stageColorFor } from '@/lib/resolve-colors'
 
 // A fully-positioned piece of text inside a block. The builder decides
@@ -230,11 +230,15 @@ interface BuildOpts {
   annotations?: AnnotationRow[]
   /**
    * Highlight sheet: EVERY block prints for context, but only these ids get
-   * color — `color` for a fly plan's single hue, or the stage palette for a
+   * color — `color` for a fly plan's single hue, or the active palette for a
    * layer selection. Everything else is white with black outlines and just
    * its id + acreage, so the colored blocks read against the whole farm.
    */
   highlight?: { ids: Set<string>; color?: string }
+  /** which palette paints colored blocks (mirrors the map's Color-by toggle) */
+  paletteBy?: 'stage' | 'variety'
+  /** resolved per-variety colors, required when paletteBy = 'variety' */
+  varietyColors?: Record<string, string>
 }
 
 export function buildPlantationSvg(blocks: FieldRow[], opts: BuildOpts = {}): PlantationSvg | null {
@@ -371,7 +375,9 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
         ? hl.color
         : style === 'spray'
           ? '#FFFFFF'
-          : stageColorFor(b.current_ratoon, opts.stageColors ?? {})
+          : opts.paletteBy === 'variety'
+            ? ((b.variety && opts.varietyColors?.[b.variety]) || UNSET_RATOON_COLOR)
+            : stageColorFor(b.current_ratoon, opts.stageColors ?? {})
 
     // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
     // center), positioned against the block's real interior walls.

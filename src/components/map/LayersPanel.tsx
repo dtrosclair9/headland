@@ -179,10 +179,15 @@ export default function LayersPanel({
         </div>
         {active && matched.length > 0 && (
           <a
-            // highlight=1: the sheet draws EVERY block — the matches colored,
-            // the rest white with black outlines — so the selection has its
-            // surrounding context on paper.
-            href={`/blocks/print?ids=${matched.map((f) => f.id).join(',')}&highlight=1`}
+            // highlight=1: the sheet draws the whole CONTEXT — the matches
+            // colored, the rest white with black outlines. When plantations
+            // are part of the filter, context = those plantations only;
+            // otherwise the whole operation.
+            href={`/blocks/print?ids=${matched.map((f) => f.id).join(',')}&highlight=1${
+              filter.plantations.length > 0
+                ? `&scope=${filter.plantations.map((pid) => pid ?? '__none').join(',')}`
+                : ''
+            }${colorBy === 'variety' ? '&colorby=variety' : ''}`}
             target="_blank"
             rel="noreferrer"
             className="mt-2 block text-center text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"
