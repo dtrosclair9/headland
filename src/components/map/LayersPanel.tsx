@@ -268,9 +268,7 @@ export default function LayersPanel({
               onToggle={() =>
                 onFilterChange({ ...filter, varieties: toggle(filter.varieties, o.key) })
               }
-              // Variety colors only apply when the variety palette is active —
-              // showing them under year-cane coloring would lie about the map.
-              dot={colorBy === 'variety' && o.key ? varietyColors[o.key] : undefined}
+              dot={o.key ? varietyColors[o.key] : undefined}
             />
           ))}
         </LayerGroup>

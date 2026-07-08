@@ -93,6 +93,23 @@ export default function MapShell({
   }, [fields, layerFilter, deselected, activePlan])
   // White-map look: deselect-all or a fly plan (labels stay, blocks whiten).
   const whiteMap = deselected || activePlan !== null
+  // Plantation isolation: when plantations are picked, only their blocks are
+  // on the map (others omitted entirely) and the camera zooms to them.
+  const visibleIds = useMemo(
+    () =>
+      layerFilter.plantations.length > 0
+        ? new Set(
+            fields
+              .filter((f) => layerFilter.plantations.includes(f.plantation_id ?? null))
+              .map((f) => f.id),
+          )
+        : null,
+    [fields, layerFilter.plantations],
+  )
+  const visibleKey = layerFilter.plantations
+    .map((p) => p ?? '__none')
+    .sort()
+    .join(',')
 
   async function handleCreatePlan(): Promise<boolean> {
     if (!planDraft || selectedIds.size === 0) return false
@@ -484,6 +501,8 @@ export default function MapShell({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         filterIds={filterIds}
+        visibleIds={visibleIds}
+        visibleKey={visibleKey}
         whiteMap={whiteMap}
         highlightColor={activePlan?.color ?? (planDraft ? planDraft.color : null)}
         colorBy={colorBy}

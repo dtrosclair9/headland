@@ -26,9 +26,10 @@ const STATE_CENTERS: Record<CaneState, [number, number]> = {
   FL: [-80.7, 26.6],
 }
 
-// True when a block is filtered out by the active layer selection (the `dim`
-// property is stamped onto features when a filter is on).
-const DIMMED = ['to-boolean', ['get', 'dim']]
+// True when a block renders as a white context block (filtered out by the
+// layer selection, or the white-map state). Plain blocks keep ALL their
+// labels — id, acreage, cycle, variety — in black; only the fill whitens.
+const PLAIN = ['to-boolean', ['get', 'plain']]
 
 // Which palette paints the blocks: year-cane colors or variety colors. Filters
 // choose WHICH blocks highlight; colorBy chooses the palette — so a stage
@@ -58,10 +59,8 @@ function fillColorExpression(
     'case',
     ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
     SELECTED_COLOR,
-    // Filtered-out blocks go white — the layer view highlights only matches.
-    DIMMED,
-    '#FFFFFF',
-    ['to-boolean', ['get', 'whiteout']],
+    // Filtered-out / white-map blocks go white; matches keep their colors.
+    PLAIN,
     '#FFFFFF',
     paletteExpr,
   ] as unknown as mapboxgl.ExpressionSpecification
@@ -166,6 +165,13 @@ export interface FieldMapProps {
   // Layer filter: ids of blocks matching the active layer selection, or null
   // when no filter is on. Non-matching blocks render white with labels hidden.
   filterIds: Set<string> | null
+  // Plantation isolation: when plantations are selected, only these block ids
+  // exist on the map (others are omitted, not whitened) and the camera zooms
+  // to them. null = whole operation visible.
+  visibleIds: Set<string> | null
+  // Stable key for visibleIds so the camera refits only when the plantation
+  // selection actually changes.
+  visibleKey: string
   // White-map state (deselect-all or a fly plan): every non-matching block is
   // white but ALL labels stay visible in black — the printed spray-sheet look,
   // live. Replaces the old spray view mode.
@@ -206,6 +212,8 @@ export default function FieldMap({
   viewMode,
   onViewModeChange,
   filterIds,
+  visibleIds,
+  visibleKey,
   whiteMap,
   highlightColor,
   colorBy,
@@ -417,7 +425,7 @@ export default function FieldMap({
         id: 'fields-label',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['all', ['==', ['get', 'corner'], 'center'], ['!', ['to-boolean', ['get', 'dim']]]],
+        filter: ['==', ['get', 'corner'], 'center'],
         layout: {
           // Center of the block: the cut, abbreviated (P / 1st / … / F).
           'text-field': cutLabelExpression(),
@@ -436,7 +444,7 @@ export default function FieldMap({
         id: 'field-label-id',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['all', ['==', ['get', 'corner'], 'id'], ['!', ['to-boolean', ['get', 'dim']]]],
+        filter: ['==', ['get', 'corner'], 'id'],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -451,7 +459,7 @@ export default function FieldMap({
         id: 'field-label-variety',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['all', ['==', ['get', 'corner'], 'variety'], ['!', ['to-boolean', ['get', 'dim']]]],
+        filter: ['==', ['get', 'corner'], 'variety'],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -467,7 +475,7 @@ export default function FieldMap({
         id: 'field-label-acres',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['all', ['==', ['get', 'corner'], 'acres'], ['!', ['to-boolean', ['get', 'dim']]]],
+        filter: ['==', ['get', 'corner'], 'acres'],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -606,10 +614,22 @@ export default function FieldMap({
       // Text-label placement: one click picks the spot, then the overlay input
       // takes the label text.
       map.on('click', (e) => {
-        if (drawKindRef.current !== 'text') return
-        setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '' })
-        setDrawKind(null)
-        setDrawing(false)
+        if (drawKindRef.current === 'text') {
+          setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '' })
+          setDrawKind(null)
+          setDrawing(false)
+          return
+        }
+        // Clicking open ground (no block, no annotation) clears the selection
+        // instead of leaving the last block highlighted forever.
+        if (drawKindRef.current || selectModeRef.current || repositioningRef.current) return
+        const hit = map.queryRenderedFeatures(e.point, {
+          layers: ['fields-fill', 'annotations-line', 'annotations-text'],
+        })
+        if (hit.length === 0) {
+          onSelectField(null)
+          popupRef.current?.remove()
+        }
       })
 
       // mapbox-gl-draw is added full-time in simple_select and swallows the
@@ -634,10 +654,35 @@ export default function FieldMap({
         // A real tap, not a pan or long-press, and only when not mid-draw.
         if (moved > 12 || Date.now() - start.t > 600) return
         if (drawRef.current?.getMode?.() && drawRef.current.getMode() !== 'simple_select') return
+        if (drawKindRef.current === 'text') return
         const rect = canvasEl.getBoundingClientRect()
         const pt: [number, number] = [tch.clientX - rect.left, tch.clientY - rect.top]
+        // Annotations first (they sit above the blocks) — with a padded hit
+        // box, since a 3px line is unhittable with a fingertip. Tapping one
+        // opens its delete popup; this was impossible on mobile before.
+        if (!selectModeRef.current && !drawKindRef.current) {
+          const pad = 10
+          const annFeats = map.queryRenderedFeatures(
+            [
+              [pt[0] - pad, pt[1] - pad],
+              [pt[0] + pad, pt[1] + pad],
+            ],
+            { layers: ['annotations-line', 'annotations-text'] },
+          )
+          if (annFeats.length) {
+            openAnnotationDelete(annFeats[0].properties, map.unproject(pt))
+            return
+          }
+        }
         const feats = map.queryRenderedFeatures(pt, { layers: ['fields-fill'] })
-        if (!feats.length) return
+        if (!feats.length) {
+          // Tapped open ground — clear the block selection.
+          if (!selectModeRef.current) {
+            onSelectField(null)
+            popupRef.current?.remove()
+          }
+          return
+        }
         const props = feats[0].properties
         if (selectModeRef.current && typeof props?.id === 'string') {
           onToggleSelectedRef.current(props.id)
@@ -767,15 +812,15 @@ export default function FieldMap({
     if (!map || !ready) return
     const src = map.getSource('fields') as mapboxgl.GeoJSONSource | undefined
     if (!src) return
-    // Partial layer filter: non-matches are dimmed (white + labels hidden).
-    // White-map state (deselect-all / fly plan): non-matches are white but
-    // their labels STAY (the pilot needs every id + acreage), so they're
-    // stamped dim=false, plain=true.
+    // `plain` = renders white (filtered out or white-map) but KEEPS every
+    // label — the farmer still needs id, acreage, cycle, and variety on the
+    // surrounding blocks. When plantations are selected, blocks outside them
+    // are omitted from the map entirely.
     const isMatch = (f: FieldRow) => (filterIds ? filterIds.has(f.id) : true)
-    const isDim = (f: FieldRow) => !whiteMap && !isMatch(f)
+    const visible = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
     src.setData({
       type: 'FeatureCollection',
-      features: fields.map((f) => ({
+      features: visible.map((f) => ({
         type: 'Feature',
         geometry: f.geometry,
         properties: {
@@ -784,10 +829,7 @@ export default function FieldMap({
           acreage: f.acreage_cached,
           ratoon: f.current_ratoon ?? 'unset',
           variety: f.variety ?? '',
-          // `dim` drives BOTH the white fill and label hiding; in whiteMap
-          // mode `whiteout` whitens the fill while labels stay.
-          dim: isDim(f),
-          whiteout: whiteMap && !isMatch(f),
+          plain: !isMatch(f),
           // Truncate notes based on field acreage — bigger field = more room
           // for the label, so we can show more characters before adding '…'.
           // Full notes still live on the sidebar card and the print sheet.
@@ -804,45 +846,49 @@ export default function FieldMap({
     // land outside angled cane blocks).
     const cornerSrc = map.getSource('field-corner-labels') as mapboxgl.GeoJSONSource | undefined
     if (cornerSrc) {
-      const cornerFeatures = fields.flatMap((f) => {
+      const cornerFeatures = visible.flatMap((f) => {
         const anchors = cornerLabelAnchors(f.geometry.coordinates[0] as [number, number][] | undefined)
         if (!anchors) return []
         const acres = Number(f.acreage_cached || 0)
-        const dim = isDim(f)
+        const plain = !isMatch(f)
         return [
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.center },
-            properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset', dim },
+            properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset', plain },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.id },
-            properties: { corner: 'id', text: f.name ?? '', dim },
+            properties: { corner: 'id', text: f.name ?? '', plain },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.variety },
-            properties: { corner: 'variety', text: f.variety ?? '', dim },
+            properties: { corner: 'variety', text: f.variety ?? '', plain },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.acres },
-            properties: { corner: 'acres', text: `${acres.toFixed(2)} ac`, dim },
+            properties: { corner: 'acres', text: `${acres.toFixed(2)} ac`, plain },
           },
         ]
       })
       cornerSrc.setData({ type: 'FeatureCollection', features: cornerFeatures })
     }
-  }, [fields, ready, filterIds, whiteMap])
+  }, [fields, ready, filterIds, visibleIds])
 
-  // Fit the camera to the farm ONCE per fields change — deliberately not on
-  // filter changes, so toggling layers never yanks the camera.
+  // Fit the camera to the farm on fields changes and when the PLANTATION
+  // selection changes (selecting a plantation zooms to it) — but deliberately
+  // not on stage/variety filter changes, so checking those never yanks the
+  // camera. visibleKey only changes with the plantation picks.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready || fields.length === 0) return
+    const target = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
+    if (target.length === 0) return
     const bounds = new mapboxgl.LngLatBounds()
-    for (const f of fields) {
+    for (const f of target) {
       for (const ring of f.geometry.coordinates) {
         for (const [lng, lat] of ring) {
           bounds.extend([lng, lat])
@@ -852,7 +898,8 @@ export default function FieldMap({
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { padding: 80, animate: false, maxZoom: 16 })
     }
-  }, [fields, ready])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey stands in for visibleIds
+  }, [fields, ready, visibleKey])
 
   // Bright outline on the bulk-selected blocks (cleared when not selecting).
   useEffect(() => {
@@ -920,8 +967,8 @@ export default function FieldMap({
       'fill-color',
       fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors, highlightColor),
     )
-    // Dimmed / whited-out blocks render more opaque on satellite so they read
-    // as solid white "off" blocks rather than a ghost tint.
+    // Plain (white) blocks render more opaque on satellite so they read as
+    // solid white "off" blocks rather than a ghost tint.
     map.setPaintProperty(
       'fields-fill',
       'fill-opacity',
@@ -929,12 +976,7 @@ export default function FieldMap({
         ? sheetLook
           ? 1
           : 0.92
-        : ([
-            'case',
-            ['any', DIMMED, ['to-boolean', ['get', 'whiteout']]],
-            0.75,
-            0.4,
-          ] as unknown as mapboxgl.ExpressionSpecification),
+        : (['case', PLAIN, 0.75, 0.4] as unknown as mapboxgl.ExpressionSpecification),
     )
     map.setPaintProperty(
       'fields-outline',
@@ -949,11 +991,16 @@ export default function FieldMap({
         : lineColorExpression(selectedFieldId, viewMode),
     )
     map.setPaintProperty('fields-outline', 'line-width', sheetLook ? 2.5 : isCrop ? 1.5 : 2)
-    // Label colors per mode: black text on the white sheet look; white text
-    // with a dark halo otherwise (satellite imagery + the color-filled crop
-    // sheet). Applies to the center cut label AND both corner labels.
-    const textColor = sheetLook ? '#111827' : '#FFFFFF'
-    const haloColor = sheetLook ? '#FFFFFF' : '#0F2A1F'
+    // Label colors are per-BLOCK: plain (white) blocks always read in black so
+    // their baseline data (id, acreage, cycle, variety) stays legible; colored
+    // blocks keep white text with a dark halo. Applies to the center cut label
+    // AND the corner labels.
+    const textColor = sheetLook
+      ? '#111827'
+      : (['case', PLAIN, '#111827', '#FFFFFF'] as unknown as mapboxgl.ExpressionSpecification)
+    const haloColor = sheetLook
+      ? '#FFFFFF'
+      : (['case', PLAIN, '#FFFFFF', '#0F2A1F'] as unknown as mapboxgl.ExpressionSpecification)
     for (const id of ['fields-label', 'field-label-id', 'field-label-variety', 'field-label-acres']) {
       map.setPaintProperty(id, 'text-color', textColor)
       map.setPaintProperty(id, 'text-halo-color', haloColor)
