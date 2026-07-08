@@ -138,6 +138,37 @@ export default function PlatSheet({
                 strokeLinejoin="round"
               />
             ))}
+            {/* Hand-drawn reference lines + text labels — printed in solid
+                black on the spray sheet (it's a B&W handout), in their chosen
+                color on the crop map. Drawn under the block labels. */}
+            {svg.annotations.map((a, i) =>
+              a.kind === 'line' ? (
+                <polyline
+                  key={`a-${i}`}
+                  points={a.points}
+                  fill="none"
+                  stroke={isSpray ? '#000000' : a.color}
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <text
+                  key={`a-${i}`}
+                  x={a.x}
+                  y={a.y}
+                  textAnchor="middle"
+                  fontSize={13}
+                  fontWeight={700}
+                  fill={isSpray ? '#000000' : a.color}
+                  stroke="#FFFFFF"
+                  strokeWidth={2.5}
+                  paintOrder="stroke"
+                >
+                  {a.text}
+                </text>
+              ),
+            )}
             {svg.blocks.map((b) => (
               // Crop blocks are color-filled, so labels are white with a thin
               // dark outline (matching the map). Spray blocks are white, so

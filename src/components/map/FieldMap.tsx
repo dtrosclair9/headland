@@ -10,6 +10,7 @@ import type { FieldRow } from '@/lib/fields'
 import type { CaneState } from '@/lib/types'
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import type { StageColor } from '@/lib/resolve-colors'
+import type { AnnotationRow } from '@/lib/annotations'
 import { cornerLabelAnchors } from './cornerLabels'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
@@ -167,6 +168,14 @@ export interface FieldMapProps {
   colorBy: ColorBy
   stageColors: StageColor[]
   varietyColors: Record<string, string>
+  // Hand-drawn reference lines + text labels ("Hwy 308", "Shop house").
+  annotations: AnnotationRow[]
+  onCreateAnnotation: (
+    kind: 'line' | 'text',
+    geometry: GeoJSON.LineString | GeoJSON.Point,
+    text?: string,
+  ) => Promise<void>
+  onDeleteAnnotation: (id: string) => Promise<void>
 }
 
 export default function FieldMap({
@@ -190,6 +199,9 @@ export default function FieldMap({
   colorBy,
   stageColors,
   varietyColors,
+  annotations,
+  onCreateAnnotation,
+  onDeleteAnnotation,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -211,11 +223,24 @@ export default function FieldMap({
   const onToggleSelectedRef = useRef(onToggleFieldSelected)
   selectModeRef.current = selectMode
   onToggleSelectedRef.current = onToggleFieldSelected
+  // Live draw-kind + annotation callbacks for the once-bound map handlers.
+  const drawKindRef = useRef<'block' | 'line' | 'text' | null>(null)
+  const onCreateAnnotationRef = useRef(onCreateAnnotation)
+  const onDeleteAnnotationRef = useRef(onDeleteAnnotation)
+  onCreateAnnotationRef.current = onCreateAnnotation
+  onDeleteAnnotationRef.current = onDeleteAnnotation
   const [savingReposition, setSavingReposition] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
-  const [drawKind, setDrawKind] = useState<'block' | null>(null)
+  const [drawKind, setDrawKind] = useState<'block' | 'line' | 'text' | null>(null)
+  // Text-label placement: after the grower clicks a spot, this holds the spot
+  // while they type the label into the overlay input.
+  const [textDraft, setTextDraft] = useState<{ lng: number; lat: number; value: string } | null>(
+    null,
+  )
+  const textMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  drawKindRef.current = drawKind
   // Default the legend closed on phones AND tablets so it doesn't cover the map
   // or collide with the bottom-center view toggle on the narrower sidebar-open
   // layout; open by default only on desktop (lg) where there's room.
@@ -318,7 +343,8 @@ export default function FieldMap({
     }
 
     map.on('draw.modechange', (e: { mode: string }) => {
-      const kind = e.mode === 'draw_polygon' ? 'block' : null
+      const kind =
+        e.mode === 'draw_polygon' ? 'block' : e.mode === 'draw_line_string' ? 'line' : null
       setDrawing(kind !== null)
       setDrawKind(kind)
       onDrawingChange?.(kind !== null)
@@ -473,6 +499,9 @@ export default function FieldMap({
       }
 
       map.on('click', 'fields-fill', (e) => {
+        // Mid-draw clicks (block corners, line points, text placement) must
+        // not select blocks or pop the info card.
+        if (drawKindRef.current !== null) return
         const props = e.features?.[0]?.properties
         // In bulk-select mode, a click toggles the block in/out of the set.
         if (selectModeRef.current && typeof props?.id === 'string') {
@@ -480,6 +509,90 @@ export default function FieldMap({
           return
         }
         openFieldInfo(props, e.lngLat)
+      })
+
+      // Hand-drawn annotations: reference lines + text labels. Kept above the
+      // block layers so a road drawn across blocks stays visible.
+      map.addSource('annotations', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'annotations-line',
+        type: 'line',
+        source: 'annotations',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: {
+          'line-color': ['get', 'color'] as unknown as mapboxgl.ExpressionSpecification,
+          'line-width': 3,
+        },
+      })
+      map.addLayer({
+        id: 'annotations-text',
+        type: 'symbol',
+        source: 'annotations',
+        filter: ['==', ['geometry-type'], 'Point'],
+        layout: {
+          'text-field': ['get', 'text'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 13, 17, 24],
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': ['get', 'color'] as unknown as mapboxgl.ExpressionSpecification,
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 2,
+        },
+      })
+
+      // Click a line/label (outside any draw mode) → offer to remove it.
+      const openAnnotationDelete = (
+        props: Record<string, unknown> | null | undefined,
+        lngLat: mapboxgl.LngLat,
+      ) => {
+        const annId = props?.id
+        if (typeof annId !== 'string') return
+        popupRef.current?.remove()
+        const node = document.createElement('div')
+        node.style.cssText = 'font-family:system-ui,sans-serif;min-width:130px'
+        const label = document.createElement('div')
+        label.style.cssText = 'font-weight:700;color:#1A3D2E;font-size:13px'
+        label.textContent = props?.kind === 'text' ? 'Text label' : 'Drawn line'
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.style.cssText =
+          'margin-top:8px;font-weight:600;font-size:13px;color:#B91C1C;background:none;border:none;padding:0;cursor:pointer'
+        btn.textContent = 'Delete'
+        btn.onclick = async () => {
+          await onDeleteAnnotationRef.current(annId)
+          popupRef.current?.remove()
+        }
+        node.append(label, btn)
+        popupRef.current = new mapboxgl.Popup({ closeButton: true, offset: 8, maxWidth: '220px' })
+          .setLngLat(lngLat)
+          .setDOMContent(node)
+          .addTo(map)
+      }
+      for (const layerId of ['annotations-line', 'annotations-text']) {
+        map.on('click', layerId, (e) => {
+          if (drawKindRef.current || selectModeRef.current || repositioningRef.current) return
+          openAnnotationDelete(e.features?.[0]?.properties, e.lngLat)
+        })
+        map.on('mouseenter', layerId, () => {
+          map.getCanvas().style.cursor = 'pointer'
+        })
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = ''
+        })
+      }
+
+      // Text-label placement: one click picks the spot, then the overlay input
+      // takes the label text.
+      map.on('click', (e) => {
+        if (drawKindRef.current !== 'text') return
+        setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '' })
+        setDrawKind(null)
+        setDrawing(false)
       })
 
       // mapbox-gl-draw is added full-time in simple_select and swallows the
@@ -541,6 +654,9 @@ export default function FieldMap({
       const feature = e.features[0]
       if (feature?.geometry?.type === 'Polygon') {
         await onCreateField(feature.geometry as GeoJSON.Polygon)
+      } else if (feature?.geometry?.type === 'LineString') {
+        // Reference-line annotation (road, ditch, headland run).
+        await onCreateAnnotationRef.current('line', feature.geometry as GeoJSON.LineString)
       }
       draw.deleteAll()
       setDrawing(false)
@@ -558,6 +674,8 @@ export default function FieldMap({
         draw.changeMode('simple_select')
         draw.deleteAll()
         setDrawing(false)
+        setDrawKind(null)
+        setTextDraft(null)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -717,6 +835,39 @@ export default function FieldMap({
     })
   }, [selectedIds, selectMode, fields, ready])
 
+  // Push annotations into their source whenever they change.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    const src = map.getSource('annotations') as mapboxgl.GeoJSONSource | undefined
+    if (!src) return
+    src.setData({
+      type: 'FeatureCollection',
+      features: annotations.map((a) => ({
+        type: 'Feature' as const,
+        geometry: a.geometry,
+        properties: { id: a.id, kind: a.kind, text: a.text ?? '', color: a.color },
+      })),
+    })
+  }, [annotations, ready])
+
+  // Marker showing where a pending text label will land while typing.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    textMarkerRef.current?.remove()
+    textMarkerRef.current = null
+    if (textDraft) {
+      textMarkerRef.current = new mapboxgl.Marker({ color: '#E8A33D' })
+        .setLngLat([textDraft.lng, textDraft.lat])
+        .addTo(map)
+    }
+    return () => {
+      textMarkerRef.current?.remove()
+      textMarkerRef.current = null
+    }
+  }, [textDraft])
+
   // Recolor selection + apply the active view mode. Crop and spray both hide the
   // satellite raster and lighten the background to a blank white plat sheet; crop
   // fills blocks with ratoon colors, spray leaves them white (the pilot colors
@@ -770,6 +921,8 @@ export default function FieldMap({
       'selected-highlight-line',
       'reposition-fill',
       'reposition-outline',
+      'annotations-line',
+      'annotations-text',
     ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {
@@ -797,6 +950,8 @@ export default function FieldMap({
   // the draw gesture so they can't sketch on the spray sheet.
   useEffect(() => {
     if (viewMode !== 'spray' || !drawing) return
+    setDrawKind(null)
+    setTextDraft(null)
     drawRef.current?.changeMode('simple_select')
     drawRef.current?.deleteAll()
     setDrawing(false)
@@ -1136,18 +1291,47 @@ export default function FieldMap({
     }, 15000)
   }
 
-  function toggleDraw() {
+  function cancelDraw() {
     const draw = drawRef.current
-    if (!draw) return
-    if (drawing) {
-      draw.changeMode('simple_select')
-      draw.deleteAll()
-      setDrawing(false)
-      setDrawKind(null)
+    draw?.changeMode('simple_select')
+    draw?.deleteAll()
+    setDrawing(false)
+    setDrawKind(null)
+    setTextDraft(null)
+  }
+
+  function toggleDraw() {
+    if (!drawRef.current) return
+    if (drawKind === 'block') {
+      cancelDraw()
     } else {
-      draw.changeMode('draw_polygon')
+      drawRef.current.changeMode('draw_polygon')
       setDrawing(true)
       setDrawKind('block')
+    }
+  }
+
+  function toggleLine() {
+    if (!drawRef.current) return
+    if (drawKind === 'line') {
+      cancelDraw()
+    } else {
+      drawRef.current.changeMode('draw_line_string')
+      setDrawing(true)
+      setDrawKind('line')
+    }
+  }
+
+  function toggleText() {
+    if (drawKind === 'text') {
+      cancelDraw()
+    } else {
+      // Leave any in-progress shape, then arm the one-shot placement click.
+      drawRef.current?.changeMode('simple_select')
+      drawRef.current?.deleteAll()
+      setDrawing(true)
+      setDrawKind('text')
+      setTextDraft(null)
     }
   }
 
@@ -1278,6 +1462,42 @@ export default function FieldMap({
             )}
           </button>
 
+          {/* Annotation tools: reference lines (roads/ditches) + text labels. */}
+          <button
+            type="button"
+            onClick={toggleLine}
+            disabled={!ready || viewMode === 'spray'}
+            title={viewMode === 'spray' ? 'Switch to Satellite to draw' : 'Draw a reference line (road, ditch)'}
+            className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed border-2 ${
+              drawKind === 'line'
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white text-primary border-primary hover:bg-primary/5'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M3.5 14.5a2 2 0 102.83 2.83l9.5-9.5A2 2 0 1013 5l-9.5 9.5z" />
+              <circle cx="4.75" cy="15.75" r="1.75" />
+              <circle cx="15.25" cy="4.75" r="1.75" />
+            </svg>
+            {drawKind === 'line' ? 'Cancel line' : 'Line'}
+          </button>
+          <button
+            type="button"
+            onClick={toggleText}
+            disabled={!ready || viewMode === 'spray'}
+            title={viewMode === 'spray' ? 'Switch to Satellite to add text' : 'Add a text label (Hwy 308, Shop, N)'}
+            className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed border-2 ${
+              drawKind === 'text'
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white text-primary border-primary hover:bg-primary/5'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M4 4a1 1 0 011-1h10a1 1 0 011 1v2a1 1 0 11-2 0V5h-3v10h1a1 1 0 110 2H8a1 1 0 110-2h1V5H6v1a1 1 0 01-2 0V4z" />
+            </svg>
+            {drawKind === 'text' ? 'Cancel text' : 'Text'}
+          </button>
+
           <button
             type="button"
             onClick={findMe}
@@ -1302,7 +1522,11 @@ export default function FieldMap({
 
         {drawing && (
           <div className="pointer-events-none rounded-md bg-primary-dark/90 text-white px-3 py-2 text-xs leading-snug max-w-xs shadow-md">
-            Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.
+            {drawKind === 'line'
+              ? 'Click points along the road or ditch. Double-click the last point to finish. Press Esc to cancel.'
+              : drawKind === 'text'
+                ? 'Click the map where the label should go.'
+                : 'Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.'}
           </div>
         )}
 
@@ -1364,6 +1588,46 @@ export default function FieldMap({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Text-label input — appears after the grower clicks a spot. */}
+      {textDraft && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <form
+            className="rounded-md bg-white shadow-lg border border-gray-200 p-3 flex items-center gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const value = textDraft.value.trim()
+              if (!value) return
+              await onCreateAnnotation(
+                'text',
+                { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
+                value,
+              )
+              setTextDraft(null)
+            }}
+          >
+            <input
+              autoFocus
+              type="text"
+              value={textDraft.value}
+              maxLength={120}
+              onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
+              placeholder="Hwy 308, Shop house, N…"
+              className="input text-sm w-52"
+            />
+            <button type="submit" className="btn-primary text-sm px-3 py-2" disabled={!textDraft.value.trim()}>
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextDraft(null)}
+              className="text-sm text-gray-500 hover:text-primary px-1"
+            >
+              Cancel
+            </button>
+          </form>
         </div>
       )}
 

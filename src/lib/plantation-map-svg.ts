@@ -1,4 +1,5 @@
 import type { FieldRow } from '@/lib/fields'
+import type { AnnotationRow } from '@/lib/annotations'
 import { cutAbbrev } from '@/lib/ratoon-colors'
 import { stageColorFor } from '@/lib/resolve-colors'
 
@@ -34,10 +35,23 @@ export interface SvgBlock {
   labels: PlacedLabel[]
 }
 
+// A projected hand-drawn annotation: a polyline (road/ditch) or a text label.
+export interface SvgAnnotation {
+  kind: 'line' | 'text'
+  /** polyline points (kind='line') */
+  points?: string
+  /** label anchor (kind='text') */
+  x?: number
+  y?: number
+  text?: string
+  color: string
+}
+
 export interface PlantationSvg {
   width: number
   height: number
   blocks: SvgBlock[]
+  annotations: SvgAnnotation[]
   /** ratoon stage keys present among these blocks, for the legend */
   stagesPresent: string[]
   hasUnset: boolean
@@ -207,6 +221,8 @@ interface BuildOpts {
   unitsArpents?: boolean
   /** the farm's custom stage colors (key -> hex); defaults used when absent */
   stageColors?: Record<string, string>
+  /** hand-drawn reference lines + text labels to print over the blocks */
+  annotations?: AnnotationRow[]
 }
 
 export function buildPlantationSvg(blocks: FieldRow[], opts: BuildOpts = {}): PlantationSvg | null {
@@ -336,14 +352,16 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
     // center), positioned against the block's real interior walls.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
+    // The spray sheet (fly plan) carries ONLY id + acreage + hand-drawn
+    // annotations — no cut or variety. Crop map keeps the full label set.
     const labels = planCornerLabels(
       svgRing,
       lx,
       ly,
       {
         name: b.name ?? '',
-        cut: cutAbbrev(b.current_ratoon),
-        variety: varietyCode(b.variety),
+        cut: style === 'spray' ? '' : cutAbbrev(b.current_ratoon),
+        variety: style === 'spray' ? '' : varietyCode(b.variety),
         acres: acreageLabel,
       },
       style === 'spray' ? 4.2 : 5,
@@ -362,10 +380,30 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     }
   })
 
+  // Project the hand-drawn annotations with the same rotation/flip as the
+  // blocks. The framing is still block-driven — anything off-page just clips.
+  const svgAnnotations: SvgAnnotation[] = (opts.annotations ?? []).flatMap(
+    (a): SvgAnnotation[] => {
+    if (a.kind === 'line' && a.geometry.type === 'LineString') {
+      const pts = a.geometry.coordinates.map(([lng, lat]) => {
+        const [x, y] = toXY(lng, lat)
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      return [{ kind: 'line' as const, points: pts.join(' '), color: a.color }]
+    }
+    if (a.kind === 'text' && a.geometry.type === 'Point') {
+      const [x, y] = toXY(a.geometry.coordinates[0], a.geometry.coordinates[1])
+      return [{ kind: 'text' as const, x, y, text: a.text ?? '', color: a.color }]
+    }
+    return []
+    },
+  )
+
   return {
     width: canvasWidth,
     height,
     blocks: svgBlocks,
+    annotations: svgAnnotations,
     stagesPresent: Array.from(stages),
     hasUnset,
   }

@@ -5,6 +5,7 @@ import { getPlantation } from '@/lib/plantations'
 import { listFieldsByPlantation } from '@/lib/fields'
 import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
+import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors } from '@/lib/resolve-colors'
 import PlatSheet from '@/components/print/PlatSheet'
 
@@ -22,6 +23,7 @@ export default async function PlantationPrintPage({
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
   const stageColors = resolveStageColors(colorOverrides.stage)
+  const annotations = await listAnnotations(org.id)
   const plantation = await getPlantation(id)
   if (!plantation || plantation.org_id !== org.id) notFound()
 
@@ -29,8 +31,8 @@ export default async function PlantationPrintPage({
   const blocks = await listFieldsByPlantation(id)
   const unitsArpents = org.units_default === 'arpents'
   const svg = isSpray
-    ? buildSpraySvg(blocks, { unitsArpents })
-    : buildPlantationSvg(blocks, { unitsArpents, stageColors: colorOverrides.stage })
+    ? buildSpraySvg(blocks, { unitsArpents, annotations })
+    : buildPlantationSvg(blocks, { unitsArpents, stageColors: colorOverrides.stage, annotations })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)

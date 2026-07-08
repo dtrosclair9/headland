@@ -17,6 +17,7 @@ import {
 } from './layer-filter'
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
 import type { OrgColorOverrides } from '@/lib/org-colors'
+import type { AnnotationRow } from '@/lib/annotations'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -33,9 +34,17 @@ interface MapShellProps {
   state: CaneState | null
   // Per-farm custom color overrides (stage + variety), loaded server-side.
   colorOverrides: OrgColorOverrides
+  // Hand-drawn reference lines + text labels, loaded server-side.
+  initialAnnotations: AnnotationRow[]
 }
 
-export default function MapShell({ initialFields, units, state, colorOverrides }: MapShellProps) {
+export default function MapShell({
+  initialFields,
+  units,
+  state,
+  colorOverrides,
+  initialAnnotations,
+}: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Use server data directly. router.refresh() flows new initialFields in.
@@ -76,6 +85,53 @@ export default function MapShell({ initialFields, units, state, colorOverrides }
     () => resolveVarietyColors(fields.map((f) => f.variety), colorOverrides.variety),
     [fields, colorOverrides],
   )
+
+  // Hand-drawn annotations, kept in client state so draws/deletes apply
+  // without a full refresh.
+  const [annotations, setAnnotations] = useState<AnnotationRow[]>(initialAnnotations)
+
+  async function handleCreateAnnotation(
+    kind: 'line' | 'text',
+    geometry: GeoJSON.LineString | GeoJSON.Point,
+    text?: string,
+  ) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/annotations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(kind === 'text' ? { kind, geometry, text } : { kind, geometry }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to save annotation')
+      }
+      const { annotation } = await res.json()
+      setAnnotations((prev) => [...prev, annotation as AnnotationRow])
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeleteAnnotation(id: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/annotations/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Failed to delete annotation')
+      }
+      setAnnotations((prev) => prev.filter((a) => a.id !== id))
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -323,6 +379,9 @@ export default function MapShell({ initialFields, units, state, colorOverrides }
         colorBy={colorBy}
         stageColors={stageColors}
         varietyColors={varietyColors}
+        annotations={annotations}
+        onCreateAnnotation={handleCreateAnnotation}
+        onDeleteAnnotation={handleDeleteAnnotation}
       />
 
       {(busy || error) && (
