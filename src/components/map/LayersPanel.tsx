@@ -211,8 +211,9 @@ export default function LayersPanel({
 
       {/* Color by — which palette paints the highlighted blocks. Filters pick
           WHICH blocks; this picks the colors, so stage + variety picks never
-          fight over the palette. Hidden on spray (blocks stay white there). */}
-      {!isSpray && Object.keys(varietyColors).length > 0 && (
+          fight over the palette. Always visible: from the white map, checking
+          a layer lights blocks up in this palette. */}
+      {Object.keys(varietyColors).length > 0 && (
         <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
           <span className="text-[11px] uppercase tracking-wider font-bold text-gray-600 shrink-0">
             Color by
