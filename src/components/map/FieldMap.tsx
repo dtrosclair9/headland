@@ -24,17 +24,38 @@ const STATE_CENTERS: Record<CaneState, [number, number]> = {
   FL: [-80.7, 26.6],
 }
 
-function fillColorExpression(selectedFieldId: string | null): mapboxgl.ExpressionSpecification {
+// True when a block is filtered out by the active layer selection (the `dim`
+// property is stamped onto features when a filter is on).
+const DIMMED = ['to-boolean', ['get', 'dim']]
+
+// Which palette paints the blocks: year-cane colors or variety colors. Filters
+// choose WHICH blocks highlight; colorBy chooses the palette — so a stage
+// filter and a variety filter can stack without their colors fighting.
+export type ColorBy = 'stage' | 'variety'
+
+function fillColorExpression(
+  selectedFieldId: string | null,
+  colorBy: ColorBy,
+  varietyColors: Record<string, string>,
+): mapboxgl.ExpressionSpecification {
+  const varietyPairs = Object.entries(varietyColors).flatMap(([k, c]) => [k, c])
+  const paletteExpr =
+    colorBy === 'variety' && varietyPairs.length > 0
+      ? ['match', ['coalesce', ['get', 'variety'], ''], ...varietyPairs, UNSET_COLOR]
+      : [
+          'match',
+          ['coalesce', ['get', 'ratoon'], 'unset'],
+          ...RATOON_COLORS.flatMap((r) => [r.key, r.color]),
+          UNSET_COLOR,
+        ]
   return [
     'case',
     ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
     SELECTED_COLOR,
-    [
-      'match',
-      ['coalesce', ['get', 'ratoon'], 'unset'],
-      ...RATOON_COLORS.flatMap((r) => [r.key, r.color]),
-      UNSET_COLOR,
-    ],
+    // Filtered-out blocks go white — the layer view highlights only matches.
+    DIMMED,
+    '#FFFFFF',
+    paletteExpr,
   ] as unknown as mapboxgl.ExpressionSpecification
 }
 
@@ -136,6 +157,13 @@ export interface FieldMapProps {
   // (a spray-map view prints the B&W spray sheet).
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
+  // Layer filter: ids of blocks matching the active layer selection, or null
+  // when no filter is on. Non-matching blocks render white with labels hidden.
+  filterIds: Set<string> | null
+  // Palette that paints the blocks (stage = year cane colors, variety = variety
+  // colors). Owned by MapShell alongside the layer filter.
+  colorBy: ColorBy
+  varietyColors: Record<string, string>
 }
 
 export default function FieldMap({
@@ -155,6 +183,9 @@ export default function FieldMap({
   onCancelReposition,
   viewMode,
   onViewModeChange,
+  filterIds,
+  colorBy,
+  varietyColors,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -299,7 +330,8 @@ export default function FieldMap({
         type: 'fill',
         source: 'fields',
         paint: {
-          'fill-color': fillColorExpression(selectedFieldId),
+          // Initial paint; the view-mode effect re-applies the live palette.
+          'fill-color': fillColorExpression(selectedFieldId, 'stage', {}),
           'fill-opacity': 0.4,
         },
       })
@@ -338,7 +370,7 @@ export default function FieldMap({
         id: 'fields-label',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['==', ['get', 'corner'], 'center'],
+        filter: ['all', ['==', ['get', 'corner'], 'center'], ['!', ['to-boolean', ['get', 'dim']]]],
         layout: {
           // Center of the block: the cut, abbreviated (P / 1st / … / F).
           'text-field': cutLabelExpression(),
@@ -357,7 +389,7 @@ export default function FieldMap({
         id: 'field-label-id',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['==', ['get', 'corner'], 'id'],
+        filter: ['all', ['==', ['get', 'corner'], 'id'], ['!', ['to-boolean', ['get', 'dim']]]],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -372,7 +404,7 @@ export default function FieldMap({
         id: 'field-label-variety',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['==', ['get', 'corner'], 'variety'],
+        filter: ['all', ['==', ['get', 'corner'], 'variety'], ['!', ['to-boolean', ['get', 'dim']]]],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -388,7 +420,7 @@ export default function FieldMap({
         id: 'field-label-acres',
         type: 'symbol',
         source: 'field-corner-labels',
-        filter: ['==', ['get', 'corner'], 'acres'],
+        filter: ['all', ['==', ['get', 'corner'], 'acres'], ['!', ['to-boolean', ['get', 'dim']]]],
         minzoom: 14,
         layout: {
           'text-field': ['get', 'text'],
@@ -577,13 +609,15 @@ export default function FieldMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update fields source when fields change. Now passes ratoon stage so the
-  // fill-color match expression can color-code by cycle.
+  // Update fields source when fields OR the layer filter change. Each feature
+  // carries `dim` — true when a layer filter is on and the block doesn't match —
+  // which drives the white fill and hides its labels.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
     const src = map.getSource('fields') as mapboxgl.GeoJSONSource | undefined
     if (!src) return
+    const isDim = (f: FieldRow) => (filterIds ? !filterIds.has(f.id) : false)
     src.setData({
       type: 'FeatureCollection',
       features: fields.map((f) => ({
@@ -595,6 +629,7 @@ export default function FieldMap({
           acreage: f.acreage_cached,
           ratoon: f.current_ratoon ?? 'unset',
           variety: f.variety ?? '',
+          dim: isDim(f),
           // Truncate notes based on field acreage — bigger field = more room
           // for the label, so we can show more characters before adding '…'.
           // Full notes still live on the sidebar card and the print sheet.
@@ -615,44 +650,49 @@ export default function FieldMap({
         const anchors = cornerLabelAnchors(f.geometry.coordinates[0] as [number, number][] | undefined)
         if (!anchors) return []
         const acres = Number(f.acreage_cached || 0)
+        const dim = isDim(f)
         return [
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.center },
-            properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset' },
+            properties: { corner: 'center', ratoon: f.current_ratoon ?? 'unset', dim },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.id },
-            properties: { corner: 'id', text: f.name ?? '' },
+            properties: { corner: 'id', text: f.name ?? '', dim },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.variety },
-            properties: { corner: 'variety', text: f.variety ?? '' },
+            properties: { corner: 'variety', text: f.variety ?? '', dim },
           },
           {
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: anchors.acres },
-            properties: { corner: 'acres', text: `${acres.toFixed(2)} ac` },
+            properties: { corner: 'acres', text: `${acres.toFixed(2)} ac`, dim },
           },
         ]
       })
       cornerSrc.setData({ type: 'FeatureCollection', features: cornerFeatures })
     }
+  }, [fields, ready, filterIds])
 
-    if (fields.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds()
-      for (const f of fields) {
-        for (const ring of f.geometry.coordinates) {
-          for (const [lng, lat] of ring) {
-            bounds.extend([lng, lat])
-          }
+  // Fit the camera to the farm ONCE per fields change — deliberately not on
+  // filter changes, so toggling layers never yanks the camera.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || fields.length === 0) return
+    const bounds = new mapboxgl.LngLatBounds()
+    for (const f of fields) {
+      for (const ring of f.geometry.coordinates) {
+        for (const [lng, lat] of ring) {
+          bounds.extend([lng, lat])
         }
       }
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 80, animate: false, maxZoom: 16 })
-      }
+    }
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 80, animate: false, maxZoom: 16 })
     }
   }, [fields, ready])
 
@@ -684,8 +724,22 @@ export default function FieldMap({
     const isSpray = viewMode === 'spray'
     const onWhiteSheet = isCrop || isSpray
 
-    map.setPaintProperty('fields-fill', 'fill-color', isSpray ? '#FFFFFF' : fillColorExpression(selectedFieldId))
-    map.setPaintProperty('fields-fill', 'fill-opacity', isSpray ? 1 : isCrop ? 0.92 : 0.4)
+    map.setPaintProperty(
+      'fields-fill',
+      'fill-color',
+      isSpray ? '#FFFFFF' : fillColorExpression(selectedFieldId, colorBy, varietyColors),
+    )
+    // Dimmed (filtered-out) blocks render more opaque on satellite so they read
+    // as solid white "off" blocks rather than a ghost tint.
+    map.setPaintProperty(
+      'fields-fill',
+      'fill-opacity',
+      isSpray
+        ? 1
+        : isCrop
+          ? 0.92
+          : (['case', DIMMED, 0.75, 0.4] as unknown as mapboxgl.ExpressionSpecification),
+    )
     map.setPaintProperty('fields-outline', 'line-color', lineColorExpression(selectedFieldId, viewMode))
     map.setPaintProperty('fields-outline', 'line-width', isSpray ? 2.5 : isCrop ? 1.5 : 2)
     // Label colors per mode: black text on the white spray sheet; white text
@@ -726,7 +780,7 @@ export default function FieldMap({
         /* layer may not support the property — ignore */
       }
     }
-  }, [selectedFieldId, ready, viewMode])
+  }, [selectedFieldId, ready, viewMode, colorBy, varietyColors])
 
   // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
   // correct base-layer opacity without taking viewMode as a dependency (which
@@ -1309,15 +1363,16 @@ export default function FieldMap({
         </div>
       )}
 
-      {/* Cycle legend — bottom-right. Collapsible. Always shown in crop mode
-          since the colors are the entire point there. */}
-      {(anyRatoonSet || viewMode === 'crop') && (
+      {/* Legend — bottom-right. Collapsible. Follows the active palette:
+          year-cane colors or variety colors. Always shown in crop mode since
+          the colors are the entire point there. */}
+      {(anyRatoonSet || viewMode === 'crop' || colorBy === 'variety') && (
         <div className="absolute bottom-8 right-3 z-10 pointer-events-auto">
           {legendOpen ? (
-            <div className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 p-3 w-44">
+            <div className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 p-3 w-44 max-h-72 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] uppercase tracking-wider font-bold text-gray-500">
-                  Cycle
+                  {colorBy === 'variety' ? 'Variety' : 'Cycle'}
                 </span>
                 <button
                   type="button"
@@ -1331,16 +1386,27 @@ export default function FieldMap({
                 </button>
               </div>
               <ul className="space-y-1">
-                {RATOON_COLORS.map((r) => (
-                  <li key={r.key} className="flex items-center gap-2 text-xs text-gray-700">
-                    <span
-                      className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"
-                      style={{ backgroundColor: r.color }}
-                      aria-hidden="true"
-                    />
-                    <span>{r.label}</span>
-                  </li>
-                ))}
+                {colorBy === 'variety'
+                  ? Object.entries(varietyColors).map(([name, color]) => (
+                      <li key={name} className="flex items-center gap-2 text-xs text-gray-700">
+                        <span
+                          className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm shrink-0"
+                          style={{ backgroundColor: color }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{name}</span>
+                      </li>
+                    ))
+                  : RATOON_COLORS.map((r) => (
+                      <li key={r.key} className="flex items-center gap-2 text-xs text-gray-700">
+                        <span
+                          className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"
+                          style={{ backgroundColor: r.color }}
+                          aria-hidden="true"
+                        />
+                        <span>{r.label}</span>
+                      </li>
+                    ))}
                 <li className="flex items-center gap-2 text-xs text-gray-500 pt-1 mt-1 border-t border-gray-100">
                   <span
                     className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm"
@@ -1357,7 +1423,7 @@ export default function FieldMap({
               onClick={() => setLegendOpen(true)}
               className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 px-3 py-2 text-xs font-semibold text-primary hover:bg-white"
             >
-              Cycle legend
+              {colorBy === 'variety' ? 'Variety legend' : 'Cycle legend'}
             </button>
           )}
         </div>

@@ -1,14 +1,21 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import FieldSidebar from './FieldSidebar'
 import NewBlockModal from './NewBlockModal'
-import type { ViewMode } from './FieldMap'
+import type { ViewMode, ColorBy } from './FieldMap'
 import type { FieldRow } from '@/lib/fields'
 import type { Units, CaneState } from '@/lib/types'
 import { friendlyError } from '@/lib/errors'
+import {
+  type LayerFilter,
+  EMPTY_LAYER_FILTER,
+  isLayerFilterActive,
+  fieldMatchesFilter,
+} from './layer-filter'
+import { defaultVarietyColors } from '@/lib/variety-colors'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -46,6 +53,23 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
   // Map view mode is owned here so the sidebar's print links can follow it
   // (spray-map view → the print links output the B&W spray sheet).
   const [viewMode, setViewMode] = useState<ViewMode>('satellite')
+  // Layer selection (FarmWorks-style): which stages/varieties/plantations to
+  // highlight. Matching ids feed the map; non-matches render white.
+  const [layerFilter, setLayerFilter] = useState<LayerFilter>(EMPTY_LAYER_FILTER)
+  const filterIds = useMemo(
+    () =>
+      isLayerFilterActive(layerFilter)
+        ? new Set(fields.filter((f) => fieldMatchesFilter(f, layerFilter)).map((f) => f.id))
+        : null,
+    [fields, layerFilter],
+  )
+  // Which palette paints the blocks (filters pick WHICH blocks highlight;
+  // colorBy picks the palette, so stage + variety filters never fight).
+  const [colorBy, setColorBy] = useState<ColorBy>('stage')
+  const varietyColors = useMemo(
+    () => defaultVarietyColors(fields.map((f) => f.variety ?? '')),
+    [fields],
+  )
 
   // Default the sidebar closed on mobile so the map is full-screen on first view.
   useEffect(() => {
@@ -206,6 +230,11 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
           fields={fields}
           units={units}
           viewMode={viewMode}
+          layerFilter={layerFilter}
+          onLayerFilterChange={setLayerFilter}
+          colorBy={colorBy}
+          onColorByChange={setColorBy}
+          varietyColors={varietyColors}
           selectedFieldId={selectedFieldId}
           onSelectField={(id) => {
             setSelectedFieldId(id)
@@ -283,6 +312,9 @@ export default function MapShell({ initialFields, units, state }: MapShellProps)
         onCancelReposition={() => setRepositionIds(null)}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        filterIds={filterIds}
+        colorBy={colorBy}
+        varietyColors={varietyColors}
       />
 
       {(busy || error) && (

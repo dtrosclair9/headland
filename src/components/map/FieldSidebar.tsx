@@ -6,13 +6,22 @@ import type { FieldRow } from '@/lib/fields'
 import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { friendlyError } from '@/lib/errors'
-import type { ViewMode } from './FieldMap'
+import type { ViewMode, ColorBy } from './FieldMap'
+import LayersPanel from './LayersPanel'
+import { type LayerFilter, isLayerFilterActive } from './layer-filter'
 
 interface FieldSidebarProps {
   fields: FieldRow[]
   units: Units
   // Active map view; when 'spray', the print links output the B&W spray sheet.
   viewMode: ViewMode
+  // Layer selection state (owned by MapShell so the map can read matches).
+  layerFilter: LayerFilter
+  onLayerFilterChange: (f: LayerFilter) => void
+  // Palette that paints the blocks + the per-variety default colors.
+  colorBy: ColorBy
+  onColorByChange: (c: ColorBy) => void
+  varietyColors: Record<string, string>
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
   totalAcres: number
@@ -35,6 +44,11 @@ export default function FieldSidebar({
   fields,
   units,
   viewMode,
+  layerFilter,
+  onLayerFilterChange,
+  colorBy,
+  onColorByChange,
+  varietyColors,
   selectedFieldId,
   onSelectField,
   totalAcres,
@@ -64,6 +78,9 @@ export default function FieldSidebar({
   const [assignOpen, setAssignOpen] = useState(false)
   const [rotateOpen, setRotateOpen] = useState(false)
   const [rotating, setRotating] = useState(false)
+  // Sidebar tab: the block list, or the FarmWorks-style layer selection.
+  const [tab, setTab] = useState<'blocks' | 'layers'>('blocks')
+  const filterOn = isLayerFilterActive(layerFilter)
 
   // Group blocks by plantation (named plantations alpha, Unassigned last). Within
   // each plantation, blocks are sorted naturally by name (see the sort below).
@@ -120,6 +137,47 @@ export default function FieldSidebar({
         )}
       </div>
 
+      {/* Tab bar: block list vs. layer selection */}
+      {fields.length > 0 && (
+        <div className="px-2 pt-2 border-b border-gray-100 flex gap-1">
+          {(
+            [
+              ['blocks', 'Blocks'],
+              ['layers', 'Layers'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`flex-1 text-sm font-semibold px-3 py-2 rounded-t-md border-b-2 transition flex items-center justify-center gap-1.5 ${
+                tab === key
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-transparent text-gray-500 hover:text-primary'
+              }`}
+            >
+              {label}
+              {key === 'layers' && filterOn && (
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'layers' && fields.length > 0 ? (
+        <LayersPanel
+          fields={fields}
+          units={units}
+          filter={layerFilter}
+          onFilterChange={onLayerFilterChange}
+          colorBy={colorBy}
+          onColorByChange={onColorByChange}
+          varietyColors={varietyColors}
+          isSpray={isSpray}
+        />
+      ) : (
+        <>
       {fields.length > 0 && (
         <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
           <button
@@ -382,6 +440,8 @@ export default function FieldSidebar({
             </>
           )}
         </div>
+      )}
+        </>
       )}
     </aside>
   )
