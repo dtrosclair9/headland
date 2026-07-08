@@ -7,7 +7,6 @@ import { listHarvests, listRecentApplications } from '@/lib/records'
 import { buildPlantationSvg } from '@/lib/plantation-map-svg'
 import { acresToArpents } from '@/lib/units'
 import { OPERATION_TYPE_LABEL } from '@/lib/records'
-import { SITE_NAME } from '@/lib/site'
 import AutoPrint from './AutoPrint'
 
 export const metadata: Metadata = { title: 'Print' }
@@ -104,7 +103,7 @@ export default async function FieldPrintPage({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
             <p style={{ fontSize: 9, letterSpacing: 1.5, fontWeight: 700, color: '#6B6B6B', margin: 0, textTransform: 'uppercase' }}>
-              {SITE_NAME} · {org.name}
+              {org.name}
             </p>
             <h1 style={{ fontSize: 24, color: '#1A3D2E', fontWeight: 700, margin: '2px 0 2px 0' }}>
               {field.name}
@@ -221,17 +220,17 @@ export default async function FieldPrintPage({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 13,
-              height: 13,
+              width: 18,
+              height: 18,
               background: '#143324',
-              borderRadius: 3,
+              borderRadius: 4,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
             <img
               src="/images/headland-logo-kit/svg/mark-white.svg"
               alt="Headland"
-              style={{ height: 9, width: 9 }}
+              style={{ height: 13, width: 13 }}
             />
           </span>
             headlandmaps.com

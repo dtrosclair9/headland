@@ -1,5 +1,4 @@
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
-import { SITE_NAME } from '@/lib/site'
 import type { PlantationSvg } from '@/lib/plantation-map-svg'
 import AutoPrint from './AutoPrint'
 
@@ -116,9 +115,7 @@ export default function PlatSheet({
                 No cut set
               </span>
             )}
-            <span style={{ color: '#6B6B6B', marginLeft: 4 }}>
-              {today} · {SITE_NAME}
-            </span>
+            <span style={{ color: '#6B6B6B', marginLeft: 4 }}>{today}</span>
           </div>
         </div>
 
@@ -213,17 +210,17 @@ export default function PlatSheet({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 13,
-              height: 13,
+              width: 18,
+              height: 18,
               background: '#143324',
-              borderRadius: 3,
+              borderRadius: 4,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
             <img
               src="/images/headland-logo-kit/svg/mark-white.svg"
               alt="Headland"
-              style={{ height: 9, width: 9 }}
+              style={{ height: 13, width: 13 }}
             />
           </span>
           headlandmaps.com
