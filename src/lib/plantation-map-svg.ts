@@ -1,16 +1,22 @@
 import type { FieldRow } from '@/lib/fields'
 import { colorForRatoon, cutAbbrev } from '@/lib/ratoon-colors'
 
-export interface LabelLine {
+// A fully-positioned piece of text inside a block. The builder decides
+// placement, size, and anchoring; PlatSheet just draws the list.
+export interface PlacedLabel {
+  x: number
+  y: number
+  font: number
   text: string
   bold: boolean
+  anchor: 'start' | 'middle' | 'end'
 }
 
 export interface SvgBlock {
   id: string
   points: string
   color: string
-  /** block center — anchor for both the single-field acreage and the stack */
+  /** block center — anchor for the single-field print's acreage */
   labelX: number
   labelY: number
   /** base font (single-field print's centered acreage) */
@@ -18,13 +24,13 @@ export interface SvgBlock {
   /** single-field print label */
   acreageLabel: string
   /**
-   * Plat-sheet label: the same info the interactive map shows (name, cut,
-   * variety, acres) as a centered vertical stack, sized to the block and
-   * trimmed to the lines that fit. Centered stacking is collision-proof — real
-   * cane blocks are narrow angled parallelograms where corner labels overlap.
+   * Plat-sheet labels, each pinned to its own spot the FarmWorks way: name in
+   * the top-left corner, variety (v-code) top-right, acres bottom-right, cut in
+   * the center. Positions come from ray-casting the block's interior at each
+   * label's height, so text is guaranteed to sit inside the block even on
+   * tilted parallelograms; lines that can't fit are shrunk or dropped.
    */
-  labelFont: number
-  lines: LabelLine[]
+  labels: PlacedLabel[]
 }
 
 export interface PlantationSvg {
@@ -40,30 +46,39 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n))
 }
 
-// The room a horizontally-centered label actually has inside a block. Rays cast
-// from the centroid to the polygon edges (horizontally for width, vertically for
-// height). This is the TRUE usable box — a block's axis-aligned bounding box
-// badly overestimates width once the farm is rotated and blocks become tilted
-// parallelograms (bbox width includes the shear, not the real cross-section).
-function centeredBox(ring: [number, number][], cx: number, cy: number): { w: number; h: number } {
-  // Intersections of the polygon edges with the line `along === value`.
-  const cross = (alongX: boolean, value: number): number[] => {
-    const out: number[] = []
-    for (let i = 0; i < ring.length - 1; i++) {
-      const a = ring[i]
-      const b = ring[i + 1]
-      const ca = alongX ? a[0] : a[1]
-      const cb = alongX ? b[0] : b[1]
-      if (ca === cb) continue
-      const t = (value - ca) / (cb - ca)
-      if (t < 0 || t > 1) continue
-      out.push(alongX ? a[1] + t * (b[1] - a[1]) : a[0] + t * (b[0] - a[0]))
-    }
-    return out
+// Where the polygon's edges cross the line `along === value` (alongX=true means
+// the vertical line x=value, returning y's; alongX=false the horizontal line
+// y=value, returning x's).
+function crossings(ring: [number, number][], alongX: boolean, value: number): number[] {
+  const out: number[] = []
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i]
+    const b = ring[i + 1]
+    const ca = alongX ? a[0] : a[1]
+    const cb = alongX ? b[0] : b[1]
+    if (ca === cb) continue
+    const t = (value - ca) / (cb - ca)
+    if (t < 0 || t > 1) continue
+    out.push(alongX ? a[1] + t * (b[1] - a[1]) : a[0] + t * (b[0] - a[0]))
   }
-  // Horizontal room: where the polygon crosses y = cy.
-  const xs = cross(false, cy)
-  const ys = cross(true, cx)
+  return out
+}
+
+// The interior [left, right] of the block at height y — the exact walls a label
+// on that line must stay between. This is what makes corner placement safe on
+// tilted parallelograms: the bbox corner lies OUTSIDE the block, but the ray
+// tells us where the block actually is at that height.
+function spanAtY(ring: [number, number][], y: number): [number, number] | null {
+  const xs = crossings(ring, false, y)
+  if (xs.length < 2) return null
+  return [Math.min(...xs), Math.max(...xs)]
+}
+
+// The room a centered label has inside a block (rays from the centroid).
+// A tilted block's axis-aligned bbox badly overestimates its real width.
+function centeredBox(ring: [number, number][], cx: number, cy: number): { w: number; h: number } {
+  const xs = crossings(ring, false, cy)
+  const ys = crossings(ring, true, cx)
   const w = xs.length >= 2 ? 2 * Math.min(cx - Math.min(...xs), Math.max(...xs) - cx) : 0
   const h = ys.length >= 2 ? 2 * Math.min(cy - Math.min(...ys), Math.max(...ys) - cy) : 0
   return { w: Math.max(0, w), h: Math.max(0, h) }
@@ -78,47 +93,93 @@ export function varietyCode(variety: string | null | undefined): string {
   return digits ? 'v' + digits.slice(-3) : ''
 }
 
-// Plan a block's centered label stack. Given the block's width/height in SVG px
-// and its parts, choose a font size and the lines that actually fit — dropping
-// the lowest-priority line (variety → cut → acres) until the stack fits both
-// vertically and horizontally. Display order is always name / cut / variety /
-// acres so identity reads on top and acreage on the bottom.
-function planLabel(
-  w: number,
-  h: number,
+// Approximate glyph advance as a fraction of font size (Inter/system sans).
+const CHAR_W = 0.62
+// Hard readability floor — below this a label is dropped rather than shrunk.
+const MIN_FONT = 3.4
+
+// Plan a block's labels in the FarmWorks arrangement: name top-left, variety
+// (v-code) top-right, acres bottom-right, cut centered. Each corner label is
+// positioned by ray-casting the block interior at that label's height, so the
+// anchor is the block's REAL wall at that line (not the bbox corner, which sits
+// outside a tilted block). Labels shrink to fit their available run and drop
+// (variety first, then cut, then name) when a block is too small; acres always
+// survives, falling back to a single centered line on slivers.
+function planCornerLabels(
+  ring: [number, number][],
+  cx: number,
+  cy: number,
   parts: { name: string; cut: string; variety: string; acres: string },
   floor: number,
-  cutBeforeVariety: boolean,
-): { font: number; lines: LabelLine[] } {
-  const named = parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
-  const cand: { text: string; bold: boolean; prio: number; order: number }[] = []
-  if (named) cand.push({ text: parts.name, bold: true, prio: 1, order: 0 })
-  cand.push({ text: parts.acres, bold: false, prio: 2, order: 3 })
-  // On the spray sheet cut isn't shown by color, so keep it longer than variety;
-  // on the crop sheet the fill already encodes cut, so drop it first.
-  if (parts.cut) cand.push({ text: parts.cut, bold: true, prio: cutBeforeVariety ? 3 : 4, order: 1 })
-  if (parts.variety) cand.push({ text: parts.variety, bold: false, prio: cutBeforeVariety ? 4 : 3, order: 2 })
-
-  const CAP = 15
-  const CHAR_W = 0.6 // approx glyph advance as a fraction of font size
-  const LINE_H = 1.16
-  const base = clamp(Math.min(w, h) * 0.28, floor, CAP)
-
-  // Keep candidates by priority; drop the least important until it fits at a
-  // readable size (or only one line is left).
-  const keep = [...cand].sort((a, b) => a.prio - b.prio)
-  let font = base
-  while (keep.length) {
-    const fontV = (h * 0.9) / (keep.length * LINE_H)
-    const widest = Math.max(...keep.map((c) => c.text.length * CHAR_W))
-    const fontH = (w * 0.92) / widest
-    font = Math.min(base, fontV, fontH)
-    if (font >= floor || keep.length === 1) break
-    keep.pop()
+): PlacedLabel[] {
+  const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const [, y] of ring) {
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
   }
-  font = clamp(font, floor, CAP)
-  const lines = keep.sort((a, b) => a.order - b.order).map((c) => ({ text: c.text, bold: c.bold }))
-  return { font, lines }
+  const H = maxY - minY
+  const box = centeredBox(ring, cx, cy)
+  const base = clamp(Math.min(box.w, box.h) * 0.26, floor, 13)
+  const inset = Math.max(1.4, base * 0.4)
+
+  // Shrink a label to fit `room`; null when it can't reach MIN_FONT.
+  const fit = (text: string, room: number, font: number): number | null => {
+    if (!text || room <= 0) return null
+    const needed = text.length * CHAR_W
+    const f = Math.min(font, room / needed)
+    return f >= MIN_FONT ? f : null
+  }
+
+  const labels: PlacedLabel[] = []
+
+  // Sliver fallback: not enough height for two label rows — one centered line.
+  if (H < base * 2.6) {
+    const f = fit(parts.acres, box.w - 2, Math.min(base, H * 0.5))
+    if (f) labels.push({ x: cx, y: cy, font: f, text: parts.acres, bold: false, anchor: 'middle' })
+    return labels
+  }
+
+  const yTop = minY + inset + base * 0.5
+  const yBot = maxY - inset - base * 0.5
+  const top = spanAtY(ring, yTop)
+  const bot = spanAtY(ring, yBot)
+
+  // Top row: name pinned to the left wall, variety to the right wall.
+  if (top) {
+    const [tL, tR] = [top[0] + inset, top[1] - inset]
+    const room = tR - tL
+    const gap = base * 0.9
+    const nameW = named ? parts.name.length * CHAR_W * base : 0
+    let nameF: number | null = null
+    let varF: number | null = null
+    if (named && parts.variety && nameW + gap + parts.variety.length * CHAR_W * base <= room) {
+      nameF = base
+      varF = base
+    } else {
+      // Not enough for both at full size — name wins, variety drops.
+      if (named) nameF = fit(parts.name, room, base)
+      else if (parts.variety) varF = fit(parts.variety, room, base)
+    }
+    if (nameF) labels.push({ x: tL, y: yTop, font: nameF, text: parts.name, bold: true, anchor: 'start' })
+    if (varF) labels.push({ x: tR, y: yTop, font: varF, text: parts.variety, bold: false, anchor: 'end' })
+  }
+
+  // Bottom row: acres pinned to the right wall.
+  if (bot) {
+    const [bL, bR] = [bot[0] + inset, bot[1] - inset]
+    const f = fit(parts.acres, bR - bL, base)
+    if (f) labels.push({ x: bR, y: yBot, font: f, text: parts.acres, bold: false, anchor: 'end' })
+  }
+
+  // Center: the cut, when there's a clear band between the two rows.
+  if (parts.cut && H >= base * 4) {
+    const f = fit(parts.cut, box.w - 2, base * 1.15)
+    if (f) labels.push({ x: cx, y: cy, font: f, text: parts.cut, bold: true, anchor: 'middle' })
+  }
+
+  return labels
 }
 
 // Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
@@ -273,22 +334,20 @@ function buildSvg(
       ? Number(b.arpents_cached || 0).toFixed(2)
       : Number(b.acreage_cached || 0).toFixed(2)
 
-    // Centered stack of the same info the map shows (name / cut / variety /
-    // acres), trimmed to what fits the block. Size to the block's true centered
-    // box (not its bbox — tilted blocks have a much wider bbox than real room).
+    // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
+    // center), positioned against the block's real interior walls.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
-    const box = centeredBox(svgRing, lx, ly)
-    const { font: labelFont, lines } = planLabel(
-      box.w,
-      box.h,
+    const labels = planCornerLabels(
+      svgRing,
+      lx,
+      ly,
       {
         name: b.name ?? '',
         cut: cutAbbrev(b.current_ratoon),
         variety: varietyCode(b.variety),
         acres: acreageLabel,
       },
-      style === 'spray' ? 4.5 : 5.5,
-      style === 'spray',
+      style === 'spray' ? 4.2 : 5,
     )
 
     return {
@@ -299,8 +358,7 @@ function buildSvg(
       labelY: ly,
       fontSize,
       acreageLabel,
-      labelFont,
-      lines,
+      labels,
     }
   })
 

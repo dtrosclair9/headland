@@ -138,33 +138,29 @@ export default function PlatSheet({
                 strokeLinejoin="round"
               />
             ))}
-            {svg.blocks.map((b) => {
+            {svg.blocks.map((b) => (
               // Crop blocks are color-filled, so labels are white with a thin
-              // dark outline (matching the map). Spray blocks are white, so dark
-              // text reads best.
-              const textFill = isSpray ? '#111827' : '#FFFFFF'
-              const halo = isSpray
-                ? {}
-                : { stroke: '#1f2937', strokeWidth: b.labelFont * 0.16, paintOrder: 'stroke' as const }
-              const lh = b.labelFont * 1.16
-              const y0 = b.labelY - ((b.lines.length - 1) * lh) / 2
-              return (
-                <g key={`l-${b.id}`} textAnchor="middle" fill={textFill} {...halo}>
-                  {b.lines.map((line, i) => (
-                    <text
-                      key={i}
-                      x={b.labelX}
-                      y={y0 + i * lh}
-                      dominantBaseline="central"
-                      fontSize={b.labelFont}
-                      fontWeight={line.bold ? 700 : 400}
-                    >
-                      {line.text}
-                    </text>
-                  ))}
-                </g>
-              )
-            })}
+              // dark outline (matching the map). Spray blocks are white, so
+              // dark text reads best.
+              <g key={`l-${b.id}`} fill={isSpray ? '#111827' : '#FFFFFF'}>
+                {b.labels.map((l, i) => (
+                  <text
+                    key={i}
+                    x={l.x}
+                    y={l.y}
+                    textAnchor={l.anchor}
+                    dominantBaseline="central"
+                    fontSize={l.font}
+                    fontWeight={l.bold ? 700 : 400}
+                    {...(isSpray
+                      ? {}
+                      : { stroke: '#1f2937', strokeWidth: l.font * 0.14, paintOrder: 'stroke' as const })}
+                  >
+                    {l.text}
+                  </text>
+                ))}
+              </g>
+            ))}
           </svg>
         ) : (
           <div style={{ padding: 40, textAlign: 'center', color: '#6B6B6B', fontSize: 12 }}>{emptyMessage}</div>
