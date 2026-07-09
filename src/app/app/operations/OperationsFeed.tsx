@@ -135,7 +135,14 @@ export default function OperationsFeed({
           header, nav { display: none !important; }
           .print-hide { display: none !important; }
           .print-month { break-inside: avoid; }
+          .print-month h3 { position: static !important; }
           body { background: white !important; }
+          /* The app shell locks the viewport height so the map can fill it
+             (h-[100dvh] overflow-hidden + scrolling main) — in print that
+             clips everything below the first screenful. Unlock it. */
+          html, body { height: auto !important; overflow: visible !important; }
+          body > div { height: auto !important; overflow: visible !important; }
+          main { height: auto !important; overflow: visible !important; }
         }
       `}</style>
 
