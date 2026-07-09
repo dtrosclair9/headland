@@ -1,0 +1,214 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import type { OperationEntry, OperationKind } from '@/lib/operations'
+
+// Type chips: label + badge color per record kind.
+const KINDS: { key: OperationKind; label: string; badge: string }[] = [
+  { key: 'todo', label: 'To-dos', badge: 'bg-amber-100 text-amber-900' },
+  { key: 'application', label: 'Sprays & field work', badge: 'bg-blue-100 text-blue-900' },
+  { key: 'harvest', label: 'Harvests', badge: 'bg-green-100 text-green-900' },
+  { key: 'scouting', label: 'Scouting', badge: 'bg-red-100 text-red-900' },
+  { key: 'rotation', label: 'Rotations', badge: 'bg-purple-100 text-purple-900' },
+]
+const BADGE: Record<OperationKind, string> = Object.fromEntries(
+  KINDS.map((k) => [k.key, k.badge]),
+) as Record<OperationKind, string>
+const KIND_LABEL: Record<OperationKind, string> = {
+  todo: 'To-do',
+  application: 'Field work',
+  harvest: 'Harvest',
+  scouting: 'Scouting',
+  rotation: 'Rotation',
+}
+
+function monthKey(iso: string) {
+  return iso.slice(0, 7)
+}
+function monthLabel(key: string) {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+function dayLabel(iso: string) {
+  const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export default function OperationsFeed({
+  openTodos,
+  history,
+  hasOlder,
+  months,
+}: {
+  openTodos: OperationEntry[]
+  history: OperationEntry[]
+  hasOlder: boolean
+  months: number
+}) {
+  const [kinds, setKinds] = useState<OperationKind[]>([])
+  const [plantation, setPlantation] = useState<string>('')
+  const [query, setQuery] = useState('')
+
+  const plantations = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of [...openTodos, ...history]) set.add(e.plantation ?? 'Unassigned')
+    return Array.from(set).sort((a, b) =>
+      a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b),
+    )
+  }, [openTodos, history])
+
+  const q = query.trim().toLowerCase()
+  const matches = (e: OperationEntry) => {
+    if (kinds.length > 0 && !kinds.includes(e.kind)) return false
+    if (plantation && (e.plantation ?? 'Unassigned') !== plantation) return false
+    if (
+      q &&
+      !`${e.blockName} ${e.plantation ?? ''} ${e.title} ${e.detail ?? ''}`.toLowerCase().includes(q)
+    )
+      return false
+    return true
+  }
+
+  const todosShown = openTodos.filter(matches)
+  const historyShown = history.filter(matches)
+
+  const monthGroups = useMemo(() => {
+    const map = new Map<string, OperationEntry[]>()
+    for (const e of historyShown) {
+      const k = monthKey(e.date)
+      const arr = map.get(k) ?? []
+      arr.push(e)
+      map.set(k, arr)
+    }
+    return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [historyShown])
+
+  const toggleKind = (k: OperationKind) =>
+    setKinds((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]))
+
+  return (
+    <div className="max-w-3xl">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        {KINDS.map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            onClick={() => toggleKind(k.key)}
+            className={`text-xs font-semibold rounded-full px-3 py-1.5 border-2 transition ${
+              kinds.includes(k.key)
+                ? 'border-primary bg-primary text-white'
+                : 'border-gray-200 bg-white text-gray-700 hover:border-primary'
+            }`}
+          >
+            {k.label}
+          </button>
+        ))}
+        <select
+          value={plantation}
+          onChange={(e) => setPlantation(e.target.value)}
+          className="input text-xs py-1.5 w-40"
+          aria-label="Filter by plantation"
+        >
+          <option value="">All plantations</option>
+          {plantations.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search block, product, notes…"
+          className="input text-xs py-1.5 flex-1 min-w-40"
+          aria-label="Search operations"
+        />
+      </div>
+
+      {/* Open to-dos — pinned, always fully loaded */}
+      <section className="mb-8">
+        <div className="flex items-baseline gap-2 mb-2">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-gray-600">Open to-dos</h2>
+          <span className="text-xs font-bold text-white bg-accent rounded-full px-2 py-0.5">
+            {todosShown.length}
+          </span>
+        </div>
+        {todosShown.length === 0 ? (
+          <p className="text-sm text-gray-500 bg-white border border-gray-100 rounded-xl px-4 py-3">
+            Nothing open. Add to-dos from any block&apos;s page.
+          </p>
+        ) : (
+          <ul className="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50">
+            {todosShown.map((e) => (
+              <Entry key={`${e.kind}-${e.id}`} e={e} />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* History, month by month */}
+      <h2 className="text-sm font-bold uppercase tracking-wider text-gray-600 mb-2">History</h2>
+      {monthGroups.length === 0 ? (
+        <p className="text-sm text-gray-500 bg-white border border-gray-100 rounded-xl px-4 py-3">
+          No records in the last {months} months
+          {kinds.length > 0 || plantation || q ? ' matching these filters' : ''}. Sprays, harvests,
+          scouting, and rotations logged on blocks will show up here.
+        </p>
+      ) : (
+        monthGroups.map(([key, entries]) => (
+          <section key={key} className="mb-6">
+            <h3 className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur text-sm font-bold text-primary px-1 py-1.5">
+              {monthLabel(key)}
+              <span className="text-xs font-normal text-gray-400 ml-2">
+                {entries.length} record{entries.length === 1 ? '' : 's'}
+              </span>
+            </h3>
+            <ul className="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50">
+              {entries.map((e) => (
+                <Entry key={`${e.kind}-${e.id}`} e={e} />
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
+
+      {hasOlder && (
+        <a
+          href={`/app/operations?months=${months + 12}`}
+          className="block text-center text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5 mb-8"
+        >
+          Show older history →
+        </a>
+      )}
+    </div>
+  )
+}
+
+function Entry({ e }: { e: OperationEntry }) {
+  return (
+    <li>
+      <Link
+        href={`/app/fields/${e.blockId}`}
+        className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
+      >
+        <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0 mt-0.5 ${BADGE[e.kind]}`}
+        >
+          {KIND_LABEL[e.kind]}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm text-gray-800">
+            <span className="font-semibold text-primary">{e.blockName}</span>
+            {e.plantation && <span className="text-gray-400"> · {e.plantation}</span>}
+            <span className="text-gray-700"> — {e.title}</span>
+          </span>
+          {e.detail && <span className="block text-xs text-gray-500 truncate">{e.detail}</span>}
+        </span>
+      </Link>
+    </li>
+  )
+}
