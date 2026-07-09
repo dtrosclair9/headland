@@ -9,6 +9,7 @@ import { friendlyError } from '@/lib/errors'
 import type { ViewMode, ColorBy } from './FieldMap'
 import type { FlyPlanRow } from '@/lib/fly-plans'
 import LayersPanel from './LayersPanel'
+import BulkLogPanel from './BulkLogPanel'
 import { type LayerFilter, isLayerFilterActive } from './layer-filter'
 
 interface FieldSidebarProps {
@@ -106,6 +107,8 @@ export default function FieldSidebar({
   )
   const [assignOpen, setAssignOpen] = useState(false)
   const [rotateOpen, setRotateOpen] = useState(false)
+  const [logOpen, setLogOpen] = useState(false)
+  const [logSuccess, setLogSuccess] = useState<string | null>(null)
   const [rotating, setRotating] = useState(false)
   // Sidebar tab: layers is the primary working surface; the block list is
   // the management view.
@@ -405,7 +408,18 @@ export default function FieldSidebar({
             </span>
             <span className="text-sm font-bold text-primary">{selectedArea.primary}</span>
           </div>
-          {assignOpen ? (
+          {logOpen ? (
+            <BulkLogPanel
+              blockIds={Array.from(selectedIds)}
+              title={`Log an operation for ${selectedIds.size} block${selectedIds.size === 1 ? '' : 's'}`}
+              onDone={(summary) => {
+                setLogOpen(false)
+                setLogSuccess(summary)
+                setTimeout(() => setLogSuccess(null), 4000)
+              }}
+              onCancel={() => setLogOpen(false)}
+            />
+          ) : assignOpen ? (
             <AssignToPlantationPanel
               onCancel={() => setAssignOpen(false)}
               onAssign={async (plantationId) => {
@@ -450,12 +464,24 @@ export default function FieldSidebar({
             <>
               {/* Spray map is view-and-print only — hide the editing actions
                   (assign / rotate / move) and leave just the spray-map export. */}
+              {logSuccess && (
+                <p className="text-xs font-semibold text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1.5">
+                  ✓ {logSuccess}
+                </p>
+              )}
               {!isSpray && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setAssignOpen(true)}
+                    onClick={() => setLogOpen(true)}
                     className="btn-primary w-full text-sm"
+                  >
+                    Log operation for {selectedIds.size}…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignOpen(true)}
+                    className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
                   >
                     Assign {selectedIds.size} to plantation…
                   </button>

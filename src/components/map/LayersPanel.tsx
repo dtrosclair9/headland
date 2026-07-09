@@ -13,6 +13,7 @@ import {
   isLayerFilterActive,
   fieldMatchesFilter,
 } from './layer-filter'
+import BulkLogPanel from './BulkLogPanel'
 
 // The Layers tab of the map sidebar — FarmWorks-style layer selection. Check
 // stages / varieties / plantations to highlight only the matching blocks on the
@@ -349,6 +350,9 @@ function FlyPlansSection({
   const [color, setColor] = useState(PLAN_COLORS[0])
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  // "Log spray" — bulk-log an application across every block in the plan.
+  const [logPlanId, setLogPlanId] = useState<string | null>(null)
+  const [logDone, setLogDone] = useState<string | null>(null)
 
   const byId = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields])
   const planStats = (p: FlyPlanRow) => {
@@ -421,25 +425,28 @@ function FlyPlansSection({
               const viewing = activePlanId === p.id
               return (
                 <li key={p.id} className={viewing ? 'bg-primary/5' : ''}>
-                  <div className="px-4 py-2.5 flex items-center gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="w-3.5 h-3.5 rounded-sm flex-shrink-0 border border-black/10"
-                      style={{ background: p.color }}
-                    />
+                  <div className="px-4 py-2.5">
                     <button
                       type="button"
                       onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
-                      className="flex-1 min-w-0 text-left"
+                      className="w-full text-left flex items-center gap-3"
                     >
-                      <span className="block text-sm font-semibold text-gray-800 truncate">
-                        {p.name}
-                      </span>
-                      <span className="block text-xs text-gray-500">
-                        {stats.count} block{stats.count === 1 ? '' : 's'} · {stats.area.primary}
+                      <span
+                        aria-hidden="true"
+                        className="w-3.5 h-3.5 rounded-sm flex-shrink-0 border border-black/10"
+                        style={{ background: p.color }}
+                      />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-gray-800 truncate">
+                          {p.name}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {stats.count} block{stats.count === 1 ? '' : 's'} · {stats.area.primary}
+                        </span>
                       </span>
                     </button>
-                    <span className="flex items-center gap-3 shrink-0 text-xs font-semibold">
+                    {/* Actions on their own row — four of them overflow inline. */}
+                    <span className="mt-1.5 pl-[26px] flex items-center gap-4 text-xs font-semibold">
                       <button
                         type="button"
                         onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
@@ -457,6 +464,16 @@ function FlyPlansSection({
                       </a>
                       <button
                         type="button"
+                        onClick={() => {
+                          setLogDone(null)
+                          setLogPlanId(logPlanId === p.id ? null : p.id)
+                        }}
+                        className="text-primary hover:underline"
+                      >
+                        Log spray
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setConfirmDelete(p.id)}
                         className="text-red-700 hover:underline"
                       >
@@ -464,6 +481,27 @@ function FlyPlansSection({
                       </button>
                     </span>
                   </div>
+                  {logDone === p.id && (
+                    <p className="mx-4 mb-2.5 text-xs font-semibold text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1.5">
+                      ✓ Spray logged on every block in &ldquo;{p.name}&rdquo; — it&apos;s on the
+                      Operations page now.
+                    </p>
+                  )}
+                  {logPlanId === p.id && (
+                    <div className="px-4 pb-3">
+                      <BulkLogPanel
+                        blockIds={p.block_ids.filter((id) => byId.has(id))}
+                        title={`Log spray — ${p.name} (${planStats(p).count} blocks)`}
+                        lockKind="application"
+                        onDone={() => {
+                          setLogPlanId(null)
+                          setLogDone(p.id)
+                          setTimeout(() => setLogDone(null), 6000)
+                        }}
+                        onCancel={() => setLogPlanId(null)}
+                      />
+                    </div>
+                  )}
                   {confirmDelete === p.id && (
                     <div className="px-4 pb-2.5 flex items-center gap-3 text-xs">
                       <span className="text-red-800 font-semibold">Delete &ldquo;{p.name}&rdquo;?</span>

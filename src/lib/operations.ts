@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { APPLICATION_LABELS } from './application-types'
 
 // One row in the farm-wide operations feed: every per-block record type
 // (to-dos, applications/field ops, harvests, scouting, rotations) normalized
@@ -20,20 +21,7 @@ export interface OperationEntry {
   done?: boolean
 }
 
-export const APPLICATION_LABELS: Record<string, string> = {
-  herbicide: 'Herbicide',
-  insecticide: 'Insecticide',
-  fungicide: 'Fungicide',
-  fertilizer: 'Fertilizer',
-  ripener: 'Ripener',
-  pre_harvest_burn: 'Pre-harvest burn',
-  post_harvest_burn: 'Post-harvest burn',
-  green_harvest: 'Green harvest',
-  stubble_shave: 'Stubble shave',
-  sub_soiling: 'Sub-soiling',
-  cultivation: 'Cultivation',
-  layby: 'Layby',
-}
+export { APPLICATION_LABELS } from './application-types'
 
 const STAGE_LABELS: Record<string, string> = {
   plant_cane: 'Plant cane',
