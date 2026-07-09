@@ -899,7 +899,9 @@ export default function FieldMap({
       }
     }
     if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, { padding: 80, animate: false, maxZoom: 16 })
+      // Tight fit: the farm should fill the view at scale, not float in a sea
+      // of blank basemap.
+      map.fitBounds(bounds, { padding: 32, animate: false, maxZoom: 16 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey stands in for visibleIds
   }, [fields, ready, visibleKey])

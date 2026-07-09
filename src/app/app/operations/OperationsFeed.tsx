@@ -183,14 +183,6 @@ export default function OperationsFeed({
           className="input text-xs py-1.5 flex-1 min-w-40"
           aria-label="Search operations"
         />
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"
-          title="Print this view — current filters and time window apply"
-        >
-          Print
-        </button>
       </div>
 
       {/* Open to-dos — pinned, always fully loaded */}
