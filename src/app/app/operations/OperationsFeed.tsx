@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { OperationEntry, OperationKind } from '@/lib/operations'
+import { friendlyError } from '@/lib/errors'
 
 // Type chips: label + badge color per record kind.
 const KINDS: { key: OperationKind; label: string; badge: string }[] = [
@@ -49,14 +50,51 @@ export default function OperationsFeed({
   const [kinds, setKinds] = useState<OperationKind[]>([])
   const [plantation, setPlantation] = useState<string>('')
   const [query, setQuery] = useState('')
+  // Local copy so checking a to-do off removes it without a full reload.
+  const [todos, setTodos] = useState<OperationEntry[]>(openTodos)
+  const [completeError, setCompleteError] = useState<string | null>(null)
+
+  async function completeTodo(id: string) {
+    setCompleteError(null)
+    const prev = todos
+    const entry = todos.find((e) => e.id === id)
+    setTodos((t) => t.filter((e) => e.id !== id))
+    // Completed to-dos are kept as history — surface it there right away.
+    if (entry) {
+      setHistoryLocal((h) => [
+        {
+          ...entry,
+          done: true,
+          date: new Date().toISOString(),
+          title: 'To-do completed',
+        },
+        ...h,
+      ])
+    }
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ done: true }),
+      })
+      if (!res.ok) throw new Error('Failed to complete to-do')
+    } catch (e) {
+      setTodos(prev)
+      setHistoryLocal(history)
+      setCompleteError(friendlyError(e))
+    }
+  }
+
+  // History is also local so a checked-off to-do appears in it immediately.
+  const [historyLocal, setHistoryLocal] = useState<OperationEntry[]>(history)
 
   const plantations = useMemo(() => {
     const set = new Set<string>()
-    for (const e of [...openTodos, ...history]) set.add(e.plantation ?? 'Unassigned')
+    for (const e of [...todos, ...historyLocal]) set.add(e.plantation ?? 'Unassigned')
     return Array.from(set).sort((a, b) =>
       a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b),
     )
-  }, [openTodos, history])
+  }, [todos, historyLocal])
 
   const q = query.trim().toLowerCase()
   const matches = (e: OperationEntry) => {
@@ -70,8 +108,8 @@ export default function OperationsFeed({
     return true
   }
 
-  const todosShown = openTodos.filter(matches)
-  const historyShown = history.filter(matches)
+  const todosShown = todos.filter(matches)
+  const historyShown = historyLocal.filter(matches)
 
   const monthGroups = useMemo(() => {
     const map = new Map<string, OperationEntry[]>()
@@ -89,8 +127,20 @@ export default function OperationsFeed({
 
   return (
     <div className="max-w-3xl">
+      {/* Print styles: the browser print of this page is the farmer's
+          look-back over months/years — hide the app chrome + controls and
+          keep month sections together where possible. */}
+      <style>{`
+        @media print {
+          header, nav { display: none !important; }
+          .print-hide { display: none !important; }
+          .print-month { break-inside: avoid; }
+          body { background: white !important; }
+        }
+      `}</style>
+
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="print-hide flex flex-wrap items-center gap-2 mb-6">
         {KINDS.map((k) => (
           <button
             key={k.key}
@@ -126,6 +176,14 @@ export default function OperationsFeed({
           className="input text-xs py-1.5 flex-1 min-w-40"
           aria-label="Search operations"
         />
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"
+          title="Print this view — current filters and time window apply"
+        >
+          Print
+        </button>
       </div>
 
       {/* Open to-dos — pinned, always fully loaded */}
@@ -136,14 +194,19 @@ export default function OperationsFeed({
             {todosShown.length}
           </span>
         </div>
+        {completeError && (
+          <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1 mb-2">
+            {completeError}
+          </p>
+        )}
         {todosShown.length === 0 ? (
           <p className="text-sm text-gray-500 bg-white border border-gray-100 rounded-xl px-4 py-3">
-            Nothing open. Add to-dos from any block&apos;s page.
+            Nothing open. Add to-dos from any block&apos;s page or the map&apos;s bulk select.
           </p>
         ) : (
           <ul className="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50">
             {todosShown.map((e) => (
-              <Entry key={`${e.kind}-${e.id}`} e={e} />
+              <Entry key={`${e.kind}-${e.id}`} e={e} onComplete={completeTodo} />
             ))}
           </ul>
         )}
@@ -159,7 +222,7 @@ export default function OperationsFeed({
         </p>
       ) : (
         monthGroups.map(([key, entries]) => (
-          <section key={key} className="mb-6">
+          <section key={key} className="mb-6 print-month">
             <h3 className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur text-sm font-bold text-primary px-1 py-1.5">
               {monthLabel(key)}
               <span className="text-xs font-normal text-gray-400 ml-2">
@@ -178,7 +241,7 @@ export default function OperationsFeed({
       {hasOlder && (
         <a
           href={`/app/operations?months=${months + 12}`}
-          className="block text-center text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5 mb-8"
+          className="print-hide block text-center text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5 mb-8"
         >
           Show older history →
         </a>
@@ -187,12 +250,15 @@ export default function OperationsFeed({
   )
 }
 
-function Entry({ e }: { e: OperationEntry }) {
+function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string) => void }) {
+  const openTodo = e.kind === 'todo' && !e.done
   return (
-    <li>
+    <li className="flex items-stretch">
       <Link
-        href={`/app/fields/${e.blockId}`}
-        className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
+        // Open to-dos jump to the block ON THE MAP, zoomed to it; history
+        // entries open the block's page.
+        href={openTodo ? `/app/map?focus=${e.blockId}` : `/app/fields/${e.blockId}`}
+        className="flex-1 min-w-0 flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
       >
         <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
         <span
@@ -209,6 +275,27 @@ function Entry({ e }: { e: OperationEntry }) {
           {e.detail && <span className="block text-xs text-gray-500 truncate">{e.detail}</span>}
         </span>
       </Link>
+      {openTodo && onComplete && (
+        <button
+          type="button"
+          onClick={() => onComplete(e.id)}
+          title="Mark complete"
+          aria-label={`Mark to-do on ${e.blockName} complete`}
+          className="print-hide shrink-0 px-4 flex items-center text-gray-300 hover:text-green-700 transition"
+        >
+          <svg
+            className="w-6 h-6"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8.5 12.5l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
     </li>
   )
 }

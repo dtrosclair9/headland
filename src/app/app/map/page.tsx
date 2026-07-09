@@ -8,8 +8,13 @@ import MapShell from '@/components/map/MapShell'
 
 export const metadata: Metadata = { title: 'Block map' }
 
-export default async function MapPage() {
+export default async function MapPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string }>
+}) {
   const { org } = await requireUserAndOrg()
+  const { focus } = await searchParams
   const [fields, colorOverrides, annotations, flyPlans] = await Promise.all([
     listFields(org.id),
     getOrgColors(org.id),
@@ -25,6 +30,7 @@ export default async function MapPage() {
       colorOverrides={colorOverrides}
       initialAnnotations={annotations}
       initialFlyPlans={flyPlans}
+      focusFieldId={focus ?? null}
     />
   )
 }

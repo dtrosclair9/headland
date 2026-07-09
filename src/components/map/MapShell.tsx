@@ -39,6 +39,9 @@ interface MapShellProps {
   initialAnnotations: AnnotationRow[]
   // Saved fly plans, loaded server-side.
   initialFlyPlans: FlyPlanRow[]
+  // Deep link (?focus=blockId): select this block and zoom the map to it —
+  // how Operations to-dos land you on the right block.
+  focusFieldId: string | null
 }
 
 export default function MapShell({
@@ -48,13 +51,14 @@ export default function MapShell({
   colorOverrides,
   initialAnnotations,
   initialFlyPlans,
+  focusFieldId,
 }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   // Use server data directly. router.refresh() flows new initialFields in.
   // No local mirror — that pattern was infinite-looping with new array refs.
   const fields = initialFields
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null)
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(focusFieldId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
@@ -501,6 +505,7 @@ export default function MapShell({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         filterIds={filterIds}
+        focusFieldId={focusFieldId}
         visibleIds={visibleIds}
         visibleKey={visibleKey}
         whiteMap={whiteMap}

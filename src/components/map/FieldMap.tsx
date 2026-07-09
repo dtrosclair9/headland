@@ -165,6 +165,8 @@ export interface FieldMapProps {
   // Layer filter: ids of blocks matching the active layer selection, or null
   // when no filter is on. Non-matching blocks render white with labels hidden.
   filterIds: Set<string> | null
+  // Deep link: zoom the camera to this block on load (Operations to-dos).
+  focusFieldId: string | null
   // Plantation isolation: when plantations are selected, only these block ids
   // exist on the map (others are omitted, not whitened) and the camera zooms
   // to them. null = whole operation visible.
@@ -212,6 +214,7 @@ export default function FieldMap({
   viewMode,
   onViewModeChange,
   filterIds,
+  focusFieldId,
   visibleIds,
   visibleKey,
   whiteMap,
@@ -900,6 +903,26 @@ export default function FieldMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey stands in for visibleIds
   }, [fields, ready, visibleKey])
+
+  // Deep-link focus: zoom to one block ("half zoomed" — the block plus some
+  // neighbors for context). Runs once per focus id, after the farm fit, so
+  // arriving from an Operations to-do lands right on the block.
+  const focusedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !focusFieldId) return
+    if (focusedRef.current === focusFieldId) return
+    const f = fields.find((x) => x.id === focusFieldId)
+    if (!f) return
+    focusedRef.current = focusFieldId
+    const bounds = new mapboxgl.LngLatBounds()
+    for (const ring of f.geometry.coordinates) {
+      for (const [lng, lat] of ring) bounds.extend([lng, lat])
+    }
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 140, animate: false, maxZoom: 16 })
+    }
+  }, [ready, fields, focusFieldId])
 
   // Bright outline on the bulk-selected blocks (cleared when not selecting).
   useEffect(() => {
