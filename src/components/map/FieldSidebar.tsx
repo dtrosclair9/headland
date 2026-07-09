@@ -138,7 +138,9 @@ export default function FieldSidebar({
   // Bring the selected block to the top of the list so it's never buried.
   const selectedRef = useRef<HTMLLIElement>(null)
   useEffect(() => {
-    if (selectedFieldId) selectedRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    // block: 'center' — scrolling to 'start' parked the card under the sticky
+    // plantation header, cutting off the block name.
+    if (selectedFieldId) selectedRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [selectedFieldId])
 
   return (
