@@ -24,15 +24,20 @@ export default async function FlyPlanPrintPage({
 
   const [blocks, annotations] = await Promise.all([listFields(org.id), listAnnotations(org.id)])
   const idSet = new Set(plan.block_ids)
+  const planBlocks = blocks.filter((b) => idSet.has(b.id))
+
+  // Context = ONLY the plantation(s) the plan's blocks sit in. A pilot flying
+  // Rosedale gets Rosedale's blocks — not the whole operation shrunk down.
+  // Plans spanning two plantations print both.
+  const scopePlantations = new Set(planBlocks.map((b) => b.plantation_id ?? '__none'))
+  const contextBlocks = blocks.filter((b) => scopePlantations.has(b.plantation_id ?? '__none'))
 
   const unitsArpents = org.units_default === 'arpents'
-  const svg = buildSpraySvg(blocks, {
+  const svg = buildSpraySvg(contextBlocks, {
     unitsArpents,
     annotations,
     highlight: { ids: idSet, color: plan.color },
   })
-
-  const planBlocks = blocks.filter((b) => idSet.has(b.id))
   const totalAcres = planBlocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = planBlocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
   const totalLabel = unitsArpents ? `${totalArpents.toFixed(2)} arp` : `${totalAcres.toFixed(2)} ac`
