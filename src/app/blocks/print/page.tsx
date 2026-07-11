@@ -5,7 +5,8 @@ import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
-import PlatSheet from '@/components/print/PlatSheet'
+import { groupByPlantation } from '@/lib/print-groups'
+import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
 
 export const metadata: Metadata = { title: 'Print selected blocks' }
 
@@ -32,10 +33,10 @@ export default async function SelectedBlocksPrintPage({
   const stageColors = resolveStageColors(colorOverrides.stage)
   const annotations = await listAnnotations(org.id)
   const isSpray = styleRaw === 'spray'
-  // highlight=1 (a layer print): the ids are a HIGHLIGHT — the sheet draws
-  // every block in the context, white with black outlines, and only the ids
-  // get their colors. A plant-cane selection is useless on paper without the
-  // surrounding blocks.
+  // highlight=1 (a layer print): the ids are a HIGHLIGHT — each page draws
+  // every block of its plantation, white with black outlines, and only the
+  // ids get their colors. A plant-cane selection is useless on paper without
+  // the surrounding blocks.
   const isHighlight = highlightRaw === '1'
   // Mirrors the map's Color-by toggle: paint highlighted blocks by variety
   // instead of year cane.
@@ -68,70 +69,65 @@ export default async function SelectedBlocksPrintPage({
   )
 
   const unitsArpents = org.units_default === 'arpents'
-  const buildOpts = {
-    unitsArpents,
-    annotations,
-    stageColors: colorOverrides.stage,
-    ...(byVariety ? { paletteBy: 'variety' as const, varietyColors } : {}),
-    ...(isHighlight ? { highlight: { ids: idSet } } : {}),
-  }
-  const svg = isSpray ? buildSpraySvg(blocks, buildOpts) : buildPlantationSvg(blocks, buildOpts)
-
-  // Totals reflect the selection (the highlighted ids), not the context blocks.
-  const counted = isHighlight ? blocks.filter((b) => idSet.has(b.id)) : blocks
-  const totalAcres = counted.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
-  const totalArpents = counted.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
-  const totalLabel = unitsArpents ? `${totalArpents.toFixed(2)} arp` : `${totalAcres.toFixed(2)} ac`
-  const meta = `${counted.length} block${counted.length === 1 ? '' : 's'}${isHighlight ? ' highlighted' : ''} · ${totalLabel}`
-
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-  // Legend: only what's actually present among the counted (highlighted)
-  // blocks — context blocks are white and need no legend entry.
-  let legendItems: { key: string; color: string; label: string }[] = []
-  if (!isSpray) {
-    if (byVariety) {
-      const countedVarieties = Array.from(
-        new Set(counted.flatMap((b) => (b.variety ? [b.variety] : []))),
-      ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-      legendItems = countedVarieties.map((v) => ({
-        key: v,
-        color: varietyColors[v],
-        label: v,
-      }))
-    } else {
-      const countedStages = new Set<string>(
-        counted.flatMap((b) => (b.current_ratoon ? [b.current_ratoon] : [])),
-      )
-      legendItems = stageColors.filter((r) => countedStages.has(r.key))
-    }
-  }
 
-  // When the selection was scoped to plantations, the sheet is titled by the
-  // plantation names ("Woodlawn", "Rosedale + Waverly") instead of a generic
-  // "Highlighted blocks".
-  const scopeNames =
-    isHighlight && scopeSet
-      ? Array.from(new Set(blocks.map((b) => b.plantation_name ?? 'Unassigned'))).sort((a, b) =>
-          a.localeCompare(b),
+  // ONE PAGE PER PLANTATION — a selection spanning three plantations prints
+  // as three individual sheets, each titled by its plantation. Plantations
+  // with nothing highlighted are skipped (no all-white wasted pages).
+  const sheets: SheetData[] = groupByPlantation(blocks).flatMap((group) => {
+    if (isHighlight && !group.blocks.some((b) => idSet.has(b.id))) return []
+    const buildOpts = {
+      unitsArpents,
+      annotations,
+      stageColors: colorOverrides.stage,
+      ...(byVariety ? { paletteBy: 'variety' as const, varietyColors } : {}),
+      ...(isHighlight ? { highlight: { ids: idSet } } : {}),
+    }
+    const svg = isSpray
+      ? buildSpraySvg(group.blocks, buildOpts)
+      : buildPlantationSvg(group.blocks, buildOpts)
+
+    // Totals reflect the selection (highlighted ids) within this plantation.
+    const counted = isHighlight ? group.blocks.filter((b) => idSet.has(b.id)) : group.blocks
+    const totalAcres = counted.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
+    const totalArpents = counted.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
+    const totalLabel = unitsArpents
+      ? `${totalArpents.toFixed(2)} arp`
+      : `${totalAcres.toFixed(2)} ac`
+    const meta = `${counted.length} block${counted.length === 1 ? '' : 's'}${isHighlight ? ' highlighted' : ''} · ${totalLabel}`
+
+    // Legend: only what's actually present among the counted blocks on THIS
+    // page — context blocks are white and need no legend entry.
+    let legendItems: { key: string; color: string; label: string }[] = []
+    if (!isSpray) {
+      if (byVariety) {
+        const countedVarieties = Array.from(
+          new Set(counted.flatMap((b) => (b.variety ? [b.variety] : []))),
+        ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        legendItems = countedVarieties.map((v) => ({ key: v, color: varietyColors[v], label: v }))
+      } else {
+        const countedStages = new Set<string>(
+          counted.flatMap((b) => (b.current_ratoon ? [b.current_ratoon] : [])),
         )
-      : []
-  const title =
-    scopeNames.length > 0
-      ? scopeNames.join(' + ')
-      : isSpray
-        ? 'Spray map'
-        : isHighlight
-          ? 'Highlighted blocks'
-          : 'Selected blocks'
+        legendItems = stageColors.filter((r) => countedStages.has(r.key))
+      }
+    }
+
+    return [
+      {
+        title: group.name,
+        meta,
+        svg,
+        legendItems,
+        hasUnset: !isHighlight && !byVariety && !!svg?.hasUnset,
+      },
+    ]
+  })
 
   return (
     <PlatSheet
       orgName={org.name}
-      title={title}
-      meta={meta}
-      svg={svg}
-      legendItems={legendItems}
-      hasUnset={!isHighlight && !byVariety && !!svg?.hasUnset}
+      sheets={sheets}
       today={today}
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks selected to print."

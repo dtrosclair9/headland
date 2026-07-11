@@ -48,11 +48,15 @@ export default async function PlantationPrintPage({
   return (
     <PlatSheet
       orgName={org.name}
-      title={isSpray ? `${plantation.name} — spray map` : plantation.name}
-      meta={meta}
-      svg={svg}
-      legendItems={legendItems}
-      hasUnset={!!svg?.hasUnset}
+      sheets={[
+        {
+          title: isSpray ? `${plantation.name} — spray map` : plantation.name,
+          meta,
+          svg,
+          legendItems,
+          hasUnset: !!svg?.hasUnset,
+        },
+      ]}
       today={today}
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks in this plantation yet. Assign blocks to it from the map, then print."

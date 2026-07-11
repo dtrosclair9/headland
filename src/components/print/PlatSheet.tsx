@@ -8,36 +8,38 @@ interface LegendItem {
   label: string
 }
 
-// Shared printable plat sheet used by the plantation print and the
-// "selected blocks" print. A compact one-line header (title + counts + legend +
-// date) keeps the map as large as possible, and the map is height-capped so the
-// whole thing always lands on a single landscape page.
+// One printable page: its own title, counts, legend, and map.
+export interface SheetData {
+  title: string
+  meta: string
+  svg: PlantationSvg | null
+  legendItems: LegendItem[]
+  hasUnset: boolean
+}
+
+// Shared printable plat output. Renders ONE PAGE PER SHEET — multi-plantation
+// prints pass one sheet per plantation, and each lands on its own landscape
+// page (break-after). A compact one-line header keeps the map as large as
+// possible; the map is height-capped so a sheet never spills onto two pages.
 export default function PlatSheet({
   orgName,
-  title,
-  meta,
-  svg,
-  legendItems,
-  hasUnset,
+  sheets,
   today,
   unitWord,
   emptyMessage,
   style = 'crop',
 }: {
   orgName: string
-  title: string
-  meta: string
-  svg: PlantationSvg | null
-  legendItems: LegendItem[]
-  hasUnset: boolean
+  sheets: SheetData[]
   today: string
   unitWord: string
   emptyMessage: string
   // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
-  // black boundaries, no ratoon legend). 'crop' = colored plat map.
+  // black boundaries). 'crop' = colored plat map.
   style?: 'crop' | 'spray'
 }) {
   const isSpray = style === 'spray'
+  const pages = sheets.filter((s) => s.svg !== null)
   return (
     <>
       <AutoPrint />
@@ -48,7 +50,8 @@ export default function PlatSheet({
           .no-print { display: none !important; }
           html, body { margin: 0 !important; padding: 0 !important; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .sheet { padding: 0 !important; box-shadow: none !important; margin: 0 !important; width: 100% !important; }
+          .sheet { padding: 0 !important; box-shadow: none !important; margin: 0 !important; width: 100% !important; break-after: page; }
+          .sheet:last-of-type { break-after: auto; }
         }
         @media screen {
           body { background: #f3f4f6; }
@@ -66,66 +69,73 @@ export default function PlatSheet({
       <div className="no-print" style={{ padding: 16, textAlign: 'center', background: '#1A3D2E', color: 'white' }}>
         <p style={{ margin: 0, fontSize: 14 }}>
           Print or save as PDF — File → Print (⌘P) → &quot;Save as PDF&quot;. Landscape.
+          {pages.length > 1 ? ` ${pages.length} pages, one per plantation.` : ''}
         </p>
       </div>
 
-      <div className="sheet">
-        {/* Compact one-line header: title + counts on the left, legend + date on
-            the right, so the map gets the rest of the page. */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            gap: 16,
-            marginBottom: 6,
-            paddingBottom: 6,
-            borderBottom: '1px solid #00000014',
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 9, letterSpacing: 1.5, fontWeight: 700, color: '#6B6B6B', margin: 0, textTransform: 'uppercase' }}>
-              {orgName}
-            </p>
-            <h1 style={{ fontSize: 22, color: '#1A3D2E', fontWeight: 700, margin: '1px 0 0' }}>
-              {title}
-              <span style={{ fontSize: 11, fontWeight: 400, color: '#6B6B6B', marginLeft: 8 }}>{meta}</span>
-            </h1>
-          </div>
+      {pages.length === 0 && (
+        <div className="sheet">
+          <div style={{ padding: 40, textAlign: 'center', color: '#6B6B6B', fontSize: 12 }}>{emptyMessage}</div>
+        </div>
+      )}
+
+      {pages.map((sheet, si) => (
+        <div className="sheet" key={si}>
+          {/* Compact one-line header: title + counts on the left, legend + date on
+              the right, so the map gets the rest of the page. */}
           <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-              justifyContent: 'flex-end',
-              fontSize: 10,
-              color: '#374151',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              gap: 16,
+              marginBottom: 6,
+              paddingBottom: 6,
+              borderBottom: '1px solid #00000014',
             }}
           >
-            {legendItems.map((r) => (
-              <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 11, height: 11, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
-                {r.label}
-              </span>
-            ))}
-            {!isSpray && hasUnset && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 11, height: 11, background: UNSET_RATOON_COLOR, border: '1px solid #00000022', display: 'inline-block' }} />
-                No cut set
-              </span>
-            )}
-            <span style={{ color: '#6B6B6B', marginLeft: 4 }}>{today}</span>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 9, letterSpacing: 1.5, fontWeight: 700, color: '#6B6B6B', margin: 0, textTransform: 'uppercase' }}>
+                {orgName}
+              </p>
+              <h1 style={{ fontSize: 22, color: '#1A3D2E', fontWeight: 700, margin: '1px 0 0' }}>
+                {sheet.title}
+                <span style={{ fontSize: 11, fontWeight: 400, color: '#6B6B6B', marginLeft: 8 }}>{sheet.meta}</span>
+              </h1>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+                justifyContent: 'flex-end',
+                fontSize: 10,
+                color: '#374151',
+              }}
+            >
+              {sheet.legendItems.map((r) => (
+                <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 11, height: 11, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
+                  {r.label}
+                </span>
+              ))}
+              {!isSpray && sheet.hasUnset && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 11, height: 11, background: UNSET_RATOON_COLOR, border: '1px solid #00000022', display: 'inline-block' }} />
+                  No cut set
+                </span>
+              )}
+              <span style={{ color: '#6B6B6B', marginLeft: 4 }}>{today}</span>
+            </div>
           </div>
-        </div>
 
-        {svg ? (
           <svg
-            viewBox={`0 0 ${svg.width} ${svg.height}`}
+            viewBox={`0 0 ${sheet.svg!.width} ${sheet.svg!.height}`}
             preserveAspectRatio="xMidYMid meet"
             style={{ width: '100%', height: 'auto', maxHeight: '5.9in', display: 'block', margin: '0 auto' }}
           >
-            {svg.blocks.map((b) => (
+            {sheet.svg!.blocks.map((b) => (
               <polygon
                 key={b.id}
                 points={b.points}
@@ -138,7 +148,7 @@ export default function PlatSheet({
             {/* Hand-drawn reference lines + text labels — printed in solid
                 black on the spray sheet (it's a B&W handout), in their chosen
                 color on the crop map. Drawn under the block labels. */}
-            {svg.annotations.map((a, i) =>
+            {sheet.svg!.annotations.map((a, i) =>
               a.kind === 'line' ? (
                 <polyline
                   key={`a-${i}`}
@@ -166,7 +176,7 @@ export default function PlatSheet({
                 </text>
               ),
             )}
-            {svg.blocks.map((b) => (
+            {sheet.svg!.blocks.map((b) => (
               // Per-block: dark text on white/uncolored fills, white text with
               // a thin dark outline on colored fills. A highlight sheet mixes
               // both on the same page.
@@ -190,42 +200,40 @@ export default function PlatSheet({
               </g>
             ))}
           </svg>
-        ) : (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6B6B6B', fontSize: 12 }}>{emptyMessage}</div>
-        )}
 
-        <p
-          style={{
-            fontSize: 8,
-            color: '#9CA3AF',
-            marginTop: 6,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          {unitWord === 'arpents' ? <span>Acreage shown in arpents.</span> : null}
-<span
+          <p
             style={{
-              display: 'inline-flex',
+              fontSize: 8,
+              color: '#9CA3AF',
+              marginTop: 6,
+              display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              width: 24,
-              height: 24,
-              background: '#143324',
-              borderRadius: 5,
+              gap: 4,
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
-            <img
-              src="/images/headland-logo-kit/svg/mark-white.svg"
-              alt="Headland"
-              style={{ height: 17, width: 17 }}
-            />
-          </span>
-          headlandmaps.com
-        </p>
-      </div>
+            {unitWord === 'arpents' ? <span>Acreage shown in arpents.</span> : null}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 24,
+                height: 24,
+                background: '#143324',
+                borderRadius: 5,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
+              <img
+                src="/images/headland-logo-kit/svg/mark-white.svg"
+                alt="Headland"
+                style={{ height: 17, width: 17 }}
+              />
+            </span>
+            headlandmaps.com
+          </p>
+        </div>
+      ))}
     </>
   )
 }
