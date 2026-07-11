@@ -89,14 +89,19 @@ export default function MapShell({
   const activePlan = activePlanId ? (flyPlans.find((p) => p.id === activePlanId) ?? null) : null
 
   const filterIds = useMemo(() => {
+    // Drafting a fly plan: ONLY the blocks picked so far fill with the plan
+    // color — layer picks (a plantation, a stage) still isolate/zoom the map
+    // for navigation but must stay white until tapped.
+    if (planDraft) return new Set(selectedIds)
     if (activePlan) return new Set(activePlan.block_ids)
     if (isLayerFilterActive(layerFilter))
       return new Set(fields.filter((f) => fieldMatchesFilter(f, layerFilter)).map((f) => f.id))
     if (deselected) return new Set<string>()
     return null
-  }, [fields, layerFilter, deselected, activePlan])
-  // White-map look: deselect-all or a fly plan (labels stay, blocks whiten).
-  const whiteMap = deselected || activePlan !== null
+  }, [fields, layerFilter, deselected, activePlan, planDraft, selectedIds])
+  // White-map look: deselect-all, a fly plan view, or a plan draft in progress
+  // (labels stay, blocks whiten).
+  const whiteMap = deselected || activePlan !== null || planDraft !== null
   // Plantation isolation: when plantations are picked, only their blocks are
   // on the map (others omitted entirely) and the camera zooms to them.
   const visibleIds = useMemo(
