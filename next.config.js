@@ -16,6 +16,21 @@ const nextConfig = {
     // Server actions handle scouting photo uploads — give them headroom.
     serverActions: { bodySizeLimit: '15mb' },
   },
+  // Security headers on every route. X-Frame-Options guards the login/billing
+  // pages against clickjacking. Geolocation is intentionally NOT blocked in
+  // Permissions-Policy — the Mapbox map may use it. CSP is deferred: a strict
+  // policy needs per-source testing against Mapbox, Supabase, and Stripe.
+  async headers() {
+    const securityHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), browsing-topics=()' },
+      { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+      { key: 'X-DNS-Prefetch-Control', value: 'on' },
+    ]
+    return [{ source: '/:path*', headers: securityHeaders }]
+  },
   // "Sections" was renamed to "Plantations" (grower terminology). Redirect the
   // old URLs so any bookmarks / printed links keep working.
   async redirects() {
