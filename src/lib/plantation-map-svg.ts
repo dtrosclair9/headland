@@ -640,27 +640,35 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
 
     // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
     // center), positioned against the block's real interior walls. EVERY
-    // block prints ALL FOUR facts on every sheet style — non-negotiable —
-    // EXCEPT context blocks on a highlight sheet: they exist for orientation,
-    // so they carry just id + acreage and NEVER spawn a callout chip (a
-    // 7-block plan must not print under forty leader lines).
+    // block tries to print ALL FOUR facts on every sheet style — including
+    // context blocks on a highlight sheet (nobody knows what a plan printout
+    // ends up used for). The difference: when the facts DON'T fit, only the
+    // sheet's own blocks earn a callout chip — context blocks degrade
+    // gracefully instead (id + acres, then id alone), because a 7-block plan
+    // must not print under forty leader lines.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
     const wants = (f: 'name' | 'variety' | 'cut' | 'acres') =>
       !opts.labelFields || opts.labelFields.has(f)
-    const { labels, callout } = planCornerLabels(
-      svgRing,
-      lx,
-      ly,
-      {
-        name: wants('name') ? (b.name ?? '') : '',
-        cut: member && wants('cut') ? cutAbbrev(b.current_ratoon) : '',
-        variety: member && wants('variety') ? varietyCode(b.variety) : '',
-        acres: wants('acres') ? acreageLabel : '',
-      },
-      font,
-    )
+    const fullParts = {
+      name: wants('name') ? (b.name ?? '') : '',
+      cut: wants('cut') ? cutAbbrev(b.current_ratoon) : '',
+      variety: wants('variety') ? varietyCode(b.variety) : '',
+      acres: wants('acres') ? acreageLabel : '',
+    }
+    let { labels, callout } = planCornerLabels(svgRing, lx, ly, fullParts, font)
+    if (callout && !member) {
+      const reduced = planCornerLabels(
+        svgRing,
+        lx,
+        ly,
+        { ...fullParts, cut: '', variety: '' },
+        font,
+      )
+      if (!reduced.callout) labels = reduced.labels
+      callout = null
+    }
     rings.push(svgRing)
-    if (callout && member) {
+    if (callout) {
       let radius = 0
       for (const [px, py] of svgRing) {
         const d = Math.hypot(px - lx, py - ly)
