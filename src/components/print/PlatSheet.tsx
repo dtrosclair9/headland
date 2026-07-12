@@ -139,7 +139,13 @@ export default function PlatSheet({
           <svg
             viewBox={`0 0 ${sheet.svg!.width} ${sheet.svg!.height}`}
             preserveAspectRatio="xMidYMid meet"
-            style={{ width: '100%', height: 'auto', maxHeight: '5.9in', display: 'block', margin: '0 auto' }}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: sheet.svg!.smallBlocks.length > 0 ? '5.3in' : '5.9in',
+              display: 'block',
+              margin: '0 auto',
+            }}
           >
             {sheet.svg!.blocks.map((b) => (
               <polygon
@@ -210,21 +216,27 @@ export default function PlatSheet({
           </svg>
 
           {sheet.svg!.smallBlocks.length > 0 && (
-            <p
+            <div
               style={{
-                fontSize: 9,
+                fontSize: sheet.svg!.smallBlocks.length > 36 ? 7.5 : 8.5,
                 color: '#374151',
                 marginTop: 6,
-                lineHeight: 1.6,
+                lineHeight: 1.45,
+                columns: 4,
+                columnGap: 14,
+                maxHeight: '0.85in',
+                overflow: 'hidden',
               }}
             >
-              <strong style={{ color: '#1A3D2E' }}>Small blocks: </strong>
+              <div style={{ fontWeight: 700, color: '#1A3D2E', breakInside: 'avoid' }}>
+                Small blocks
+              </div>
               {sheet.svg!.smallBlocks.map((sb, i) => (
-                <span key={i} style={{ whiteSpace: 'nowrap', marginRight: 12 }}>
+                <div key={i} style={{ breakInside: 'avoid', whiteSpace: 'nowrap' }}>
                   <strong>{sb.name}</strong> {sb.facts}
-                </span>
+                </div>
               ))}
-            </p>
+            </div>
           )}
           <p
             style={{

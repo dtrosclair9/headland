@@ -136,10 +136,62 @@ const MIN_FONT = 3.4
 // 10.5 canvas units ≈ 6.5pt on a letter landscape sheet — old-farmer-readable.
 const PRINT_FONT = 10.5
 
-// Place a block's labels in the FarmWorks arrangement: name top-left, variety
-// (v-code) top-right, acres bottom-right, cut centered. Corner anchors come
-// from ray-casting the block interior at the label's height, so text hugs the
-// block's REAL walls even on tilted parallelograms. No fitting, no dropping.
+// The block's own long axis: try each edge direction, keep the orientation
+// whose bounding box has the least area (classic min-area oriented box).
+// Returns the axis angle in degrees, normalized to (-90, 90] so text along
+// it is never upside down.
+function longAxisAngle(ring: [number, number][], cx: number, cy: number): number {
+  let bestAngle = 0
+  let bestArea = Infinity
+  for (let i = 0; i < ring.length - 1; i++) {
+    const dx = ring[i + 1][0] - ring[i][0]
+    const dy = ring[i + 1][1] - ring[i][1]
+    if (dx === 0 && dy === 0) continue
+    const a = Math.atan2(dy, dx)
+    const c = Math.cos(-a)
+    const sn = Math.sin(-a)
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const [px, py] of ring) {
+      const rx = (px - cx) * c - (py - cy) * sn
+      const ry = (px - cx) * sn + (py - cy) * c
+      if (rx < minX) minX = rx
+      if (rx > maxX) maxX = rx
+      if (ry < minY) minY = ry
+      if (ry > maxY) maxY = ry
+    }
+    const w = maxX - minX
+    const h = maxY - minY
+    const area = w * h
+    // Prefer the orientation where the EDGE direction is the long side.
+    const angle = w >= h ? a : a + Math.PI / 2
+    if (area < bestArea) {
+      bestArea = area
+      bestAngle = angle
+    }
+  }
+  let deg = (bestAngle * 180) / Math.PI
+  while (deg > 90) deg -= 180
+  while (deg <= -90) deg += 180
+  return deg
+}
+
+// Rotate a point by `deg` around (cx, cy) — SVG coords, y down.
+function rotatePoint(x: number, y: number, cx: number, cy: number, deg: number): [number, number] {
+  const r = (deg * Math.PI) / 180
+  const c = Math.cos(r)
+  const sn = Math.sin(r)
+  const dx = x - cx
+  const dy = y - cy
+  return [cx + dx * c - dy * sn, cy + dx * sn + dy * c]
+}
+
+// Place a block's labels. Big blocks get the page-aligned corner layout
+// (name TL, variety TR, acres BR, cut center). When that can't fit at the
+// fixed size, text follows the BLOCK'S OWN LONG AXIS (whatever direction the
+// strip leans after the sheet's rotation): two rails hugging the long edges
+// (id + cycle on one, variety + acres on the other), else one line down the
+// middle, else a bold id with the facts moved to the sheet's Small-blocks
+// index. Everything stays at the same readable size.
 function planCornerLabels(
   ring: [number, number][],
   cx: number,
@@ -147,30 +199,14 @@ function planCornerLabels(
   parts: { name: string; cut: string; variety: string; acres: string },
 ): { labels: PlacedLabel[]; callout: string | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
-  let minY = Infinity
-  let maxY = -Infinity
-  let minX = Infinity
-  let maxX = -Infinity
-  for (const [x, y] of ring) {
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-  }
   const font = PRINT_FONT
   const inset = font * 0.4
-  // Anchor rows to the CENTERED box (the block's wide interior around the
-  // centroid), not the bbox extremes — on tilted parallelograms the top/bottom
-  // of the bbox is a corner TIP and text anchored there spills the border.
-  const box = centeredBox(ring, cx, cy)
-  const boxH = box.h > 0 ? box.h : maxY - minY
-  const room = Math.max(0, box.w - 2 * inset)
   const w = (t: string) => t.length * CHAR_W * font
 
-  // Does the full corner layout fit at the fixed size? Height for two rows,
-  // width for the top pair (name + variety), the acres line, and the cut —
-  // measured at the ACTUAL row heights (a tilted block is narrower at the
-  // rows than at the centroid).
+  // ── 1. Page-aligned corner layout (the normal case for full-size blocks) ──
+  const box = centeredBox(ring, cx, cy)
+  const boxH = box.h
+  const room = Math.max(0, box.w - 2 * inset)
   const yTopProbe = cy - boxH / 2 + inset + font * 0.5
   const yBotProbe = cy + boxH / 2 - inset - font * 0.5
   const spanW = (y: number) => {
@@ -179,90 +215,87 @@ function planCornerLabels(
   }
   const topRoom = Math.min(room, spanW(yTopProbe))
   const botRoom = Math.min(room, spanW(yBotProbe))
-  const topNeeded = (named ? w(parts.name) : 0) + (parts.variety ? w(parts.variety) : 0) +
+  const topNeeded =
+    (named ? w(parts.name) : 0) +
+    (parts.variety ? w(parts.variety) : 0) +
     (named && parts.variety ? font : 0)
-  const fits =
-    boxH >= font * 2.4 &&
-    topNeeded <= topRoom &&
-    w(parts.acres) <= botRoom &&
-    w(parts.cut) <= box.w
+  // Corners need comfortable room for three bands (top row, cut, bottom row);
+  // anything tighter reads better as rails along the block's axis.
+  const cornersFit =
+    boxH >= font * 3.4 && topNeeded <= topRoom && w(parts.acres) <= botRoom && w(parts.cut) <= box.w
 
-  if (!fits) {
-    const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
-    const fullLine = [named ? parts.name : '', facts].filter(Boolean).join('   ')
+  if (cornersFit) {
+    const yTop = yTopProbe
+    const yBot = yBotProbe
+    const top = spanAtY(ring, yTop) ?? [cx - box.w / 2, cx + box.w / 2]
+    const bot = spanAtY(ring, yBot) ?? [cx - box.w / 2, cx + box.w / 2]
+    const labels: PlacedLabel[] = []
+    if (named)
+      labels.push({ x: top[0] + inset, y: yTop, font, text: parts.name, bold: true, anchor: 'start' })
+    if (parts.variety)
+      labels.push({ x: top[1] - inset, y: yTop, font, text: parts.variety, bold: false, anchor: 'end' })
+    if (parts.acres)
+      labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
+    if (parts.cut)
+      labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
+    return { labels, callout: null }
+  }
 
-    // Short-but-wide: one horizontal line through the middle.
-    if (fullLine && w(fullLine) <= room) {
-      return {
-        labels: [{ x: cx, y: cy, font, text: fullLine, bold: true, anchor: 'middle' }],
-        callout: null,
-      }
+  // ── 2. Work in the block's own frame: rotate so its long axis is x ──
+  const axis = longAxisAngle(ring, cx, cy)
+  const frameRing = ring.map(([px, py]) => rotatePoint(px, py, cx, cy, -axis)) as [number, number][]
+  const fbox = centeredBox(frameRing, cx, cy)
+  const longAvail = Math.max(0, fbox.w - 2 * inset)
+  const shortAvail = fbox.h
+
+  const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
+  const fullLine = [named ? parts.name : '', facts].filter(Boolean).join('   ')
+  const leftLine = [named ? parts.name : '', parts.cut].filter(Boolean).join('  ')
+  const rightLine = [parts.variety, parts.acres].filter(Boolean).join(' · ')
+
+  const emit = (fx: number, fy: number, text: string, bold: boolean): PlacedLabel => {
+    const [x, y] = rotatePoint(fx, fy, cx, cy, axis)
+    return { x, y, font, text, bold, anchor: 'middle', rotation: axis }
+  }
+
+  // Two rails hugging the long edges.
+  if (
+    leftLine &&
+    rightLine &&
+    shortAvail >= font * 2.8 &&
+    w(leftLine) <= longAvail &&
+    w(rightLine) <= longAvail
+  ) {
+    const off = shortAvail / 2 - inset - font * 0.5
+    return {
+      labels: [emit(cx, cy - off, leftLine, true), emit(cx, cy + off, rightLine, false)],
+      callout: null,
     }
-
-    // Tall-and-narrow (the strip blocks): run the text DOWN the block along
-    // its long axis. Two vertical rails when the block is wide enough — id +
-    // cycle hugging the LEFT edge, variety + acres hugging the RIGHT edge —
-    // else one combined line down the middle.
-    const vertRoom = boxH - 2 * inset
-    const leftLine = [named ? parts.name : '', parts.cut].filter(Boolean).join('  ')
-    const rightLine = [parts.variety, parts.acres].filter(Boolean).join(' · ')
-    if (
-      leftLine &&
-      rightLine &&
-      box.w >= font * 2.8 &&
-      w(leftLine) <= vertRoom &&
-      w(rightLine) <= vertRoom
-    ) {
-      const xL = cx - box.w / 2 + inset + font * 0.5
-      const xR = cx + box.w / 2 - inset - font * 0.5
-      return {
-        labels: [
-          { x: xL, y: cy, font, text: leftLine, bold: true, anchor: 'middle', rotation: 90 },
-          { x: xR, y: cy, font, text: rightLine, bold: false, anchor: 'middle', rotation: 90 },
-        ],
-        callout: null,
-      }
-    }
-    if (fullLine && box.w >= font * 1.3 && w(fullLine) <= vertRoom) {
-      return {
-        labels: [
-          { x: cx, y: cy, font, text: fullLine, bold: true, anchor: 'middle', rotation: 90 },
-        ],
-        callout: null,
-      }
-    }
-
-    // SMALL-BLOCK CALLOUT: the block shows just its bold id (shrunk to fit if
-    // needed, never below readable); its facts move to the sheet's
-    // "Small blocks" index so nothing overlaps and nothing is lost.
-    const idFont = named
-      ? clamp(room > 0 ? room / (parts.name.length * CHAR_W) : font, 7, font)
-      : font
-    const labels: PlacedLabel[] = named
-      ? [{ x: cx, y: cy, font: idFont, text: parts.name, bold: true, anchor: 'middle' }]
-      : []
-    return { labels, callout: named && facts ? facts : null }
   }
 
-  const yTop = cy - boxH / 2 + inset + font * 0.5
-  const yBot = cy + boxH / 2 - inset - font * 0.5
-  const top = spanAtY(ring, yTop) ?? [minX, maxX]
-  const bot = spanAtY(ring, yBot) ?? [minX, maxX]
-  const labels: PlacedLabel[] = []
+  // One line down the middle of the long axis.
+  if (fullLine && shortAvail >= font * 1.2 && w(fullLine) <= longAvail) {
+    return { labels: [emit(cx, cy, fullLine, true)], callout: null }
+  }
 
-  if (named) {
-    labels.push({ x: top[0] + inset, y: yTop, font, text: parts.name, bold: true, anchor: 'start' })
+  // ── 3. Sliver: bold id along the axis; facts go to the Small-blocks index ──
+  if (!named) return { labels: [], callout: null }
+  const idFont = clamp(longAvail > 0 ? longAvail / (parts.name.length * CHAR_W) : font, 7, font)
+  const [ix, iy] = [cx, cy]
+  return {
+    labels: [
+      {
+        x: ix,
+        y: iy,
+        font: idFont,
+        text: parts.name,
+        bold: true,
+        anchor: 'middle',
+        rotation: shortAvail < idFont * 1.1 || w(parts.name) > box.w ? axis : 0,
+      },
+    ],
+    callout: facts || null,
   }
-  if (parts.variety) {
-    labels.push({ x: top[1] - inset, y: yTop, font, text: parts.variety, bold: false, anchor: 'end' })
-  }
-  if (parts.acres) {
-    labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
-  }
-  if (parts.cut) {
-    labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
-  }
-  return { labels, callout: null }
 }
 
 // Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
