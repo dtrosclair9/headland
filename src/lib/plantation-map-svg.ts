@@ -122,87 +122,66 @@ const CHAR_W = 0.62
 // Hard readability floor — below this a label is dropped rather than shrunk.
 const MIN_FONT = 3.4
 
-// Plan a block's labels in the FarmWorks arrangement: name top-left, variety
-// (v-code) top-right, acres bottom-right, cut centered. Each corner label is
-// positioned by ray-casting the block interior at that label's height, so the
-// anchor is the block's REAL wall at that line (not the bbox corner, which sits
-// outside a tilted block). Labels shrink to fit their available run and drop
-// (variety first, then cut, then name) when a block is too small; acres always
-// survives, falling back to a single centered line on slivers.
+// Uniform print label size. NON-NEGOTIABLE RULE: every block prints all four
+// facts — id, acres, variety, cycle — on every sheet. Text is NOT scaled to
+// the block; one small fixed size everywhere means nothing ever gets dropped
+// for lack of room. A tiny block may have snug text, but the data is there.
+// 10.5 canvas units ≈ 6.5pt on a letter landscape sheet — old-farmer-readable.
+const PRINT_FONT = 10.5
+
+// Place a block's labels in the FarmWorks arrangement: name top-left, variety
+// (v-code) top-right, acres bottom-right, cut centered. Corner anchors come
+// from ray-casting the block interior at the label's height, so text hugs the
+// block's REAL walls even on tilted parallelograms. No fitting, no dropping.
 function planCornerLabels(
   ring: [number, number][],
   cx: number,
   cy: number,
   parts: { name: string; cut: string; variety: string; acres: string },
-  floor: number,
 ): PlacedLabel[] {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
   let minY = Infinity
   let maxY = -Infinity
-  for (const [, y] of ring) {
+  let minX = Infinity
+  let maxX = -Infinity
+  for (const [x, y] of ring) {
     if (y < minY) minY = y
     if (y > maxY) maxY = y
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
   }
-  const H = maxY - minY
+  const font = PRINT_FONT
+  const inset = font * 0.4
+  // Anchor rows to the CENTERED box (the block's wide interior around the
+  // centroid), not the bbox extremes — on tilted parallelograms the top/bottom
+  // of the bbox is a corner TIP and text anchored there spills the border.
   const box = centeredBox(ring, cx, cy)
-  const base = clamp(Math.min(box.w, box.h) * 0.26, floor, 13)
-  const inset = Math.max(1.4, base * 0.4)
+  const boxH = box.h > 0 ? box.h : maxY - minY
 
-  // Shrink a label to fit `room`; null when it can't reach MIN_FONT.
-  const fit = (text: string, room: number, font: number): number | null => {
-    if (!text || room <= 0) return null
-    const needed = text.length * CHAR_W
-    const f = Math.min(font, room / needed)
-    return f >= MIN_FONT ? f : null
+  // Very short strips: two rows won't fit — one line, everything on it.
+  if (boxH < font * 2.4) {
+    const line = [named ? parts.name : '', parts.cut, parts.variety, parts.acres]
+      .filter(Boolean)
+      .join('  ')
+    return [{ x: cx, y: cy, font, text: line, bold: false, anchor: 'middle' }]
   }
 
+  const yTop = cy - boxH / 2 + inset + font * 0.5
+  const yBot = cy + boxH / 2 - inset - font * 0.5
+  const top = spanAtY(ring, yTop) ?? [minX, maxX]
+  const bot = spanAtY(ring, yBot) ?? [minX, maxX]
   const labels: PlacedLabel[] = []
 
-  // Sliver fallback: not enough height for two label rows — one centered line.
-  if (H < base * 2.6) {
-    const f = fit(parts.acres, box.w - 2, Math.min(base, H * 0.5))
-    if (f) labels.push({ x: cx, y: cy, font: f, text: parts.acres, bold: false, anchor: 'middle' })
-    return labels
+  if (named) {
+    labels.push({ x: top[0] + inset, y: yTop, font, text: parts.name, bold: true, anchor: 'start' })
   }
-
-  const yTop = minY + inset + base * 0.5
-  const yBot = maxY - inset - base * 0.5
-  const top = spanAtY(ring, yTop)
-  const bot = spanAtY(ring, yBot)
-
-  // Top row: name pinned to the left wall, variety to the right wall.
-  if (top) {
-    const [tL, tR] = [top[0] + inset, top[1] - inset]
-    const room = tR - tL
-    const gap = base * 0.9
-    const nameW = named ? parts.name.length * CHAR_W * base : 0
-    let nameF: number | null = null
-    let varF: number | null = null
-    if (named && parts.variety && nameW + gap + parts.variety.length * CHAR_W * base <= room) {
-      nameF = base
-      varF = base
-    } else {
-      // Not enough for both at full size — name wins, variety drops.
-      if (named) nameF = fit(parts.name, room, base)
-      else if (parts.variety) varF = fit(parts.variety, room, base)
-    }
-    if (nameF) labels.push({ x: tL, y: yTop, font: nameF, text: parts.name, bold: true, anchor: 'start' })
-    if (varF) labels.push({ x: tR, y: yTop, font: varF, text: parts.variety, bold: false, anchor: 'end' })
+  if (parts.variety) {
+    labels.push({ x: top[1] - inset, y: yTop, font, text: parts.variety, bold: false, anchor: 'end' })
   }
-
-  // Bottom row: acres pinned to the right wall.
-  if (bot) {
-    const [bL, bR] = [bot[0] + inset, bot[1] - inset]
-    const f = fit(parts.acres, bR - bL, base)
-    if (f) labels.push({ x: bR, y: yBot, font: f, text: parts.acres, bold: false, anchor: 'end' })
+  labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
+  if (parts.cut) {
+    labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
   }
-
-  // Center: the cut, when there's a clear band between the two rows.
-  if (parts.cut && H >= base * 4) {
-    const f = fit(parts.cut, box.w - 2, base * 1.15)
-    if (f) labels.push({ x: cx, y: cy, font: f, text: parts.cut, bold: true, anchor: 'middle' })
-  }
-
   return labels
 }
 
@@ -390,23 +369,15 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
             : stageColorFor(b.current_ratoon, opts.stageColors ?? {})
 
     // Corner labels, each in its own spot (name TL, variety TR, acres BR, cut
-    // center), positioned against the block's real interior walls.
+    // center), positioned against the block's real interior walls. EVERY
+    // block prints ALL FOUR facts on every sheet style — non-negotiable.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
-    // Spray sheets and white context blocks carry ONLY id + acreage (+ any
-    // hand-drawn annotations); colored crop blocks keep the full label set.
-    const minimalLabels = style === 'spray' || !member
-    const labels = planCornerLabels(
-      svgRing,
-      lx,
-      ly,
-      {
-        name: b.name ?? '',
-        cut: minimalLabels ? '' : cutAbbrev(b.current_ratoon),
-        variety: minimalLabels ? '' : varietyCode(b.variety),
-        acres: acreageLabel,
-      },
-      style === 'spray' ? 4.2 : 5,
-    )
+    const labels = planCornerLabels(svgRing, lx, ly, {
+      name: b.name ?? '',
+      cut: cutAbbrev(b.current_ratoon),
+      variety: varietyCode(b.variety),
+      acres: acreageLabel,
+    })
 
     return {
       id: b.id,
