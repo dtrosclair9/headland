@@ -104,18 +104,29 @@ export default function MapShell({
   const whiteMap = deselected || activePlan !== null || planDraft !== null
   // Plantation isolation: when plantations are picked, only their blocks are
   // on the map (others omitted entirely) and the camera zooms to them.
+  // Viewing a plan isolates the same way — just the plantation(s) the plan's
+  // blocks live on, not the whole farm.
+  const isolatedPlantations = useMemo(() => {
+    if (activePlan) {
+      const planIds = new Set(activePlan.block_ids)
+      return Array.from(
+        new Set(fields.filter((f) => planIds.has(f.id)).map((f) => f.plantation_id ?? null)),
+      )
+    }
+    return layerFilter.plantations
+  }, [activePlan, fields, layerFilter.plantations])
   const visibleIds = useMemo(
     () =>
-      layerFilter.plantations.length > 0
+      isolatedPlantations.length > 0
         ? new Set(
             fields
-              .filter((f) => layerFilter.plantations.includes(f.plantation_id ?? null))
+              .filter((f) => isolatedPlantations.includes(f.plantation_id ?? null))
               .map((f) => f.id),
           )
         : null,
-    [fields, layerFilter.plantations],
+    [fields, isolatedPlantations],
   )
-  const visibleKey = layerFilter.plantations
+  const visibleKey = isolatedPlantations
     .map((p) => p ?? '__none')
     .sort()
     .join(',')
