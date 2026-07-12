@@ -108,13 +108,13 @@ function centeredBox(ring: [number, number][], cx: number, cy: number): { w: num
   return { w: Math.max(0, w), h: Math.max(0, h) }
 }
 
-// Compact variety code for the plat sheet: 'v' + the last 3 digits of the
-// variety (e.g. 'HoCP 96-540' → 'v540', 'L 01-299' → 'v299', '838' → 'v838'),
-// so a variety never eats horizontal space in a narrow block. Empty when the
-// variety carries no digits (e.g. a stray 'Fallow' in the variety column).
+// Compact variety code for the plat sheet: just the last 3 digits (e.g.
+// 'HoCP 96-540' → '540', 'L 01-299' → '299') — farmers know their varieties
+// by those digits, and dropping the 'v' buys room on narrow blocks. Empty
+// when the variety carries no digits (e.g. a stray 'Fallow' in the column).
 export function varietyCode(variety: string | null | undefined): string {
   const digits = String(variety ?? '').replace(/\D/g, '')
-  return digits ? 'v' + digits.slice(-3) : ''
+  return digits ? digits.slice(-3) : ''
 }
 
 // Approximate glyph advance as a fraction of font size (Inter/system sans).
