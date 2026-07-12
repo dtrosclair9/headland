@@ -58,16 +58,32 @@ export interface SvgAnnotation {
   rotation?: number
 }
 
+/**
+ * A block too small to hold its facts gets a plat-map style callout: a white
+ * chip placed in nearby open canvas with a leader line pointing into the
+ * block. Everything stays ON the map — no footer index stealing map height.
+ */
+export interface SvgCallout {
+  /** leader line: block anchor → chip edge */
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  box: { x: number; y: number; w: number; h: number }
+  /** bold lead (block id) — empty when the id already printed inside the block */
+  bold: string
+  /** the facts line */
+  text: string
+  font: number
+}
+
 export interface PlantationSvg {
   width: number
   height: number
   blocks: SvgBlock[]
   annotations: SvgAnnotation[]
-  /**
-   * Blocks too small to hold their labels: they print just their bold id on
-   * the map, and the sheet lists their facts in a "Small blocks" index below.
-   */
-  smallBlocks: { name: string; facts: string }[]
+  /** leader-line callouts for blocks whose facts couldn't fit inside */
+  callouts: SvgCallout[]
   /** ratoon stage keys present among these blocks, for the legend */
   stagesPresent: string[]
   hasUnset: boolean
@@ -124,10 +140,16 @@ export function varietyCode(variety: string | null | undefined): string {
   return digits ? digits.slice(-3) : ''
 }
 
-// Approximate glyph advance as a fraction of font size (Inter/system sans).
-const CHAR_W = 0.62
-// Hard readability floor — below this a label is dropped rather than shrunk.
-const MIN_FONT = 3.4
+// Per-glyph advance as a fraction of font size (Inter/system sans) — our
+// labels are digit-heavy ("838·4.05"), and digits, dots, and spaces run much
+// narrower than a flat per-char average. Measuring per glyph is the
+// difference between a block fitting its line and getting exiled to a callout.
+const GLYPH_W: Record<string, number> = { ' ': 0.3, '.': 0.3, '·': 0.36 }
+function textW(t: string, f: number): number {
+  let u = 0
+  for (const ch of t) u += GLYPH_W[ch] ?? (ch >= '0' && ch <= '9' ? 0.6 : 0.64)
+  return u * f
+}
 
 // NON-NEGOTIABLE RULE: every block prints all four facts — id, acres,
 // variety, cycle — on every sheet, at a constant PHYSICAL size (~6.5pt,
@@ -205,6 +227,28 @@ function longAxisAngle(ring: [number, number][], cx: number, cy: number): number
   return deg
 }
 
+// Standard even-odd ray cast.
+function pointInRing(ring: [number, number][], x: number, y: number): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+interface Rect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
 // Rotate a point by `deg` around (cx, cy) — SVG coords, y down.
 function rotatePoint(x: number, y: number, cx: number, cy: number, deg: number): [number, number] {
   const r = (deg * Math.PI) / 180
@@ -215,23 +259,28 @@ function rotatePoint(x: number, y: number, cx: number, cy: number, deg: number):
   return [cx + dx * c - dy * sn, cy + dx * sn + dy * c]
 }
 
-// Place a block's labels. Big blocks get the page-aligned corner layout
-// (name TL, variety TR, acres BR, cut center). When that can't fit at the
-// fixed size, text follows the BLOCK'S OWN LONG AXIS (whatever direction the
-// strip leans after the sheet's rotation): two rails hugging the long edges
-// (id + cycle on one, variety + acres on the other), else one line down the
-// middle, else a bold id with the facts moved to the sheet's Small-blocks
-// index. Everything stays at the same readable size.
+// Place a block's labels. No two blocks are the same shape, so this walks a
+// ladder of layouts (the same one ArcGIS Maplex / QGIS use for small
+// parcels), most spacious first:
+//   1. page-aligned corners (name TL, variety TR, acres BR, cut center)
+//   2. in the block's OWN frame (its min-area long axis): two rails hugging
+//      the long edges — the slim-strip layout
+//   3. one combined line down the middle of the long axis
+//   4. stacked short rows across the short axis — the short-fat-block layout
+//   5. retry 2–4 one gentle font step down (~0.9×, still farmer-readable)
+//   6. leader-line callout: bold id inside if it fits, facts on a white chip
+//      in nearby open canvas with a line pointing into the block
+// Every block gets all four facts ON THE MAP, always.
 function planCornerLabels(
   ring: [number, number][],
   cx: number,
   cy: number,
   parts: { name: string; cut: string; variety: string; acres: string },
   font: number,
-): { labels: PlacedLabel[]; callout: string | null } {
+): { labels: PlacedLabel[]; callout: { bold: string; text: string } | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
   const inset = font * 0.4
-  const w = (t: string) => t.length * CHAR_W * font
+  const w = (t: string) => textW(t, font)
 
   // ── 1. Page-aligned corner layout (the normal case for full-size blocks) ──
   const box = centeredBox(ring, cx, cy)
@@ -271,60 +320,102 @@ function planCornerLabels(
     return { labels, callout: null }
   }
 
-  // ── 2. Work in the block's own frame: rotate so its long axis is x ──
+  // ── 2–5. Work in the block's own frame: rotate so its long axis is x ──
   const axis = longAxisAngle(ring, cx, cy)
   const frameRing = ring.map(([px, py]) => rotatePoint(px, py, cx, cy, -axis)) as [number, number][]
   const fbox = centeredBox(frameRing, cx, cy)
-  const longAvail = Math.max(0, fbox.w - 2 * inset)
-  const shortAvail = fbox.h
 
-  const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
-  const fullLine = [named ? parts.name : '', facts].filter(Boolean).join('   ')
-  const leftLine = [named ? parts.name : '', parts.cut].filter(Boolean).join('  ')
-  const rightLine = [parts.variety, parts.acres].filter(Boolean).join(' · ')
+  // Tight '·' separators — " · " padding costs ~30% of a line's width, which
+  // on dense farms is the difference between in-block text and a callout.
+  const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join('·')
+  const fullLine = [named ? parts.name : '', facts].filter(Boolean).join('  ')
+  const leftLine = [named ? parts.name : '', parts.cut].filter(Boolean).join(' ')
+  const rightLine = [parts.variety, parts.acres].filter(Boolean).join('·')
 
-  const emit = (fx: number, fy: number, text: string, bold: boolean): PlacedLabel => {
+  const emit = (fx: number, fy: number, text: string, bold: boolean, f: number): PlacedLabel => {
     const [x, y] = rotatePoint(fx, fy, cx, cy, axis)
-    return { x, y, font, text, bold, anchor: 'middle', rotation: axis }
+    return { x, y, font: f, text, bold, anchor: 'middle', rotation: axis }
   }
 
-  // Two rails hugging the long edges.
-  if (
-    leftLine &&
-    rightLine &&
-    shortAvail >= font * 2.8 &&
-    w(leftLine) <= longAvail &&
-    w(rightLine) <= longAvail
-  ) {
-    const off = shortAvail / 2 - inset - font * 0.5
-    return {
-      labels: [emit(cx, cy - off, leftLine, true), emit(cx, cy + off, rightLine, false)],
-      callout: null,
+  // One layout attempt at font f — rails, then single line, then stacked rows.
+  const tryFrame = (f: number): PlacedLabel[] | null => {
+    const wf = (t: string) => textW(t, f)
+    const insetF = f * 0.4
+    const longAvail = Math.max(0, fbox.w - 2 * insetF)
+    const shortAvail = fbox.h
+
+    // Two rails hugging the long edges — slim strips.
+    if (
+      leftLine &&
+      rightLine &&
+      shortAvail >= f * 2.8 &&
+      wf(leftLine) <= longAvail &&
+      wf(rightLine) <= longAvail
+    ) {
+      const off = shortAvail / 2 - insetF - f * 0.5
+      return [emit(cx, cy - off, leftLine, true, f), emit(cx, cy + off, rightLine, false, f)]
     }
+
+    // One line down the middle of the long axis.
+    if (fullLine && shortAvail >= f * 1.2 && wf(fullLine) <= longAvail) {
+      return [emit(cx, cy, fullLine, true, f)]
+    }
+
+    // Stacked short rows across the short axis — short fat blocks that can't
+    // carry one long line but have height for two, three, or four rows.
+    const rows: string[][] = [
+      [leftLine, rightLine],
+      [named ? parts.name : '', [parts.cut, parts.variety].filter(Boolean).join('·'), parts.acres],
+      [named ? parts.name : '', parts.cut, parts.variety, parts.acres],
+    ]
+    for (const raw of rows) {
+      const lines = raw.filter(Boolean)
+      if (lines.length < 2) continue
+      const lineH = f * 1.1
+      if (lines.length * lineH > shortAvail - insetF) continue
+      if (!lines.every((t) => wf(t) <= longAvail)) continue
+      const y0 = cy - ((lines.length - 1) / 2) * lineH
+      return lines.map((t, i) => emit(cx, y0 + i * lineH, t, i === 0 && named, f))
+    }
+    return null
   }
 
-  // One line down the middle of the long axis.
-  if (fullLine && shortAvail >= font * 1.2 && w(fullLine) <= longAvail) {
-    return { labels: [emit(cx, cy, fullLine, true)], callout: null }
+  // Base size first, then two gentle steps down (6.5 → ~6 → ~5.5pt) — never
+  // smaller; below that a callout is more readable than shrunken text.
+  for (const f of [font, font * 0.92, font * 0.85]) {
+    const labels = tryFrame(f)
+    if (labels) return { labels, callout: null }
   }
 
-  // ── 3. Sliver: bold id along the axis; facts go to the Small-blocks index ──
-  if (!named) return { labels: [], callout: null }
-  const idFont = clamp(longAvail > 0 ? longAvail / (parts.name.length * CHAR_W) : font, 7, font)
-  const [ix, iy] = [cx, cy]
+  // ── 6. Callout: bold id inside the block if it fits, facts on a chip ──
+  const insetF = font * 0.36
+  const longAvail = Math.max(0, fbox.w - 2 * insetF)
+  const shortAvail = fbox.h
+  const idFont = clamp(
+    longAvail > 0 ? (longAvail / Math.max(1, textW(parts.name, 1))) : font,
+    font * 0.8,
+    font,
+  )
+  const idFits = named && textW(parts.name, idFont) <= longAvail && shortAvail >= idFont * 0.9
+  const labels: PlacedLabel[] = idFits
+    ? [
+        {
+          x: cx,
+          y: cy,
+          font: idFont,
+          text: parts.name,
+          bold: true,
+          anchor: 'middle',
+          rotation: shortAvail < idFont * 1.1 || w(parts.name) > box.w ? axis : 0,
+        },
+      ]
+    : []
+  if (!facts && idFits) return { labels, callout: null }
   return {
-    labels: [
-      {
-        x: ix,
-        y: iy,
-        font: idFont,
-        text: parts.name,
-        bold: true,
-        anchor: 'middle',
-        rotation: shortAvail < idFont * 1.1 || w(parts.name) > box.w ? axis : 0,
-      },
-    ],
-    callout: facts || null,
+    labels,
+    // If the id printed inside, the chip carries just the facts (the leader
+    // ties them together); otherwise the chip leads with the bold id.
+    callout: { bold: idFits ? '' : parts.name, text: facts || parts.name },
   }
 }
 
@@ -481,7 +572,16 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
 
   const stages = new Set<string>()
   let hasUnset = false
-  const smallBlocks: { name: string; facts: string }[] = []
+  // Blocks whose facts didn't fit inside — they get leader-line callouts
+  // placed in a global pass once every block's geometry + labels are known.
+  const pending: {
+    anchorX: number
+    anchorY: number
+    radius: number
+    bold: string
+    text: string
+  }[] = []
+  const rings: [number, number][][] = []
 
   const svgBlocks: SvgBlock[] = blocks.map((b) => {
     const outer = b.geometry?.coordinates?.[0] ?? []
@@ -543,7 +643,15 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
       },
       font,
     )
-    if (callout) smallBlocks.push({ name: b.name ?? '', facts: callout })
+    rings.push(svgRing)
+    if (callout) {
+      let radius = 0
+      for (const [px, py] of svgRing) {
+        const d = Math.hypot(px - lx, py - ly)
+        if (d > radius) radius = d
+      }
+      pending.push({ anchorX: lx, anchorY: ly, radius, bold: callout.bold, text: callout.text })
+    }
 
     return {
       id: b.id,
@@ -589,14 +697,111 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     },
   )
 
-  smallBlocks.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  // ── Callout placement pass ──────────────────────────────────────────────
+  // For each sliver block, find open canvas near it for a white chip: sample
+  // candidate spots ringed around the block and score them — landing on
+  // another block is bad, covering someone's labels is bad, covering another
+  // chip is forbidden, closer is better. The best spot wins; the chip gets a
+  // leader line back into the block. This is how paper plat maps handle
+  // parcels too small for their text.
+  const ringBoxes: Rect[] = rings.map((r) => {
+    let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity
+    for (const [px, py] of r) {
+      if (px < mnx) mnx = px
+      if (px > mxx) mxx = px
+      if (py < mny) mny = py
+      if (py > mxy) mxy = py
+    }
+    return { x: mnx, y: mny, w: mxx - mnx, h: mxy - mny }
+  })
+  const labelRects: Rect[] = svgBlocks.flatMap((b) =>
+    b.labels.map((l) => {
+      const w = textW(l.text, l.font)
+      const x = l.anchor === 'start' ? l.x : l.anchor === 'end' ? l.x - w : l.x - w / 2
+      return { x, y: l.y - l.font * 0.7, w, h: l.font * 1.4 }
+    }),
+  )
+  const chips: Rect[] = []
+  const callouts: SvgCallout[] = []
+  pending.sort((a, b) => a.anchorY - b.anchorY || a.anchorX - b.anchorX)
+  for (const p of pending) {
+    const chipW = textW(p.bold, font) * 1.08 + (p.bold ? textW(' ', font) : 0) + textW(p.text, font) + font * 0.9
+    const chipH = font * 1.6
+    let best: Rect | null = null
+    let bestScore = Infinity
+    for (const mult of [1, 1.8, 2.7, 3.7, 4.8]) {
+      for (let ai = 0; ai < 12; ai++) {
+        const a = (ai * Math.PI) / 6
+        const dirX = Math.cos(a)
+        const dirY = Math.sin(a)
+        // Near edge of the chip sits ~gap past the block's extent.
+        const reach =
+          p.radius + font * 0.9 * mult + (Math.abs(dirX) * chipW) / 2 + (Math.abs(dirY) * chipH) / 2
+        const rect: Rect = {
+          x: p.anchorX + dirX * reach - chipW / 2,
+          y: p.anchorY + dirY * reach - chipH / 2,
+          w: chipW,
+          h: chipH,
+        }
+        if (rect.x < 2 || rect.y < 2 || rect.x + rect.w > canvasWidth - 2 || rect.y + rect.h > height - 2)
+          continue
+        if (chips.some((c) => rectsOverlap(c, rect))) continue
+        let score = (mult - 1) * 18 + (ai % 3 === 0 ? 0 : 3) // close + cardinal preferred
+        // Sample 9 points; each landing inside a block costs — the chip has a
+        // solid white background so it stays readable, but open ground wins.
+        for (const sx of [rect.x, rect.x + rect.w / 2, rect.x + rect.w]) {
+          for (const sy of [rect.y, rect.y + rect.h / 2, rect.y + rect.h]) {
+            for (let ri = 0; ri < rings.length; ri++) {
+              const bb = ringBoxes[ri]
+              if (sx < bb.x || sx > bb.x + bb.w || sy < bb.y || sy > bb.y + bb.h) continue
+              if (pointInRing(rings[ri], sx, sy)) {
+                score += 14
+                break
+              }
+            }
+          }
+        }
+        for (const lr of labelRects) if (rectsOverlap(lr, rect)) score += 80
+        if (score < bestScore) {
+          bestScore = score
+          best = rect
+        }
+      }
+      if (best && bestScore <= (mult - 1) * 18 + 3) break // clean spot at this distance
+    }
+    // Every candidate collided (dense corner of the farm): drop the chip just
+    // above the block, clamped on-canvas — readable beats invisible.
+    if (!best) {
+      best = {
+        x: clamp(p.anchorX - chipW / 2, 2, canvasWidth - chipW - 2),
+        y: clamp(p.anchorY - p.radius - chipH - font * 0.5, 2, height - chipH - 2),
+        w: chipW,
+        h: chipH,
+      }
+    }
+    chips.push(best)
+    labelRects.push(best)
+    // Leader from the block anchor to the nearest point on the chip edge.
+    const ex = clamp(p.anchorX, best.x, best.x + best.w)
+    const ey = clamp(p.anchorY, best.y, best.y + best.h)
+    callouts.push({
+      x1: p.anchorX,
+      y1: p.anchorY,
+      x2: ex,
+      y2: ey,
+      box: best,
+      bold: p.bold,
+      text: p.text,
+      font,
+    })
+  }
 
   return {
     width: canvasWidth,
     height,
     blocks: svgBlocks,
     annotations: svgAnnotations,
-    smallBlocks,
+    callouts,
     stagesPresent: Array.from(stages),
     hasUnset,
   }

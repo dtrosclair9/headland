@@ -165,7 +165,7 @@ export default function PlatSheet({
             style={{
               width: '100%',
               height: 'auto',
-              maxHeight: sheet.svg!.smallBlocks.length > 0 ? `${spec.heightIn - 0.7}in` : `${spec.heightIn}in`,
+              maxHeight: `${spec.heightIn}in`,
               display: 'block',
               margin: '0 auto',
             }}
@@ -236,31 +236,37 @@ export default function PlatSheet({
                 ))}
               </g>
             ))}
+            {/* Leader-line callouts: facts for blocks too small to hold them,
+                on a white chip in open canvas with a line into the block —
+                the plat-map treatment for sliver parcels. */}
+            {sheet.svg!.callouts.map((c, i) => (
+              <g key={`c-${i}`}>
+                <line x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2} stroke="#374151" strokeWidth={0.9} />
+                <circle cx={c.x1} cy={c.y1} r={1.5} fill="#374151" />
+                <rect
+                  x={c.box.x}
+                  y={c.box.y}
+                  width={c.box.w}
+                  height={c.box.h}
+                  rx={2}
+                  fill="#FFFFFF"
+                  stroke="#6B7280"
+                  strokeWidth={0.5}
+                />
+                <text
+                  x={c.box.x + c.box.w / 2}
+                  y={c.box.y + c.box.h / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={c.font}
+                  fill="#111827"
+                >
+                  {c.bold && <tspan fontWeight={700}>{c.bold} </tspan>}
+                  {c.text}
+                </text>
+              </g>
+            ))}
           </svg>
-
-          {sheet.svg!.smallBlocks.length > 0 && (
-            <div
-              style={{
-                fontSize: sheet.svg!.smallBlocks.length > 36 ? 7.5 : 8.5,
-                color: '#374151',
-                marginTop: 6,
-                lineHeight: 1.45,
-                columns: 4,
-                columnGap: 14,
-                maxHeight: '0.85in',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ fontWeight: 700, color: '#1A3D2E', breakInside: 'avoid' }}>
-                Small blocks
-              </div>
-              {sheet.svg!.smallBlocks.map((sb, i) => (
-                <div key={i} style={{ breakInside: 'avoid', whiteSpace: 'nowrap' }}>
-                  <strong>{sb.name}</strong> {sb.facts}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       ))}
     </>
