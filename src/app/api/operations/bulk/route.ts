@@ -6,6 +6,7 @@ import { listFields } from '@/lib/fields'
 import { buildSpraySvg } from '@/lib/plantation-map-svg'
 import { listAnnotations } from '@/lib/annotations'
 import { plantationSvgMarkup } from '@/lib/print-markup'
+import { groupByPlantation } from '@/lib/print-groups'
 import { APPLICATION_TYPE_KEYS, APPLICATION_LABELS } from '@/lib/application-types'
 
 // Bulk-log one operation onto many blocks at once: a to-do ("spray johnson
@@ -65,13 +66,24 @@ export async function POST(request: NextRequest) {
   const contextBlocks = allBlocks.filter((b) => scopePlantations.has(b.plantation_id ?? '__none'))
   const color = parsed.data.color ?? (op.kind === 'todo' ? '#E8A33D' : '#DC2626')
   const annotations = await listAnnotations(org.id)
-  const snapshot = buildSpraySvg(contextBlocks, {
-    unitsArpents: org.units_default === 'arpents',
-    annotations,
-    highlight: { ids: idSet, color },
-    canvasWidth: 900,
-  })
-  const snapshotSvg = snapshot ? plantationSvgMarkup(snapshot, true) : null
+  // One sheet per plantation, exactly like the print system — cramming two
+  // farms onto one canvas halves every block's relative size and floods the
+  // sheet with callout chips. The stored markup is the sheets concatenated;
+  // the full-page viewer stacks them.
+  const snapshotSvg =
+    groupByPlantation(contextBlocks)
+      .map((group) => {
+        const svg = buildSpraySvg(group.blocks, {
+          unitsArpents: org.units_default === 'arpents',
+          annotations,
+          highlight: { ids: idSet, color },
+          canvasWidth: 900,
+        })
+        if (!svg) return ''
+        const title = `<text x="10" y="21" font-size="15" font-weight="700" fill="#1A3D2E">${group.name.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
+        return plantationSvgMarkup(svg, true).replace('</svg>', `${title}</svg>`)
+      })
+      .join('') || null
   const acres = targets.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
 
   let title: string

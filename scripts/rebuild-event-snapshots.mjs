@@ -29,24 +29,43 @@ try {
     const anns = await sql`
       select id, kind, color, text, size, rotation, geometry
       from map_annotations where org_id = ${ev.org_id}`
+    const pls = await sql`select id, name from plantations where org_id = ${ev.org_id}`
+    const plName = new Map(pls.map((p) => [p.id, p.name]))
     const idSet = new Set(ev.block_ids)
     const targets = allBlocks.filter((b) => idSet.has(b.id))
     if (!targets.length) continue
     const scope = new Set(targets.map((b) => b.plantation_id ?? '__none'))
     const contextBlocks = allBlocks.filter((b) => scope.has(b.plantation_id ?? '__none'))
-    const svg = buildSpraySvg(contextBlocks, {
-      unitsArpents: org.units_default === 'arpents',
-      annotations: anns,
-      highlight: { ids: idSet, color: ev.color ?? '#DC2626' },
-      canvasWidth: 900,
-    })
-    if (!svg) continue
-    const markup = plantationSvgMarkup(svg, true)
+    // One sheet per plantation, same as the bulk route.
+    const groups = new Map()
+    for (const b of contextBlocks) {
+      const k = b.plantation_id ?? null
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k).push(b)
+    }
+    let chips = 0
+    const markup = Array.from(groups.entries())
+      .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : (plName.get(a) ?? '').localeCompare(plName.get(b) ?? '')))
+      .map(([k, blocks]) => {
+        const svg = buildSpraySvg(blocks, {
+          unitsArpents: org.units_default === 'arpents',
+          annotations: anns,
+          highlight: { ids: idSet, color: ev.color ?? '#DC2626' },
+          canvasWidth: 900,
+        })
+        if (!svg) return ''
+        chips += svg.callouts.length
+        const name = (k ? plName.get(k) : null) ?? 'Unassigned'
+        const title = `<text x="10" y="21" font-size="15" font-weight="700" fill="#1A3D2E">${name.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
+        return plantationSvgMarkup(svg, true).replace('</svg>', `${title}</svg>`)
+      })
+      .join('')
+    if (!markup) continue
     await sql`update operation_events set snapshot_svg = ${markup} where id = ${ev.id}`
-    console.log(`rebuilt: ${ev.title} (${targets.length} blocks, ${svg.callouts.length} callouts)`)
+    console.log(`rebuilt: ${ev.title} (${targets.length} blocks, ${chips} callouts across ${groups.size} sheets)`)
     writeFileSync(
       `.ui-check/event-${ev.id.slice(0, 8)}.html`,
-      `<!doctype html><body style="margin:0;background:#fff">${markup.replace('<svg ', '<svg style="width:1600px;height:auto;display:block" ')}</body>`,
+      `<!doctype html><body style="margin:0;background:#fff">${markup.replaceAll('<svg ', '<svg style="width:1600px;height:auto;display:block" ')}</body>`,
     )
   }
 } finally {

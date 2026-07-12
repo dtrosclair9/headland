@@ -324,10 +324,15 @@ function EventEntry({ e }: { e: OperationEntry }) {
     e.subKind === 'todo' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'
   const openSnapshot = () => {
     if (!e.snapshotSvg) return
+    // The stored markup can hold several sheets (one per plantation) — style
+    // each svg full-width and stack them.
     const html =
       `<!doctype html><html><head><meta charset="utf-8"><title>${e.title.replace(/</g, '&lt;')}</title></head>` +
       `<body style="margin:0;background:#fff">` +
-      e.snapshotSvg.replace('<svg ', '<svg style="width:100vw;height:100vh;display:block" ') +
+      e.snapshotSvg.replaceAll(
+        '<svg ',
+        '<svg style="width:100vw;max-height:100vh;height:auto;display:block" ',
+      ) +
       `</body></html>`
     window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank')
   }
