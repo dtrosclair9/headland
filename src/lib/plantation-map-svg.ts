@@ -740,9 +740,26 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
   for (const p of pending) {
     const chipW = textW(p.bold, font) * 1.08 + (p.bold ? textW(' ', font) : 0) + textW(p.text, font) + font * 0.9
     const chipH = font * 1.6
+    // HARD RULE: a chip never sits on ANY block (its own included). A chip
+    // covering a neighbor's ground reads as that neighbor's label — the
+    // leader gets longer instead, all the way to open canvas.
+    const onAnyBlock = (rect: Rect): boolean => {
+      for (let ri = 0; ri < rings.length; ri++) {
+        const bb = ringBoxes[ri]
+        if (!rectsOverlap(bb, rect)) continue
+        // block vertex inside the chip catches slivers thinner than the grid
+        for (const [vx, vy] of rings[ri])
+          if (vx >= rect.x && vx <= rect.x + rect.w && vy >= rect.y && vy <= rect.y + rect.h)
+            return true
+        for (const sx of [rect.x, rect.x + rect.w / 2, rect.x + rect.w])
+          for (const sy of [rect.y, rect.y + rect.h / 2, rect.y + rect.h])
+            if (pointInRing(rings[ri], sx, sy)) return true
+      }
+      return false
+    }
     let best: Rect | null = null
     let bestScore = Infinity
-    for (const mult of [1, 1.8, 2.7, 3.7, 4.8]) {
+    for (const mult of [1, 1.8, 2.7, 3.7, 4.8, 6.2, 7.8, 9.5, 11.5, 14]) {
       for (let ai = 0; ai < 12; ai++) {
         const a = (ai * Math.PI) / 6
         const dirX = Math.cos(a)
@@ -759,38 +776,35 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
         if (rect.x < 2 || rect.y < 2 || rect.x + rect.w > canvasWidth - 2 || rect.y + rect.h > height - 2)
           continue
         if (chips.some((c) => rectsOverlap(c, rect))) continue
+        if (onAnyBlock(rect)) continue
         let score = (mult - 1) * 18 + (ai % 3 === 0 ? 0 : 3) // close + cardinal preferred
-        // Sample 9 points; each landing inside a block costs — the chip has a
-        // solid white background so it stays readable, but open ground wins.
-        for (const sx of [rect.x, rect.x + rect.w / 2, rect.x + rect.w]) {
-          for (const sy of [rect.y, rect.y + rect.h / 2, rect.y + rect.h]) {
-            for (let ri = 0; ri < rings.length; ri++) {
-              const bb = ringBoxes[ri]
-              if (sx < bb.x || sx > bb.x + bb.w || sy < bb.y || sy > bb.y + bb.h) continue
-              if (pointInRing(rings[ri], sx, sy)) {
-                score += 14
-                break
-              }
-            }
-          }
-        }
         for (const lr of labelRects) if (rectsOverlap(lr, rect)) score += 80
         if (score < bestScore) {
           bestScore = score
           best = rect
         }
       }
-      if (best && bestScore <= (mult - 1) * 18 + 3) break // clean spot at this distance
+      if (best) break // nearest ring with open ground wins
     }
-    // Every candidate collided (dense corner of the farm): drop the chip just
-    // above the block, clamped on-canvas — readable beats invisible.
+    // No open ground anywhere near (dense heart of the farm): park the chip in
+    // the guaranteed-clear margin above/below the blocks — the pad ring is
+    // wider than a chip — sliding along it until it clears earlier chips.
     if (!best) {
-      best = {
-        x: clamp(p.anchorX - chipW / 2, 2, canvasWidth - chipW - 2),
-        y: clamp(p.anchorY - p.radius - chipH - font * 0.5, 2, height - chipH - 2),
-        w: chipW,
-        h: chipH,
+      const yTop = 2
+      const yBot = height - chipH - 2
+      const y = p.anchorY < height / 2 ? yTop : yBot
+      let x = clamp(p.anchorX - chipW / 2, 2, canvasWidth - chipW - 2)
+      for (let tries = 0; tries < 40; tries++) {
+        const rect: Rect = { x, y, w: chipW, h: chipH }
+        if (!chips.some((c) => rectsOverlap(c, rect)) && !onAnyBlock(rect)) {
+          best = rect
+          break
+        }
+        // sweep outward: right, then wrap left
+        x += chipW + 6
+        if (x > canvasWidth - chipW - 2) x = 2 + (x % (canvasWidth - chipW - 4))
       }
+      if (!best) best = { x, y, w: chipW, h: chipH }
     }
     chips.push(best)
     labelRects.push(best)
