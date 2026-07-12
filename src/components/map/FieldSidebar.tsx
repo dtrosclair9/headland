@@ -244,7 +244,7 @@ export default function FieldSidebar({
                 : 'bg-primary text-white hover:bg-primary-light'
             }`}
           >
-            {selectMode ? 'Done selecting ✓' : 'Select blocks'}
+            {selectMode ? 'Cancel ✕' : 'Select blocks'}
           </button>
           {selectMode && (
             <span className="text-xs text-gray-600">
