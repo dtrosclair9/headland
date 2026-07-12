@@ -35,7 +35,7 @@ export function plantationSvgMarkup(svg: PlantationSvg, isSpray: boolean): strin
       return `<g fill="${fill}">${b.labels
         .map(
           (l) =>
-            `<text x="${l.x}" y="${l.y}" text-anchor="${l.anchor}" dominant-baseline="central" font-size="${l.font}" font-weight="${l.bold ? 700 : 400}"${halo}${b.labelDark ? '' : ` stroke-width="${(l.font * 0.14).toFixed(2)}"`}>${esc(l.text)}</text>`,
+            `<text x="${l.x}" y="${l.y}" text-anchor="${l.anchor}" dominant-baseline="central" font-size="${l.font}" font-weight="${l.bold ? 700 : 400}"${l.rotation ? ` transform="rotate(${l.rotation} ${l.x} ${l.y})"` : ''}${halo}${b.labelDark ? '' : ` stroke-width="${(l.font * 0.14).toFixed(2)}"`}>${esc(l.text)}</text>`,
         )
         .join('')}</g>`
     })

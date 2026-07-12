@@ -197,6 +197,7 @@ export default function PlatSheet({
                     dominantBaseline="central"
                     fontSize={l.font}
                     fontWeight={l.bold ? 700 : 400}
+                    transform={l.rotation ? `rotate(${l.rotation} ${l.x} ${l.y})` : undefined}
                     {...(b.labelDark
                       ? {}
                       : { stroke: '#1f2937', strokeWidth: l.font * 0.14, paintOrder: 'stroke' as const })}

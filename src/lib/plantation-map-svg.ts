@@ -12,6 +12,8 @@ export interface PlacedLabel {
   text: string
   bold: boolean
   anchor: 'start' | 'middle' | 'end'
+  /** degrees — vertical labels run down tall narrow blocks */
+  rotation?: number
 }
 
 export interface SvgBlock {
@@ -186,10 +188,53 @@ function planCornerLabels(
     w(parts.cut) <= box.w
 
   if (!fits) {
+    const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
+    const fullLine = [named ? parts.name : '', facts].filter(Boolean).join('   ')
+
+    // Short-but-wide: one horizontal line through the middle.
+    if (fullLine && w(fullLine) <= room) {
+      return {
+        labels: [{ x: cx, y: cy, font, text: fullLine, bold: true, anchor: 'middle' }],
+        callout: null,
+      }
+    }
+
+    // Tall-and-narrow (the strip blocks): run the text DOWN the block along
+    // its long axis. Two vertical rails when the block is wide enough — id +
+    // cycle hugging the LEFT edge, variety + acres hugging the RIGHT edge —
+    // else one combined line down the middle.
+    const vertRoom = boxH - 2 * inset
+    const leftLine = [named ? parts.name : '', parts.cut].filter(Boolean).join('  ')
+    const rightLine = [parts.variety, parts.acres].filter(Boolean).join(' · ')
+    if (
+      leftLine &&
+      rightLine &&
+      box.w >= font * 2.8 &&
+      w(leftLine) <= vertRoom &&
+      w(rightLine) <= vertRoom
+    ) {
+      const xL = cx - box.w / 2 + inset + font * 0.5
+      const xR = cx + box.w / 2 - inset - font * 0.5
+      return {
+        labels: [
+          { x: xL, y: cy, font, text: leftLine, bold: true, anchor: 'middle', rotation: 90 },
+          { x: xR, y: cy, font, text: rightLine, bold: false, anchor: 'middle', rotation: 90 },
+        ],
+        callout: null,
+      }
+    }
+    if (fullLine && box.w >= font * 1.3 && w(fullLine) <= vertRoom) {
+      return {
+        labels: [
+          { x: cx, y: cy, font, text: fullLine, bold: true, anchor: 'middle', rotation: 90 },
+        ],
+        callout: null,
+      }
+    }
+
     // SMALL-BLOCK CALLOUT: the block shows just its bold id (shrunk to fit if
     // needed, never below readable); its facts move to the sheet's
     // "Small blocks" index so nothing overlaps and nothing is lost.
-    const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
     const idFont = named
       ? clamp(room > 0 ? room / (parts.name.length * CHAR_W) : font, 7, font)
       : font
