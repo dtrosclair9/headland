@@ -89,3 +89,19 @@ Gotcha that bit twice: **never `npm run build` while `next dev` is running**
   blocks is useless on paper. Builder: `BuildOpts.highlight {ids, color?}`;
   per-block `labelDark` on SvgBlock lets one sheet mix dark-on-white and
   white-on-color labels.
+
+## 2026-07-12 — Plans tab, text styling, event history
+
+- **Plans** (was "fly plans") have their own sidebar tab: Layers | Plans |
+  Blocks. Used for any pass (spray, fertilizer, harvest order). "Log work"
+  bulk-logs an application on every plan block, carrying the plan color +
+  name into the event.
+- **Text annotations**: size (S/M/L/XL) + rotation (±90°) with live preview;
+  per-feature `size`/`rotation` columns (0028), map layer uses data-driven
+  text-size/text-rotate, prints apply rotate() transforms.
+- **Operation events** (0029): every bulk log creates ONE event row with a
+  stored point-in-time SVG snapshot (spray-style sheet, worked blocks in the
+  event color) + per-block rows tagged event_id. Feed shows the event card
+  with expandable snapshot; event-linked application rows are excluded from
+  the feed (block pages still show them). Snapshot markup twin of PlatSheet
+  lives in `src/lib/print-markup.ts`.
