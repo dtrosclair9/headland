@@ -10,6 +10,7 @@ import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
 import PrintNow from '@/components/print/PrintNow'
 import NotesLangToggle from '@/components/print/NotesLangToggle'
+import { fetchBurnCategory } from '@/lib/burn-category'
 
 export const metadata: Metadata = { title: 'Operation record' }
 
@@ -51,6 +52,36 @@ export default async function OperationRecordPage({
     blocks = live.filter((b) => scope.has(b.plantation_id ?? '__none'))
   }
   const annotations = await listAnnotations(org.id)
+
+  // Self-healing burn category: it's auto-fetched at log time, but if NWS or
+  // the archive was unreachable that moment, fill it in on first view of the
+  // record (the archive holds the official product for any past date).
+  if (!ev.burn_category && ev.kind === 'application') {
+    const { data: burnRows } = await supabase
+      .from('applications')
+      .select('type')
+      .eq('event_id', ev.id)
+      .in('type', ['pre_harvest_burn', 'post_harvest_burn'])
+      .limit(1)
+    const targets = blocks.filter((b) => idSet.has(b.id))
+    if (burnRows?.length && targets.length) {
+      const lat = targets.reduce((s, b) => s + b.centroid_lat, 0) / targets.length
+      const lng = targets.reduce((s, b) => s + b.centroid_lng, 0) / targets.length
+      const occurredAt =
+        typeof ev.occurred_at === 'string'
+          ? ev.occurred_at.slice(0, 10)
+          : String(ev.occurred_at).slice(0, 10)
+      const auto = await fetchBurnCategory(lat, lng, occurredAt)
+      if (auto) {
+        ev.burn_category = auto.category
+        ev.burn_category_source = auto.source
+        await supabase
+          .from('operation_events')
+          .update({ burn_category: auto.category, burn_category_source: auto.source })
+          .eq('id', ev.id)
+      }
+    }
+  }
 
   const unitsArpents = org.units_default === 'arpents'
   const labelFields = parseLabelFields(

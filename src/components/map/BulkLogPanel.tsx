@@ -37,7 +37,6 @@ export default function BulkLogPanel({
   const [unit, setUnit] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [time, setTime] = useState('')
-  const [burnCat, setBurnCat] = useState('')
   const [notes, setNotes] = useState('')
   const [products, setProducts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -71,7 +70,6 @@ export default function BulkLogPanel({
               ...(rate && !isNaN(Number(rate)) ? { rate: Number(rate) } : {}),
               ...(unit.trim() ? { unit: unit.trim() } : {}),
               ...(time ? { applied_time: time } : {}),
-              ...(isBurn && burnCat ? { burn_category: burnCat } : {}),
               ...(notes.trim() ? { notes: notes.trim() } : {}),
             }
       const res = await fetch('/api/operations/bulk', {
@@ -179,19 +177,10 @@ export default function BulkLogPanel({
             </span>
           </div>
           {isBurn && (
-            <select
-              value={burnCat}
-              onChange={(e) => setBurnCat(e.target.value)}
-              className="input text-xs py-1.5 w-full"
-              aria-label="LDAF burn category day"
-            >
-              <option value="">Burn category — blank auto-fills from NWS</option>
-              <option value="1">1 — No burning</option>
-              <option value="2">2 — After 11 a.m., out by 4 p.m.</option>
-              <option value="3">3 — Daytime, after inversion lifts</option>
-              <option value="4">4 — Burning anytime</option>
-              <option value="5">5 — Unstable &amp; windy, burn with caution</option>
-            </select>
+            <p className="text-[11px] text-gray-500 leading-snug">
+              The LDAF burn category for that day is pulled automatically from
+              the official NWS forecast for this farm&apos;s zone.
+            </p>
           )}
           <input
             type="text"
