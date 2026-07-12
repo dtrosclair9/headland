@@ -267,10 +267,12 @@ function rotatePoint(x: number, y: number, cx: number, cy: number, deg: number):
 //      the long edges — the slim-strip layout
 //   3. one combined line down the middle of the long axis
 //   4. stacked short rows across the short axis — the short-fat-block layout
-//   5. retry 2–4 one gentle font step down (~0.9×, still farmer-readable)
+//   5. retry 2–4 at gentle font steps down (to ~0.85×, still farmer-readable)
 //   6. leader-line callout: bold id inside if it fits, facts on a white chip
 //      in nearby open canvas with a line pointing into the block
-// Every block gets all four facts ON THE MAP, always.
+// Each layout is tried from 1.6× the base size down — bigger blocks earn
+// bigger text (capped; text never needs to be huge), small blocks keep the
+// readable base. Every block gets all four facts ON THE MAP, always.
 function planCornerLabels(
   ring: [number, number][],
   cx: number,
@@ -279,45 +281,55 @@ function planCornerLabels(
   font: number,
 ): { labels: PlacedLabel[]; callout: { bold: string; text: string } | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
-  const inset = font * 0.4
   const w = (t: string) => textW(t, font)
 
   // ── 1. Page-aligned corner layout (the normal case for full-size blocks) ──
   const box = centeredBox(ring, cx, cy)
   const boxH = box.h
-  const room = Math.max(0, box.w - 2 * inset)
-  const yTopProbe = cy - boxH / 2 + inset + font * 0.5
-  const yBotProbe = cy + boxH / 2 - inset - font * 0.5
-  const spanW = (y: number) => {
-    const sp = spanAtY(ring, y)
-    return sp ? Math.max(0, sp[1] - sp[0] - 2 * inset) : room
-  }
-  const topRoom = Math.min(room, spanW(yTopProbe))
-  const botRoom = Math.min(room, spanW(yBotProbe))
-  const topNeeded =
-    (named ? w(parts.name) : 0) +
-    (parts.variety ? w(parts.variety) : 0) +
-    (named && parts.variety ? font : 0)
-  // Corners need comfortable room for three bands (top row, cut, bottom row);
-  // anything tighter reads better as rails along the block's axis.
-  const cornersFit =
-    boxH >= font * 3.4 && topNeeded <= topRoom && w(parts.acres) <= botRoom && w(parts.cut) <= box.w
 
-  if (cornersFit) {
-    const yTop = yTopProbe
-    const yBot = yBotProbe
+  // One corner-layout attempt at font f. Corners need comfortable room for
+  // three bands (top row, cut, bottom row); anything tighter reads better as
+  // rails along the block's axis.
+  const tryCorners = (f: number): PlacedLabel[] | null => {
+    const wf = (t: string) => textW(t, f)
+    const insetF = f * 0.4
+    const room = Math.max(0, box.w - 2 * insetF)
+    const yTop = cy - boxH / 2 + insetF + f * 0.5
+    const yBot = cy + boxH / 2 - insetF - f * 0.5
+    const spanW = (y: number) => {
+      const sp = spanAtY(ring, y)
+      return sp ? Math.max(0, sp[1] - sp[0] - 2 * insetF) : room
+    }
+    const topRoom = Math.min(room, spanW(yTop))
+    const botRoom = Math.min(room, spanW(yBot))
+    const topNeeded =
+      (named ? wf(parts.name) : 0) +
+      (parts.variety ? wf(parts.variety) : 0) +
+      (named && parts.variety ? f : 0)
+    if (boxH < f * 3.4 || topNeeded > topRoom || wf(parts.acres) > botRoom || wf(parts.cut) > box.w)
+      return null
+
     const top = spanAtY(ring, yTop) ?? [cx - box.w / 2, cx + box.w / 2]
     const bot = spanAtY(ring, yBot) ?? [cx - box.w / 2, cx + box.w / 2]
     const labels: PlacedLabel[] = []
     if (named)
-      labels.push({ x: top[0] + inset, y: yTop, font, text: parts.name, bold: true, anchor: 'start' })
+      labels.push({ x: top[0] + insetF, y: yTop, font: f, text: parts.name, bold: true, anchor: 'start' })
     if (parts.variety)
-      labels.push({ x: top[1] - inset, y: yTop, font, text: parts.variety, bold: false, anchor: 'end' })
+      labels.push({ x: top[1] - insetF, y: yTop, font: f, text: parts.variety, bold: false, anchor: 'end' })
     if (parts.acres)
-      labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
+      labels.push({ x: bot[1] - insetF, y: yBot, font: f, text: parts.acres, bold: false, anchor: 'end' })
     if (parts.cut)
-      labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
-    return { labels, callout: null }
+      labels.push({ x: cx, y: cy, font: f, text: parts.cut, bold: true, anchor: 'middle' })
+    return labels
+  }
+
+  // Bigger blocks earn bigger text: try up to 1.6× the base size (≈10.5pt cap
+  // — text never needs to be huge) and step down toward base. Corner layout
+  // gets first claim at every size so the sheet keeps a consistent look.
+  const UPSCALES = [1.6, 1.45, 1.3, 1.15, 1]
+  for (const m of UPSCALES) {
+    const labels = tryCorners(font * m)
+    if (labels) return { labels, callout: null }
   }
 
   // ── 2–5. Work in the block's own frame: rotate so its long axis is x ──
@@ -380,10 +392,11 @@ function planCornerLabels(
     return null
   }
 
-  // Base size first, then two gentle steps down (6.5 → ~6 → ~5.5pt) — never
-  // smaller; below that a callout is more readable than shrunken text.
-  for (const f of [font, font * 0.92, font * 0.85]) {
-    const labels = tryFrame(f)
+  // Frame layouts also scale up on roomy blocks, then step down two gentle
+  // notches below base (6.5 → ~6 → ~5.5pt) — never smaller; below that a
+  // callout is more readable than shrunken text.
+  for (const m of [...UPSCALES, 0.92, 0.85]) {
+    const labels = tryFrame(font * m)
     if (labels) return { labels, callout: null }
   }
 
