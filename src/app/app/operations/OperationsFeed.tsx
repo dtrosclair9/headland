@@ -6,22 +6,23 @@ import type { OperationEntry, OperationKind } from '@/lib/operations'
 import { friendlyError } from '@/lib/errors'
 
 // Type chips: label + badge color per record kind.
-const KINDS: { key: OperationKind; label: string; badge: string }[] = [
+const KINDS: { key: Exclude<OperationKind, 'event'>; label: string; badge: string }[] = [
   { key: 'todo', label: 'To-dos', badge: 'bg-amber-100 text-amber-900' },
   { key: 'application', label: 'Sprays & field work', badge: 'bg-blue-100 text-blue-900' },
   { key: 'harvest', label: 'Harvests', badge: 'bg-green-100 text-green-900' },
   { key: 'scouting', label: 'Scouting', badge: 'bg-red-100 text-red-900' },
   { key: 'rotation', label: 'Rotations', badge: 'bg-purple-100 text-purple-900' },
 ]
-const BADGE: Record<OperationKind, string> = Object.fromEntries(
+const BADGE: Partial<Record<OperationKind, string>> = Object.fromEntries(
   KINDS.map((k) => [k.key, k.badge]),
-) as Record<OperationKind, string>
+)
 const KIND_LABEL: Record<OperationKind, string> = {
   todo: 'To-do',
   application: 'Field work',
   harvest: 'Harvest',
   scouting: 'Scouting',
   rotation: 'Rotation',
+  event: 'Bulk',
 }
 
 function monthKey(iso: string) {
@@ -90,7 +91,10 @@ export default function OperationsFeed({
 
   const plantations = useMemo(() => {
     const set = new Set<string>()
-    for (const e of [...todos, ...historyLocal]) set.add(e.plantation ?? 'Unassigned')
+    for (const e of [...todos, ...historyLocal]) {
+      if (e.kind === 'event') for (const p of e.plantations ?? []) set.add(p)
+      else set.add(e.plantation ?? 'Unassigned')
+    }
     return Array.from(set).sort((a, b) =>
       a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b),
     )
@@ -98,11 +102,22 @@ export default function OperationsFeed({
 
   const q = query.trim().toLowerCase()
   const matches = (e: OperationEntry) => {
-    if (kinds.length > 0 && !kinds.includes(e.kind)) return false
-    if (plantation && (e.plantation ?? 'Unassigned') !== plantation) return false
+    // Bulk events answer to their underlying kind's chip (a spray pass shows
+    // under "Sprays & field work") and to any plantation they touched.
+    const chipKind = e.kind === 'event' ? (e.subKind ?? 'application') : e.kind
+    if (kinds.length > 0 && !kinds.includes(chipKind as (typeof kinds)[number])) return false
+    if (plantation) {
+      const inPlantation =
+        e.kind === 'event'
+          ? (e.plantations ?? []).includes(plantation)
+          : (e.plantation ?? 'Unassigned') === plantation
+      if (!inPlantation) return false
+    }
     if (
       q &&
-      !`${e.blockName} ${e.plantation ?? ''} ${e.title} ${e.detail ?? ''}`.toLowerCase().includes(q)
+      !`${e.blockName} ${e.plantation ?? ''} ${(e.plantations ?? []).join(' ')} ${e.title} ${e.detail ?? ''}`
+        .toLowerCase()
+        .includes(q)
     )
       return false
     return true
@@ -251,6 +266,7 @@ export default function OperationsFeed({
 
 function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string) => void }) {
   const openTodo = e.kind === 'todo' && !e.done
+  if (e.kind === 'event') return <EventEntry e={e} />
   return (
     <li className="flex items-stretch">
       <Link
@@ -294,6 +310,58 @@ function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string)
             <path d="M8.5 12.5l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
+      )}
+    </li>
+  )
+}
+
+// A bulk operation: one card for the whole pass, with the point-in-time
+// crop-map snapshot showing what was done where. Click to open the map.
+function EventEntry({ e }: { e: OperationEntry }) {
+  const [open, setOpen] = useState(false)
+  const badge =
+    e.subKind === 'todo' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full text-left flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
+      >
+        <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0 mt-0.5 ${badge}`}
+        >
+          {e.subKind === 'todo' ? 'To-dos' : 'Field work'}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm text-gray-800">
+            <span
+              aria-hidden="true"
+              className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 border border-black/10"
+              style={{ background: e.color ?? '#DC2626' }}
+            />
+            <span className="font-semibold text-primary">{e.title}</span>
+          </span>
+          <span className="block text-xs text-gray-500">
+            {e.blockCount} block{e.blockCount === 1 ? '' : 's'}
+            {e.acres ? ` · ${e.acres.toFixed(2)} ac` : ''}
+            {e.plantations && e.plantations.length > 0 ? ` · ${e.plantations.join(', ')}` : ''}
+          </span>
+        </span>
+        <span className="text-xs font-semibold text-primary shrink-0 pt-0.5">
+          {e.snapshotSvg ? (open ? 'Hide map' : 'View map') : ''}
+        </span>
+      </button>
+      {open && e.snapshotSvg && (
+        <div className="px-4 pb-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- inline stored snapshot */}
+          <img
+            src={`data:image/svg+xml;utf8,${encodeURIComponent(e.snapshotSvg)}`}
+            alt={`Map snapshot — ${e.title}`}
+            className="w-full rounded-md border border-gray-200 bg-white"
+          />
+        </div>
       )}
     </li>
   )

@@ -5,7 +5,7 @@ import { APPLICATION_LABELS } from './application-types'
 // (to-dos, applications/field ops, harvests, scouting, rotations) normalized
 // to a common shape so the Operations page can show one month-grouped
 // timeline without opening blocks one by one.
-export type OperationKind = 'todo' | 'application' | 'harvest' | 'scouting' | 'rotation'
+export type OperationKind = 'todo' | 'application' | 'harvest' | 'scouting' | 'rotation' | 'event'
 
 export interface OperationEntry {
   id: string
@@ -19,6 +19,15 @@ export interface OperationEntry {
   detail: string | null
   /** todos only */
   done?: boolean
+  /** bulk events only — what the event was (todo/application) */
+  subKind?: 'todo' | 'application'
+  blockCount?: number
+  acres?: number
+  color?: string
+  /** point-in-time crop-map snapshot (SVG markup) */
+  snapshotSvg?: string | null
+  /** plantations the event touched */
+  plantations?: string[]
 }
 
 export { APPLICATION_LABELS } from './application-types'
@@ -67,7 +76,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
   const sinceIso = since.toISOString()
   const sinceDate = sinceIso.slice(0, 10)
 
-  const [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ] = await Promise.all([
+  const [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ, eventsQ, fieldsQ] = await Promise.all([
     supabase
       .from('block_tasks')
       .select(`id, text, done, created_at, completed_at, ${FIELD_EMBED}`)
@@ -78,6 +87,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
       .from('applications')
       .select(`id, applied_at, product, type, rate, unit, notes, ${FIELD_EMBED}`)
       .eq('fields.org_id', orgId)
+      .is('event_id', null)
       .gte('applied_at', sinceDate)
       .order('applied_at', { ascending: false })
       .limit(3000),
@@ -102,8 +112,17 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(2000),
+    supabase
+      .from('operation_events')
+      .select('id, kind, title, detail, color, block_ids, block_count, acres, snapshot_svg, occurred_at')
+      .eq('org_id', orgId)
+      .gte('occurred_at', sinceDate)
+      .order('occurred_at', { ascending: false })
+      .limit(300),
+    // Block id -> plantation name, to tag events with the plantations touched.
+    supabase.from('fields_view').select('id, plantation_name').eq('org_id', orgId).limit(5000),
   ])
-  for (const q of [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ]) {
+  for (const q of [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ, eventsQ, fieldsQ]) {
     if (q.error) throw q.error
   }
 
@@ -175,6 +194,32 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
       ...blockBits(r.fields),
       title: `Rotated · ${from} → ${to} (${r.crop_year})`,
       detail: null,
+    })
+  }
+  const plantationByBlock = new Map<string, string>(
+    ((fieldsQ.data ?? []) as any[]).map((f) => [f.id, f.plantation_name ?? 'Unassigned']),
+  )
+  for (const ev of (eventsQ.data ?? []) as any[]) {
+    const plantations = Array.from(
+      new Set(
+        (ev.block_ids as string[]).map((id) => plantationByBlock.get(id)).filter(Boolean),
+      ),
+    ) as string[]
+    history.push({
+      id: ev.id,
+      kind: 'event',
+      date: ev.occurred_at,
+      blockId: '',
+      blockName: '',
+      plantation: plantations[0] ?? null,
+      title: ev.title,
+      detail: ev.detail ?? null,
+      subKind: ev.kind,
+      blockCount: ev.block_count,
+      acres: ev.acres ? Number(ev.acres) : undefined,
+      color: ev.color,
+      snapshotSvg: ev.snapshot_svg ?? null,
+      plantations,
     })
   }
   /* eslint-enable @typescript-eslint/no-explicit-any */

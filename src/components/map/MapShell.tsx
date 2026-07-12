@@ -190,6 +190,7 @@ export default function MapShell({
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
+    style?: { size: number; rotation: number },
   ) {
     setBusy(true)
     setError(null)
@@ -197,7 +198,11 @@ export default function MapShell({
       const res = await fetch('/api/annotations', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(kind === 'text' ? { kind, geometry, text } : { kind, geometry }),
+        body: JSON.stringify(
+          kind === 'text'
+            ? { kind, geometry, text, size: style?.size, rotation: style?.rotation }
+            : { kind, geometry },
+        ),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

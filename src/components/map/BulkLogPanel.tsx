@@ -13,13 +13,19 @@ export default function BulkLogPanel({
   blockIds,
   title,
   lockKind,
+  eventColor,
+  eventContext,
   onDone,
   onCancel,
 }: {
   blockIds: string[]
   title: string
-  /** lock the panel to one kind (fly plan spray logging) */
+  /** lock the panel to one kind (plan work logging) */
   lockKind?: 'application'
+  /** highlight color for the event's map snapshot (a plan's color) */
+  eventColor?: string
+  /** event title prefix (the plan name) */
+  eventContext?: string
   onDone: (summary: string) => void
   onCancel: () => void
 }) {
@@ -67,7 +73,12 @@ export default function BulkLogPanel({
       const res = await fetch('/api/operations/bulk', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ block_ids: blockIds, op }),
+        body: JSON.stringify({
+          block_ids: blockIds,
+          op,
+          ...(eventColor ? { color: eventColor } : {}),
+          ...(eventContext ? { context: eventContext } : {}),
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

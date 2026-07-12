@@ -24,6 +24,8 @@ const CreateSchema = z.discriminatedUnion('kind', [
     kind: z.literal('text'),
     geometry: z.object({ type: z.literal('Point'), coordinates: Position }),
     text: z.string().trim().min(1).max(120),
+    size: z.number().int().min(8).max(64).optional(),
+    rotation: z.number().int().min(-180).max(180).optional(),
   }),
 ])
 
@@ -45,9 +47,11 @@ export async function POST(request: NextRequest) {
       kind: parsed.data.kind,
       geometry: parsed.data.geometry,
       text: parsed.data.kind === 'text' ? parsed.data.text : null,
+      size: parsed.data.kind === 'text' ? (parsed.data.size ?? 16) : 16,
+      rotation: parsed.data.kind === 'text' ? (parsed.data.rotation ?? 0) : 0,
       created_by: user.id,
     })
-    .select('id, kind, geometry, text, color')
+    .select('id, kind, geometry, text, color, size, rotation')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ annotation: data }, { status: 201 })

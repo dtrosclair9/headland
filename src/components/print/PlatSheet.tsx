@@ -165,12 +165,13 @@ export default function PlatSheet({
                   x={a.x}
                   y={a.y}
                   textAnchor="middle"
-                  fontSize={13}
+                  fontSize={a.size ?? 13}
                   fontWeight={700}
                   fill={isSpray ? '#000000' : a.color}
                   stroke="#FFFFFF"
                   strokeWidth={2.5}
                   paintOrder="stroke"
+                  transform={a.rotation ? `rotate(${a.rotation} ${a.x} ${a.y})` : undefined}
                 >
                   {a.text}
                 </text>

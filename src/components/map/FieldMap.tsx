@@ -192,6 +192,7 @@ export interface FieldMapProps {
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
+    style?: { size: number; rotation: number },
   ) => Promise<void>
   onDeleteAnnotation: (id: string) => Promise<void>
 }
@@ -264,9 +265,13 @@ export default function FieldMap({
   const [drawKind, setDrawKind] = useState<'block' | 'line' | 'text' | null>(null)
   // Text-label placement: after the grower clicks a spot, this holds the spot
   // while they type the label into the overlay input.
-  const [textDraft, setTextDraft] = useState<{ lng: number; lat: number; value: string } | null>(
-    null,
-  )
+  const [textDraft, setTextDraft] = useState<{
+    lng: number
+    lat: number
+    value: string
+    size: number
+    rotation: number
+  } | null>(null)
   const textMarkerRef = useRef<mapboxgl.Marker | null>(null)
   drawKindRef.current = drawKind
   // Default the legend closed on phones AND tablets so it doesn't cover the map
@@ -562,7 +567,17 @@ export default function FieldMap({
         filter: ['==', ['geometry-type'], 'Point'],
         layout: {
           'text-field': ['get', 'text'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 13, 17, 24],
+          // Per-label size, gently zoom-scaled around the chosen value.
+          'text-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            12,
+            ['*', ['get', 'size'], 0.8],
+            17,
+            ['*', ['get', 'size'], 1.5],
+          ],
+          'text-rotate': ['get', 'rotation'],
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
           'text-allow-overlap': true,
         },
@@ -618,7 +633,7 @@ export default function FieldMap({
       // takes the label text.
       map.on('click', (e) => {
         if (drawKindRef.current === 'text') {
-          setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '' })
+          setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '', size: 16, rotation: 0 })
           setDrawKind(null)
           setDrawing(false)
           return
@@ -954,7 +969,14 @@ export default function FieldMap({
       features: annotations.map((a) => ({
         type: 'Feature' as const,
         geometry: a.geometry,
-        properties: { id: a.id, kind: a.kind, text: a.text ?? '', color: a.color },
+        properties: {
+          id: a.id,
+          kind: a.kind,
+          text: a.text ?? '',
+          color: a.color,
+          size: a.size ?? 16,
+          rotation: a.rotation ?? 0,
+        },
       })),
     })
   }, [annotations, ready])
@@ -1705,11 +1727,12 @@ export default function FieldMap({
         </div>
       )}
 
-      {/* Text-label input — appears after the grower clicks a spot. */}
+      {/* Text-label input — appears after the grower clicks a spot. Size and
+          rotation are set here; the live preview shows both. */}
       {textDraft && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
           <form
-            className="rounded-md bg-white shadow-lg border border-gray-200 p-3 flex items-center gap-2"
+            className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72"
             onSubmit={async (e) => {
               e.preventDefault()
               const value = textDraft.value.trim()
@@ -1718,6 +1741,7 @@ export default function FieldMap({
                 'text',
                 { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
                 value,
+                { size: textDraft.size, rotation: textDraft.rotation },
               )
               setTextDraft(null)
             }}
@@ -1729,18 +1753,76 @@ export default function FieldMap({
               maxLength={120}
               onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
               placeholder="Hwy 308, Shop house, N…"
-              className="input text-sm w-52"
+              className="input text-sm w-full"
             />
-            <button type="submit" className="btn-primary text-sm px-3 py-2" disabled={!textDraft.value.trim()}>
-              Add
-            </button>
-            <button
-              type="button"
-              onClick={() => setTextDraft(null)}
-              className="text-sm text-gray-500 hover:text-primary px-1"
-            >
-              Cancel
-            </button>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">
+                Size
+              </span>
+              {(
+                [
+                  ['S', 12],
+                  ['M', 16],
+                  ['L', 24],
+                  ['XL', 36],
+                ] as const
+              ).map(([label, px]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setTextDraft({ ...textDraft, size: px })}
+                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
+                    textDraft.size === px
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">
+                Turn
+              </span>
+              <input
+                type="range"
+                min={-90}
+                max={90}
+                step={5}
+                value={textDraft.rotation}
+                onChange={(e) => setTextDraft({ ...textDraft, rotation: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Rotate label"
+              />
+              <span className="text-xs text-gray-500 w-9 text-right">{textDraft.rotation}°</span>
+            </div>
+            {/* Live preview at chosen size + angle */}
+            {textDraft.value.trim() && (
+              <div className="h-16 flex items-center justify-center overflow-hidden">
+                <span
+                  className="font-bold text-gray-800"
+                  style={{
+                    fontSize: Math.min(textDraft.size, 28),
+                    transform: `rotate(${textDraft.rotation}deg)`,
+                  }}
+                >
+                  {textDraft.value}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button type="submit" className="btn-primary text-sm px-3 py-2" disabled={!textDraft.value.trim()}>
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextDraft(null)}
+                className="text-sm text-gray-500 hover:text-primary px-1"
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       )}

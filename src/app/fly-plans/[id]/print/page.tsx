@@ -53,9 +53,9 @@ export default async function FlyPlanPrintPage({
       : `${totalAcres.toFixed(2)} ac`
     return {
       title: `${plan.name} — ${group.name}`,
-      meta: `${counted.length} block${counted.length === 1 ? '' : 's'} to spray · ${totalLabel}`,
+      meta: `${counted.length} block${counted.length === 1 ? '' : 's'} in this plan · ${totalLabel}`,
       svg,
-      legendItems: [{ key: 'plan', color: plan.color, label: 'Spray these blocks' }],
+      legendItems: [{ key: 'plan', color: plan.color, label: 'Planned blocks' }],
       hasUnset: false,
     }
   })
@@ -66,7 +66,7 @@ export default async function FlyPlanPrintPage({
       sheets={sheets}
       today={today}
       unitWord={unitsArpents ? 'arpents' : 'acres'}
-      emptyMessage="This fly plan has no blocks."
+      emptyMessage="This plan has no blocks."
       style="spray"
     />
   )

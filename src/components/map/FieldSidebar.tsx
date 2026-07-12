@@ -9,6 +9,7 @@ import { friendlyError } from '@/lib/errors'
 import type { ViewMode, ColorBy } from './FieldMap'
 import type { FlyPlanRow } from '@/lib/fly-plans'
 import LayersPanel from './LayersPanel'
+import PlansPanel from './PlansPanel'
 import BulkLogPanel from './BulkLogPanel'
 import { type LayerFilter, isLayerFilterActive } from './layer-filter'
 
@@ -110,9 +111,9 @@ export default function FieldSidebar({
   const [logOpen, setLogOpen] = useState(false)
   const [logSuccess, setLogSuccess] = useState<string | null>(null)
   const [rotating, setRotating] = useState(false)
-  // Sidebar tab: layers is the primary working surface; the block list is
-  // the management view.
-  const [tab, setTab] = useState<'blocks' | 'layers'>('layers')
+  // Sidebar tab: layers is the primary working surface; plans are first-class
+  // (spray passes, fertilizer runs, harvest orders); blocks is management.
+  const [tab, setTab] = useState<'blocks' | 'layers' | 'plans'>('layers')
   const filterOn = isLayerFilterActive(layerFilter)
 
   // Group blocks by plantation (named plantations alpha, Unassigned last). Within
@@ -178,6 +179,7 @@ export default function FieldSidebar({
           {(
             [
               ['layers', 'Layers'],
+              ['plans', 'Plans'],
               ['blocks', 'Blocks'],
             ] as const
           ).map(([key, label]) => (
@@ -195,6 +197,9 @@ export default function FieldSidebar({
               {key === 'layers' && filterOn && (
                 <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
               )}
+              {key === 'plans' && (activePlanId || planDraft) && (
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
+              )}
             </button>
           ))}
         </div>
@@ -209,6 +214,17 @@ export default function FieldSidebar({
           deselected={deselected}
           onSelectAll={onSelectAll}
           onDeselectAll={onDeselectAll}
+          activePlanId={activePlanId}
+          colorBy={colorBy}
+          onColorByChange={onColorByChange}
+          stageColors={stageColors}
+          varietyColors={varietyColors}
+          isSpray={isSpray}
+        />
+      ) : tab === 'plans' && fields.length > 0 ? (
+        <PlansPanel
+          fields={fields}
+          units={units}
           flyPlans={flyPlans}
           activePlanId={activePlanId}
           onViewPlan={onViewPlan}
@@ -219,11 +235,6 @@ export default function FieldSidebar({
           onCancelPlanDraft={onCancelPlanDraft}
           onSavePlanDraft={onSavePlanDraft}
           selectedIds={selectedIds}
-          colorBy={colorBy}
-          onColorByChange={onColorByChange}
-          stageColors={stageColors}
-          varietyColors={varietyColors}
-          isSpray={isSpray}
         />
       ) : (
         <>

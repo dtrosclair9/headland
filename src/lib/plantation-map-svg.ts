@@ -50,6 +50,10 @@ export interface SvgAnnotation {
   y?: number
   text?: string
   color: string
+  /** text size in svg units (kind='text') */
+  size?: number
+  /** text rotation in degrees (kind='text') */
+  rotation?: number
 }
 
 export interface PlantationSvg {
@@ -430,7 +434,19 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     }
     if (a.kind === 'text' && a.geometry.type === 'Point') {
       const [x, y] = toXY(a.geometry.coordinates[0], a.geometry.coordinates[1])
-      return [{ kind: 'text' as const, x, y, text: a.text ?? '', color: a.color }]
+      return [
+        {
+          kind: 'text' as const,
+          x,
+          y,
+          text: a.text ?? '',
+          color: a.color,
+          // Screen px map ≈1:1 onto the 1100-unit print canvas at typical
+          // farm sizes; keep the chosen size, floor for print legibility.
+          size: Math.max(9, a.size ?? 16),
+          rotation: a.rotation ?? 0,
+        },
+      ]
     }
     return []
     },

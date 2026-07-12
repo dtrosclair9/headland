@@ -8,13 +8,17 @@ export interface AnnotationRow {
   geometry: GeoJSON.LineString | GeoJSON.Point
   text: string | null
   color: string
+  /** text-label font size (screen px at mid zoom) */
+  size: number
+  /** text-label rotation in degrees */
+  rotation: number
 }
 
 export async function listAnnotations(orgId: string): Promise<AnnotationRow[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('map_annotations')
-    .select('id, kind, geometry, text, color')
+    .select('id, kind, geometry, text, color, size, rotation')
     .eq('org_id', orgId)
     .order('created_at', { ascending: true })
   if (error) throw error
