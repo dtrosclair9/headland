@@ -59,7 +59,7 @@ export default async function PlantationsPage({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label" htmlFor="new-farm">
-                FSA farm # <span className="font-normal text-gray-400">(opt.)</span>
+                FSA farm # <span className="font-normal text-gray-500">(opt.)</span>
               </label>
               <input
                 id="new-farm"
@@ -72,7 +72,7 @@ export default async function PlantationsPage({
             </div>
             <div>
               <label className="label" htmlFor="new-tract">
-                FSA tract # <span className="font-normal text-gray-400">(opt.)</span>
+                FSA tract # <span className="font-normal text-gray-500">(opt.)</span>
               </label>
               <input
                 id="new-tract"
@@ -87,7 +87,7 @@ export default async function PlantationsPage({
         </div>
         <div>
           <label className="label" htmlFor="new-notes">
-            Notes <span className="font-normal text-gray-400">(optional)</span>
+            Notes <span className="font-normal text-gray-500">(optional)</span>
           </label>
           <textarea
             id="new-notes"
