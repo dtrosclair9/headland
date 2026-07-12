@@ -48,7 +48,7 @@ export default async function FlyPlanPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
-  const paper = parsePaperSize(paperRaw)
+  const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
   const sheets: SheetData[] = groupByPlantation(contextBlocks).map((group) => {
     const svg = buildSpraySvg(group.blocks, {
       unitsArpents,

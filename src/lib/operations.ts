@@ -190,15 +190,40 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
     })
   }
 
+  // Rotations roll up: a season advance touches every block at once, and
+  // sixty "Rotated 2nd → 3rd" line items is noise — the farmer's record is
+  // "the season rolled." One card per day + transition + crop year.
+  const rotationGroups = new Map<string, { rows: any[]; from: string; to: string; year: string }>()
   for (const r of (rotationsQ.data ?? []) as any[]) {
     const from = r.previous_stage ? (STAGE_LABELS[r.previous_stage] ?? r.previous_stage) : 'unset'
     const to = STAGE_LABELS[r.new_stage] ?? r.new_stage
+    const day = String(r.created_at).slice(0, 10)
+    const key = `${day}|${from}|${to}|${r.crop_year}`
+    const g = rotationGroups.get(key) ?? { rows: [], from, to, year: String(r.crop_year) }
+    g.rows.push(r)
+    rotationGroups.set(key, g)
+  }
+  for (const [key, g] of rotationGroups) {
+    const first = g.rows[0]
+    if (g.rows.length === 1) {
+      history.push({
+        id: first.id,
+        kind: 'rotation',
+        date: first.created_at,
+        ...blockBits(first.fields),
+        title: `Rotated · ${g.from} → ${g.to} (${g.year})`,
+        detail: null,
+      })
+      continue
+    }
     history.push({
-      id: r.id,
+      id: `rot-${key}`,
       kind: 'rotation',
-      date: r.created_at,
-      ...blockBits(r.fields),
-      title: `Rotated · ${from} → ${to} (${r.crop_year})`,
+      date: first.created_at,
+      blockId: '',
+      blockName: `${g.rows.length} blocks`,
+      plantation: null,
+      title: `Season advanced · ${g.from} → ${g.to} (${g.year})`,
       detail: null,
     })
   }

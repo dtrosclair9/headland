@@ -185,7 +185,7 @@ export default function BulkLogPanel({
               className="input text-xs py-1.5 w-full"
               aria-label="LDAF burn category day"
             >
-              <option value="">Burn category (LDAF category day)…</option>
+              <option value="">Burn category — blank auto-fills from NWS</option>
               <option value="1">1 — No burning</option>
               <option value="2">2 — After 11 a.m., out by 4 p.m.</option>
               <option value="3">3 — Daytime, after inversion lifts</option>

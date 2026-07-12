@@ -27,7 +27,11 @@ export default function LabelFieldToggles({ active }: { active: LabelField[] }) 
       const res = await fetch('/api/print-prefs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ fields: active }),
+        body: JSON.stringify({
+          fields: active,
+          // the paper pill state lives in the URL — save it as default too
+          ...(params.get('paper') ? { paper: params.get('paper') } : {}),
+        }),
       })
       if (res.ok) {
         setSaved(true)

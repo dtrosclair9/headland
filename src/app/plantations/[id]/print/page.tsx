@@ -36,7 +36,7 @@ export default async function PlantationPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
-  const paper = parsePaperSize(paperRaw)
+  const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
   const svg = isSpray
     ? buildSpraySvg(blocks, { unitsArpents, annotations, labelFields: labelFieldSet, paper })
     : buildPlantationSvg(blocks, {

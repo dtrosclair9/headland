@@ -267,29 +267,40 @@ export default function OperationsFeed({
 function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string) => void }) {
   const openTodo = e.kind === 'todo' && !e.done
   if (e.kind === 'event') return <EventEntry e={e} />
+  // Open to-dos are actionable — clicking jumps to the block ON THE MAP.
+  // Everything else is HISTORY: a closed record, not a thing to edit, so the
+  // row doesn't navigate anywhere (a completed to-do opening the block's
+  // edit page was just confusing).
+  const body = (
+    <>
+      <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
+      <span
+        className={`text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0 mt-0.5 ${BADGE[e.kind]}`}
+      >
+        {KIND_LABEL[e.kind]}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm text-gray-800">
+          <span className="font-semibold text-primary">{e.blockName}</span>
+          {e.plantation && <span className="text-gray-400"> · {e.plantation}</span>}
+          <span className="text-gray-700"> — {e.title}</span>
+        </span>
+        {e.detail && <span className="block text-xs text-gray-500 truncate">{e.detail}</span>}
+      </span>
+    </>
+  )
   return (
     <li className="flex items-stretch">
-      <Link
-        // Open to-dos jump to the block ON THE MAP, zoomed to it; history
-        // entries open the block's page.
-        href={openTodo ? `/app/map?focus=${e.blockId}` : `/app/fields/${e.blockId}`}
-        className="flex-1 min-w-0 flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
-      >
-        <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0 mt-0.5 ${BADGE[e.kind]}`}
+      {openTodo ? (
+        <Link
+          href={`/app/map?focus=${e.blockId}`}
+          className="flex-1 min-w-0 flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
         >
-          {KIND_LABEL[e.kind]}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block text-sm text-gray-800">
-            <span className="font-semibold text-primary">{e.blockName}</span>
-            {e.plantation && <span className="text-gray-400"> · {e.plantation}</span>}
-            <span className="text-gray-700"> — {e.title}</span>
-          </span>
-          {e.detail && <span className="block text-xs text-gray-500 truncate">{e.detail}</span>}
-        </span>
-      </Link>
+          {body}
+        </Link>
+      ) : (
+        <div className="flex-1 min-w-0 flex items-start gap-3 px-4 py-2.5">{body}</div>
+      )}
       {openTodo && onComplete && (
         <button
           type="button"

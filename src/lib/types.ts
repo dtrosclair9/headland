@@ -66,6 +66,8 @@ export interface Organization {
   current_period_end: string | null
   /** which block facts print on plat sheets (farm default) */
   print_label_fields: string[]
+  /** default paper size for prints (letter/legal/tabloid) */
+  print_paper: string | null
   created_at: string
 }
 

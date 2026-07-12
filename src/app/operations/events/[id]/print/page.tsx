@@ -33,7 +33,7 @@ export default async function OperationRecordPage({
   const { data: ev } = await supabase
     .from('operation_events')
     .select(
-      'id, org_id, kind, title, detail, detail_es, color, block_ids, block_count, acres, occurred_at, occurred_time, burn_category, weather, snapshot_blocks',
+      'id, org_id, kind, title, detail, detail_es, color, block_ids, block_count, acres, occurred_at, occurred_time, burn_category, burn_category_source, weather, snapshot_blocks',
     )
     .eq('id', id)
     .single()
@@ -58,7 +58,7 @@ export default async function OperationRecordPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
-  const paper = parsePaperSize(paperRaw)
+  const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
   const lang = langRaw === 'es' ? ('es' as const) : ('en' as const)
 
   const color = ev.color ?? '#DC2626'
@@ -107,7 +107,11 @@ export default async function OperationRecordPage({
     ev.kind === 'todo' ? 'To-dos' : 'Field work',
     when,
     weatherSummary,
-    ev.burn_category ? `Burn category ${ev.burn_category}` : null,
+    ev.burn_category
+      ? `Burn category ${ev.burn_category}${
+          ev.burn_category_source && ev.burn_category_source !== 'manual' ? ' (NWS)' : ''
+        }`
+      : null,
   ]
     .filter(Boolean)
     .join('  ·  ')

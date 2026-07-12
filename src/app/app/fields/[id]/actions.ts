@@ -10,11 +10,11 @@ import {
   updateFieldMetadata,
 } from '@/lib/fields'
 import {
-  addApplication,
   addHarvest,
   deleteApplication,
   deleteHarvest,
 } from '@/lib/records'
+import { logOperationEvent } from '@/lib/log-operation-event'
 import {
   createScoutingPin as createScoutingPinDb,
   deleteScoutingPin as deleteScoutingPinDb,
@@ -196,7 +196,7 @@ const ApplicationSchema = z.object({
 })
 
 export async function createApplication(fieldId: string, formData: FormData) {
-  const { user } = await requireOwnedField(fieldId)
+  const { user, org } = await requireOwnedField(fieldId)
 
   const parsed = ApplicationSchema.safeParse({
     applied_at: formData.get('applied_at'),
@@ -212,10 +212,29 @@ export async function createApplication(fieldId: string, formData: FormData) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Invalid operation entry.'))
   }
 
-  try {
-    await addApplication({ field_id: fieldId, applied_by: user.id, ...parsed.data })
-  } catch (e) {
-    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
+  // Single-block work is a real operation EVENT like any bulk pass — same
+  // snapshot, weather, burn category, and record page. The farmer's record
+  // is the pass, however many blocks it touched.
+  const result = await logOperationEvent({
+    orgId: org.id,
+    userId: user.id,
+    blockIds: [fieldId],
+    op: {
+      kind: 'application',
+      type: parsed.data.type,
+      applied_at: parsed.data.applied_at,
+      product: parsed.data.product,
+      rate: parsed.data.rate,
+      unit: parsed.data.unit,
+      notes: parsed.data.notes,
+      extraRow: {
+        wind_direction: parsed.data.wind_direction,
+        wind_speed_mph: parsed.data.wind_speed_mph,
+      },
+    },
+  })
+  if ('error' in result) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(result.error))
   }
   revalidatePath(`/app/fields/${fieldId}`)
   redirect(`/app/fields/${fieldId}?saved=op`)

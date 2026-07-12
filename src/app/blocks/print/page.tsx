@@ -81,7 +81,7 @@ export default async function SelectedBlocksPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
-  const paper = parsePaperSize(paperRaw)
+  const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
 
   // ONE PAGE PER PLANTATION — a selection spanning three plantations prints
   // as three individual sheets, each titled by its plantation. Plantations

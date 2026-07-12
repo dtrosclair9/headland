@@ -16,6 +16,9 @@ export interface OperationWeather {
   precipIn?: number
   /** 'hour' when a time was given, 'day' for a daily summary */
   resolution: 'hour' | 'day'
+  /** provenance for audits: which model served the numbers, fetched when */
+  source: string
+  fetchedAt: string
 }
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
@@ -37,10 +40,14 @@ export async function fetchOperationWeather(
   try {
     const ageDays = (Date.now() - new Date(`${date}T12:00:00Z`).getTime()) / 86_400_000
     // The forecast API reaches ~92 days back; ERA5 archive covers the rest.
-    const base =
-      ageDays > 85
-        ? 'https://archive-api.open-meteo.com/v1/archive'
-        : 'https://api.open-meteo.com/v1/forecast'
+    const archive = ageDays > 85
+    const base = archive
+      ? 'https://archive-api.open-meteo.com/v1/archive'
+      : 'https://api.open-meteo.com/v1/forecast'
+    const provenance = {
+      source: archive ? 'open-meteo/era5-archive' : 'open-meteo/forecast',
+      fetchedAt: new Date().toISOString(),
+    }
     const loc = `latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&start_date=${date}&end_date=${date}`
 
     if (time) {
@@ -64,6 +71,7 @@ export async function fetchOperationWeather(
         windDir: dir,
         precipIn: data.hourly.precipitation?.[i] ?? undefined,
         resolution: 'hour',
+        ...provenance,
       }
     }
 
@@ -88,6 +96,7 @@ export async function fetchOperationWeather(
       windDir: dir,
       precipIn: precip,
       resolution: 'day',
+      ...provenance,
     }
   } catch {
     return null
