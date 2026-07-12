@@ -6,6 +6,7 @@ import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
 import { groupByPlantation } from '@/lib/print-groups'
+import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
 
 export const metadata: Metadata = { title: 'Print selected blocks' }
@@ -19,6 +20,7 @@ export default async function SelectedBlocksPrintPage({
     highlight?: string
     scope?: string
     colorby?: string
+    labels?: string
   }>
 }) {
   const {
@@ -27,6 +29,7 @@ export default async function SelectedBlocksPrintPage({
     highlight: highlightRaw,
     scope: scopeRaw,
     colorby: colorbyRaw,
+    labels: labelsRaw,
   } = await searchParams
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
@@ -70,6 +73,12 @@ export default async function SelectedBlocksPrintPage({
 
   const unitsArpents = org.units_default === 'arpents'
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  // Which block facts print: ?labels= override, else the farm's saved preset.
+  const labelFields = parseLabelFields(
+    labelsRaw,
+    parseLabelFields(org.print_label_fields as LabelField[] | undefined),
+  )
+  const labelFieldSet = new Set(labelFields)
 
   // ONE PAGE PER PLANTATION — a selection spanning three plantations prints
   // as three individual sheets, each titled by its plantation. Plantations
@@ -79,6 +88,7 @@ export default async function SelectedBlocksPrintPage({
     const buildOpts = {
       unitsArpents,
       annotations,
+      labelFields: labelFieldSet,
       stageColors: colorOverrides.stage,
       ...(byVariety ? { paletteBy: 'variety' as const, varietyColors } : {}),
       ...(isHighlight ? { highlight: { ids: idSet } } : {}),
@@ -132,6 +142,7 @@ export default async function SelectedBlocksPrintPage({
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks selected to print."
       style={isSpray ? 'spray' : 'crop'}
+      activeLabelFields={labelFields}
     />
   )
 }

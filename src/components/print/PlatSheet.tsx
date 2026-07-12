@@ -1,6 +1,8 @@
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import type { PlantationSvg } from '@/lib/plantation-map-svg'
+import type { LabelField } from '@/lib/label-fields'
 import AutoPrint from './AutoPrint'
+import LabelFieldToggles from './LabelFieldToggles'
 
 interface LegendItem {
   key: string
@@ -28,12 +30,15 @@ export default function PlatSheet({
   unitWord,
   emptyMessage,
   style = 'crop',
+  activeLabelFields,
 }: {
   orgName: string
   sheets: SheetData[]
   today: string
   unitWord: string
   emptyMessage: string
+  /** which block facts are printing (renders the banner toggles) */
+  activeLabelFields?: LabelField[]
   // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
   // black boundaries). 'crop' = colored plat map.
   style?: 'crop' | 'spray'
@@ -70,6 +75,7 @@ export default function PlatSheet({
         <p style={{ margin: 0, fontSize: 14 }}>
           Print or save as PDF — File → Print (⌘P) → &quot;Save as PDF&quot;. Landscape.
           {pages.length > 1 ? ` ${pages.length} pages, one per plantation.` : ''}
+          {activeLabelFields && <LabelFieldToggles active={activeLabelFields} />}
         </p>
       </div>
 

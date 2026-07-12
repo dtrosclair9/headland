@@ -178,7 +178,9 @@ function planCornerLabels(
   if (parts.variety) {
     labels.push({ x: top[1] - inset, y: yTop, font, text: parts.variety, bold: false, anchor: 'end' })
   }
-  labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
+  if (parts.acres) {
+    labels.push({ x: bot[1] - inset, y: yBot, font, text: parts.acres, bold: false, anchor: 'end' })
+  }
   if (parts.cut) {
     labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
   }
@@ -218,6 +220,11 @@ interface BuildOpts {
    * its id + acreage, so the colored blocks read against the whole farm.
    */
   highlight?: { ids: Set<string>; color?: string }
+  /**
+   * Which block facts to print (farm preset, per-print override). Defaults
+   * to all four: name, variety, cut, acres.
+   */
+  labelFields?: Set<'name' | 'variety' | 'cut' | 'acres'>
   /** which palette paints colored blocks (mirrors the map's Color-by toggle) */
   paletteBy?: 'stage' | 'variety'
   /** resolved per-variety colors, required when paletteBy = 'variety' */
@@ -372,11 +379,13 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     // center), positioned against the block's real interior walls. EVERY
     // block prints ALL FOUR facts on every sheet style — non-negotiable.
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
+    const wants = (f: 'name' | 'variety' | 'cut' | 'acres') =>
+      !opts.labelFields || opts.labelFields.has(f)
     const labels = planCornerLabels(svgRing, lx, ly, {
-      name: b.name ?? '',
-      cut: cutAbbrev(b.current_ratoon),
-      variety: varietyCode(b.variety),
-      acres: acreageLabel,
+      name: wants('name') ? (b.name ?? '') : '',
+      cut: wants('cut') ? cutAbbrev(b.current_ratoon) : '',
+      variety: wants('variety') ? varietyCode(b.variety) : '',
+      acres: wants('acres') ? acreageLabel : '',
     })
 
     return {

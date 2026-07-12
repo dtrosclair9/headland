@@ -64,6 +64,8 @@ export interface Organization {
   stripe_price_id: string | null
   subscription_status: SubscriptionStatus
   current_period_end: string | null
+  /** which block facts print on plat sheets (farm default) */
+  print_label_fields: string[]
   created_at: string
 }
 

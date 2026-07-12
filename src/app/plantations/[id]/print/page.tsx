@@ -7,6 +7,7 @@ import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors } from '@/lib/resolve-colors'
+import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet from '@/components/print/PlatSheet'
 
 export const metadata: Metadata = { title: 'Print plantation' }
@@ -16,10 +17,10 @@ export default async function PlantationPrintPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ style?: string }>
+  searchParams: Promise<{ style?: string; labels?: string }>
 }) {
   const { id } = await params
-  const { style: styleRaw } = await searchParams
+  const { style: styleRaw, labels: labelsRaw } = await searchParams
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
   const stageColors = resolveStageColors(colorOverrides.stage)
@@ -30,9 +31,19 @@ export default async function PlantationPrintPage({
   const isSpray = styleRaw === 'spray'
   const blocks = await listFieldsByPlantation(id)
   const unitsArpents = org.units_default === 'arpents'
+  const labelFields = parseLabelFields(
+    labelsRaw,
+    parseLabelFields(org.print_label_fields as LabelField[] | undefined),
+  )
+  const labelFieldSet = new Set(labelFields)
   const svg = isSpray
-    ? buildSpraySvg(blocks, { unitsArpents, annotations })
-    : buildPlantationSvg(blocks, { unitsArpents, stageColors: colorOverrides.stage, annotations })
+    ? buildSpraySvg(blocks, { unitsArpents, annotations, labelFields: labelFieldSet })
+    : buildPlantationSvg(blocks, {
+        unitsArpents,
+        stageColors: colorOverrides.stage,
+        annotations,
+        labelFields: labelFieldSet,
+      })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
   const totalArpents = blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
@@ -61,6 +72,7 @@ export default async function PlantationPrintPage({
       unitWord={unitsArpents ? 'arpents' : 'acres'}
       emptyMessage="No blocks in this plantation yet. Assign blocks to it from the map, then print."
       style={isSpray ? 'spray' : 'crop'}
+      activeLabelFields={labelFields}
     />
   )
 }
