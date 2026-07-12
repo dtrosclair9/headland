@@ -28,12 +28,12 @@ export function colorForRatoon(stage: string | null | undefined): string {
 // Empty string when no cut is set.
 const CUT_ABBREV: Record<string, string> = {
   plant_cane: 'P',
-  first_stubble: '1st',
-  second_stubble: '2nd',
-  third_stubble: '3rd',
-  fourth_stubble: '4th',
-  fifth_stubble_plus: '5th',
-  sixth_stubble_plus: '6th+',
+  first_stubble: '1',
+  second_stubble: '2',
+  third_stubble: '3',
+  fourth_stubble: '4',
+  fifth_stubble_plus: '5',
+  sixth_stubble_plus: '6+',
   fallow: 'F',
 }
 
