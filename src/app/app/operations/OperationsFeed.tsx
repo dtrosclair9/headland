@@ -316,16 +316,26 @@ function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string)
 }
 
 // A bulk operation: one card for the whole pass, with the point-in-time
-// crop-map snapshot showing what was done where. Click to open the map.
+// crop-map snapshot showing what was done where. "View map" opens the
+// snapshot FULL PAGE in its own tab — an inline thumbnail of a whole farm
+// is unreadable. (Blob URL because browsers block top-level data: URLs.)
 function EventEntry({ e }: { e: OperationEntry }) {
-  const [open, setOpen] = useState(false)
   const badge =
     e.subKind === 'todo' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'
+  const openSnapshot = () => {
+    if (!e.snapshotSvg) return
+    const html =
+      `<!doctype html><html><head><meta charset="utf-8"><title>${e.title.replace(/</g, '&lt;')}</title></head>` +
+      `<body style="margin:0;background:#fff">` +
+      e.snapshotSvg.replace('<svg ', '<svg style="width:100vw;height:100vh;display:block" ') +
+      `</body></html>`
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank')
+  }
   return (
     <li>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={openSnapshot}
         className="w-full text-left flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 transition"
       >
         <span className="text-xs text-gray-400 w-12 shrink-0 pt-0.5">{dayLabel(e.date)}</span>
@@ -350,19 +360,9 @@ function EventEntry({ e }: { e: OperationEntry }) {
           </span>
         </span>
         <span className="text-xs font-semibold text-primary shrink-0 pt-0.5">
-          {e.snapshotSvg ? (open ? 'Hide map' : 'View map') : ''}
+          {e.snapshotSvg ? 'View map ↗' : ''}
         </span>
       </button>
-      {open && e.snapshotSvg && (
-        <div className="px-4 pb-3">
-          {/* eslint-disable-next-line @next/next/no-img-element -- inline stored snapshot */}
-          <img
-            src={`data:image/svg+xml;utf8,${encodeURIComponent(e.snapshotSvg)}`}
-            alt={`Map snapshot — ${e.title}`}
-            className="w-full rounded-md border border-gray-200 bg-white"
-          />
-        </div>
-      )}
     </li>
   )
 }
