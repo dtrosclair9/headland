@@ -61,6 +61,11 @@ export interface PlantationSvg {
   height: number
   blocks: SvgBlock[]
   annotations: SvgAnnotation[]
+  /**
+   * Blocks too small to hold their labels: they print just their bold id on
+   * the map, and the sheet lists their facts in a "Small blocks" index below.
+   */
+  smallBlocks: { name: string; facts: string }[]
   /** ratoon stage keys present among these blocks, for the legend */
   stagesPresent: string[]
   hasUnset: boolean
@@ -138,7 +143,7 @@ function planCornerLabels(
   cx: number,
   cy: number,
   parts: { name: string; cut: string; variety: string; acres: string },
-): PlacedLabel[] {
+): { labels: PlacedLabel[]; callout: string | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
   let minY = Infinity
   let maxY = -Infinity
@@ -157,13 +162,41 @@ function planCornerLabels(
   // of the bbox is a corner TIP and text anchored there spills the border.
   const box = centeredBox(ring, cx, cy)
   const boxH = box.h > 0 ? box.h : maxY - minY
+  const room = Math.max(0, box.w - 2 * inset)
+  const w = (t: string) => t.length * CHAR_W * font
 
-  // Very short strips: two rows won't fit — one line, everything on it.
-  if (boxH < font * 2.4) {
-    const line = [named ? parts.name : '', parts.cut, parts.variety, parts.acres]
-      .filter(Boolean)
-      .join('  ')
-    return [{ x: cx, y: cy, font, text: line, bold: false, anchor: 'middle' }]
+  // Does the full corner layout fit at the fixed size? Height for two rows,
+  // width for the top pair (name + variety), the acres line, and the cut —
+  // measured at the ACTUAL row heights (a tilted block is narrower at the
+  // rows than at the centroid).
+  const yTopProbe = cy - boxH / 2 + inset + font * 0.5
+  const yBotProbe = cy + boxH / 2 - inset - font * 0.5
+  const spanW = (y: number) => {
+    const sp = spanAtY(ring, y)
+    return sp ? Math.max(0, sp[1] - sp[0] - 2 * inset) : room
+  }
+  const topRoom = Math.min(room, spanW(yTopProbe))
+  const botRoom = Math.min(room, spanW(yBotProbe))
+  const topNeeded = (named ? w(parts.name) : 0) + (parts.variety ? w(parts.variety) : 0) +
+    (named && parts.variety ? font : 0)
+  const fits =
+    boxH >= font * 2.4 &&
+    topNeeded <= topRoom &&
+    w(parts.acres) <= botRoom &&
+    w(parts.cut) <= box.w
+
+  if (!fits) {
+    // SMALL-BLOCK CALLOUT: the block shows just its bold id (shrunk to fit if
+    // needed, never below readable); its facts move to the sheet's
+    // "Small blocks" index so nothing overlaps and nothing is lost.
+    const facts = [parts.cut, parts.variety, parts.acres].filter(Boolean).join(' · ')
+    const idFont = named
+      ? clamp(room > 0 ? room / (parts.name.length * CHAR_W) : font, 7, font)
+      : font
+    const labels: PlacedLabel[] = named
+      ? [{ x: cx, y: cy, font: idFont, text: parts.name, bold: true, anchor: 'middle' }]
+      : []
+    return { labels, callout: named && facts ? facts : null }
   }
 
   const yTop = cy - boxH / 2 + inset + font * 0.5
@@ -184,7 +217,7 @@ function planCornerLabels(
   if (parts.cut) {
     labels.push({ x: cx, y: cy, font, text: parts.cut, bold: true, anchor: 'middle' })
   }
-  return labels
+  return { labels, callout: null }
 }
 
 // Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
@@ -332,6 +365,7 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
 
   const stages = new Set<string>()
   let hasUnset = false
+  const smallBlocks: { name: string; facts: string }[] = []
 
   const svgBlocks: SvgBlock[] = blocks.map((b) => {
     const outer = b.geometry?.coordinates?.[0] ?? []
@@ -381,12 +415,13 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
     const wants = (f: 'name' | 'variety' | 'cut' | 'acres') =>
       !opts.labelFields || opts.labelFields.has(f)
-    const labels = planCornerLabels(svgRing, lx, ly, {
+    const { labels, callout } = planCornerLabels(svgRing, lx, ly, {
       name: wants('name') ? (b.name ?? '') : '',
       cut: wants('cut') ? cutAbbrev(b.current_ratoon) : '',
       variety: wants('variety') ? varietyCode(b.variety) : '',
       acres: wants('acres') ? acreageLabel : '',
     })
+    if (callout) smallBlocks.push({ name: b.name ?? '', facts: callout })
 
     return {
       id: b.id,
@@ -432,11 +467,14 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     },
   )
 
+  smallBlocks.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+
   return {
     width: canvasWidth,
     height,
     blocks: svgBlocks,
     annotations: svgAnnotations,
+    smallBlocks,
     stagesPresent: Array.from(stages),
     hasUnset,
   }

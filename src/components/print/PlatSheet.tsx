@@ -208,6 +208,23 @@ export default function PlatSheet({
             ))}
           </svg>
 
+          {sheet.svg!.smallBlocks.length > 0 && (
+            <p
+              style={{
+                fontSize: 9,
+                color: '#374151',
+                marginTop: 6,
+                lineHeight: 1.6,
+              }}
+            >
+              <strong style={{ color: '#1A3D2E' }}>Small blocks: </strong>
+              {sheet.svg!.smallBlocks.map((sb, i) => (
+                <span key={i} style={{ whiteSpace: 'nowrap', marginRight: 12 }}>
+                  <strong>{sb.name}</strong> {sb.facts}
+                </span>
+              ))}
+            </p>
+          )}
           <p
             style={{
               fontSize: 8,
