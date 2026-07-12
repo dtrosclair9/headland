@@ -228,16 +228,26 @@ export default function FieldSidebar({
       ) : (
         <>
       {fields.length > 0 && (
-        <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
+        // Mode visibility: while selecting, the whole bar tints amber and the
+        // exit is a loud yellow pill — the user always knows where they are.
+        <div
+          className={`px-4 py-2 border-b flex items-center justify-between gap-2 ${
+            selectMode ? 'bg-accent/15 border-accent/40' : 'border-gray-100'
+          }`}
+        >
           <button
             type="button"
             onClick={onToggleSelectMode}
-            className="text-xs font-semibold text-primary hover:underline"
+            className={`text-xs font-semibold rounded-full px-3 py-1 transition shadow-sm ${
+              selectMode
+                ? 'bg-accent text-primary-dark hover:bg-accent-dark'
+                : 'bg-primary text-white hover:bg-primary-light'
+            }`}
           >
-            {selectMode ? 'Done' : 'Select blocks'}
+            {selectMode ? 'Done selecting ✓' : 'Select blocks'}
           </button>
           {selectMode && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-600">
               {selectedIds.size} selected
               {selectedIds.size > 0 && (
                 <span className="text-primary font-semibold"> · {selectedArea.primary}</span>
