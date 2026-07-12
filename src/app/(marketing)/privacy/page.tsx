@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   alternates: { canonical: `${BASE_URL}/privacy` },
 }
 
-const LAST_UPDATED = 'May 8, 2026'
+const LAST_UPDATED = 'July 12, 2026'
 
 export default function PrivacyPage() {
   return (
@@ -29,6 +29,7 @@ export default function PrivacyPage() {
           <p>{SITE_NAME} uses these services to operate. They each have their own privacy policies:</p>
           <ul className="list-disc list-inside space-y-1">
             <li><strong>Supabase</strong> — database, authentication, file storage. Hosted on AWS US-East.</li>
+            <li><strong>Resend</strong> — delivery of transactional email (sign-up confirmation and password-reset messages).</li>
             <li><strong>Mapbox</strong> — satellite map tiles and geocoding.</li>
             <li><strong>Open-Meteo</strong> — public weather forecasts (no account, queried by lat/lng only).</li>
             <li><strong>Vercel</strong> — hosting and edge delivery.</li>
