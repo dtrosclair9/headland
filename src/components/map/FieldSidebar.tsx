@@ -179,8 +179,8 @@ export default function FieldSidebar({
           {(
             [
               ['layers', 'Layers'],
-              ['plans', 'Plans'],
               ['blocks', 'Blocks'],
+              ['plans', 'Plans'],
             ] as const
           ).map(([key, label]) => (
             <button
