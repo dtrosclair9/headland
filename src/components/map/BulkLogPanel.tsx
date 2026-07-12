@@ -36,6 +36,8 @@ export default function BulkLogPanel({
   const [rate, setRate] = useState('')
   const [unit, setUnit] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [time, setTime] = useState('')
+  const [burnCat, setBurnCat] = useState('')
   const [notes, setNotes] = useState('')
   const [products, setProducts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -68,6 +70,8 @@ export default function BulkLogPanel({
               ...(product.trim() ? { product: product.trim() } : {}),
               ...(rate && !isNaN(Number(rate)) ? { rate: Number(rate) } : {}),
               ...(unit.trim() ? { unit: unit.trim() } : {}),
+              ...(time ? { applied_time: time } : {}),
+              ...(isBurn && burnCat ? { burn_category: burnCat } : {}),
               ...(notes.trim() ? { notes: notes.trim() } : {}),
             }
       const res = await fetch('/api/operations/bulk', {
@@ -97,6 +101,7 @@ export default function BulkLogPanel({
   }
 
   const canSave = kind === 'todo' ? text.trim().length > 0 : !!date
+  const isBurn = type === 'pre_harvest_burn' || type === 'post_harvest_burn'
 
   return (
     <div className="rounded-md border border-gray-200 bg-white p-3 space-y-2">
@@ -161,6 +166,33 @@ export default function BulkLogPanel({
               aria-label="Date"
             />
           </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="input text-xs py-1.5 w-28"
+              aria-label="Time of operation (optional)"
+            />
+            <span className="text-[11px] text-gray-500 flex-1">
+              Time (optional) — records that hour&apos;s weather
+            </span>
+          </div>
+          {isBurn && (
+            <select
+              value={burnCat}
+              onChange={(e) => setBurnCat(e.target.value)}
+              className="input text-xs py-1.5 w-full"
+              aria-label="LDAF burn category day"
+            >
+              <option value="">Burn category (LDAF category day)…</option>
+              <option value="1">1 — No burning</option>
+              <option value="2">2 — After 11 a.m., out by 4 p.m.</option>
+              <option value="3">3 — Daytime, after inversion lifts</option>
+              <option value="4">4 — Burning anytime</option>
+              <option value="5">5 — Unstable &amp; windy, burn with caution</option>
+            </select>
+          )}
           <input
             type="text"
             list="product-history"

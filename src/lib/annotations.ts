@@ -12,13 +12,15 @@ export interface AnnotationRow {
   size: number
   /** text-label rotation in degrees */
   rotation: number
+  /** line stroke width (screen px / print canvas units); null = default */
+  width: number | null
 }
 
 export async function listAnnotations(orgId: string): Promise<AnnotationRow[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('map_annotations')
-    .select('id, kind, geometry, text, color, size, rotation')
+    .select('id, kind, geometry, text, color, size, rotation, width')
     .eq('org_id', orgId)
     .order('created_at', { ascending: true })
   if (error) throw error

@@ -22,7 +22,7 @@ export function plantationSvgMarkup(svg: PlantationSvg, isSpray: boolean): strin
   const annotations = svg.annotations
     .map((a) => {
       if (a.kind === 'line') {
-        return `<polyline points="${a.points}" fill="none" stroke="${isSpray ? '#000000' : a.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
+        return `<polyline points="${a.points}" fill="none" stroke="${isSpray ? '#000000' : a.color}" stroke-width="${a.width ?? 2.5}" stroke-linecap="round" stroke-linejoin="round"/>`
       }
       const rot = a.rotation ? ` transform="rotate(${a.rotation} ${a.x} ${a.y})"` : ''
       return `<text x="${a.x}" y="${a.y}" text-anchor="middle" font-size="${a.size ?? 13}" font-weight="700" fill="${isSpray ? '#000000' : a.color}" stroke="#FFFFFF" stroke-width="2.5" paint-order="stroke"${rot}>${esc(a.text ?? '')}</text>`

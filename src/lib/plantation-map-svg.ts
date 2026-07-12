@@ -56,6 +56,8 @@ export interface SvgAnnotation {
   size?: number
   /** text rotation in degrees (kind='text') */
   rotation?: number
+  /** line stroke width (kind='line') */
+  width?: number
 }
 
 /**
@@ -691,7 +693,7 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
         const [x, y] = toXY(lng, lat)
         return `${x.toFixed(1)},${y.toFixed(1)}`
       })
-      return [{ kind: 'line' as const, points: pts.join(' '), color: a.color }]
+      return [{ kind: 'line' as const, points: pts.join(' '), color: a.color, width: a.width ?? undefined }]
     }
     if (a.kind === 'text' && a.geometry.type === 'Point') {
       const [x, y] = toXY(a.geometry.coordinates[0], a.geometry.coordinates[1])

@@ -315,55 +315,15 @@ function Entry({ e, onComplete }: { e: OperationEntry; onComplete?: (id: string)
   )
 }
 
-// A bulk operation: one card for the whole pass, with the point-in-time
-// crop-map snapshot showing what was done where. "View map" opens the
-// snapshot FULL PAGE in its own tab — an inline thumbnail of a whole farm
-// is unreadable. (Blob URL because browsers block top-level data: URLs.)
+// A bulk operation: one card for the whole pass. "View map" opens the
+// event's record document — a real print route with the same paper-size and
+// label-field options as every other print page (a blob: page broke Safari's
+// print preview on any setting change).
 function EventEntry({ e }: { e: OperationEntry }) {
   const badge =
     e.subKind === 'todo' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'
   const openSnapshot = () => {
-    if (!e.snapshotSvg) return
-    // The record document: what was done, where, and when — plus the
-    // per-plantation map sheets — printable straight from the tab. This is
-    // the reference copy a completed plan exists for.
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    const dateStr = new Date(`${e.date}T12:00:00`).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-    const facts = [
-      `${e.blockCount ?? 0} block${e.blockCount === 1 ? '' : 's'}`,
-      e.acres ? `${e.acres.toFixed(2)} ac` : '',
-      e.plantations?.length ? e.plantations.join(', ') : '',
-    ]
-      .filter(Boolean)
-      .join(' · ')
-    const when = e.subKind === 'application' ? `Applied ${dateStr}` : `Logged ${dateStr}`
-    const html =
-      `<!doctype html><html><head><meta charset="utf-8"><title>${esc(e.title)}</title><style>` +
-      `body{margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;color:#1f2937}` +
-      `.toolbar{position:fixed;top:12px;right:14px}` +
-      `.toolbar button{font:600 13px/1 inherit;padding:8px 14px;border-radius:999px;border:0;background:#1A3D2E;color:#fff;cursor:pointer}` +
-      `header{padding:14px 18px 10px;border-bottom:1px solid #00000014}` +
-      `h1{margin:0;font-size:19px;color:#1A3D2E;display:flex;align-items:center;gap:8px}` +
-      `.chip{width:13px;height:13px;border-radius:3px;border:1px solid #00000022;display:inline-block;flex:none}` +
-      `.meta{margin-top:4px;font-size:13px;color:#4b5563}` +
-      `.notes{margin-top:4px;font-size:12.5px;color:#6b7280}` +
-      `svg{width:100%;height:auto;display:block}` +
-      `@page{size:letter landscape;margin:0.35in}` +
-      `@media print{.toolbar{display:none}header{padding:0 0 8px}svg{break-inside:avoid}svg:not(:last-of-type){break-after:page}}` +
-      `</style></head><body>` +
-      `<div class="toolbar"><button onclick="window.print()">Print / Save PDF</button></div>` +
-      `<header>` +
-      `<h1><span class="chip" style="background:${esc(e.color ?? '#DC2626')}"></span>${esc(e.title)}</h1>` +
-      `<div class="meta">${e.subKind === 'todo' ? 'To-dos' : 'Field work'} · ${when} · ${esc(facts)}</div>` +
-      (e.detail && e.detail !== e.title ? `<div class="notes">${esc(e.detail)}</div>` : '') +
-      `</header>` +
-      e.snapshotSvg +
-      `</body></html>`
-    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank')
+    if (e.hasSnapshot) window.open(`/operations/events/${e.id}/print`, '_blank')
   }
   return (
     <li>
@@ -394,7 +354,7 @@ function EventEntry({ e }: { e: OperationEntry }) {
           </span>
         </span>
         <span className="text-xs font-semibold text-primary shrink-0 pt-0.5">
-          {e.snapshotSvg ? 'View map ↗' : ''}
+          {e.hasSnapshot ? 'View map ↗' : ''}
         </span>
       </button>
     </li>

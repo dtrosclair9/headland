@@ -192,7 +192,7 @@ export interface FieldMapProps {
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
-    style?: { size: number; rotation: number },
+    style?: { size?: number; rotation?: number; width?: number },
   ) => Promise<void>
   onDeleteAnnotation: (id: string) => Promise<void>
 }
@@ -248,7 +248,7 @@ export default function FieldMap({
   selectModeRef.current = selectMode
   onToggleSelectedRef.current = onToggleFieldSelected
   // Live draw-kind + annotation callbacks for the once-bound map handlers.
-  const drawKindRef = useRef<'block' | 'line' | 'text' | null>(null)
+  const drawKindRef = useRef<'block' | 'line' | 'text' | 'freehand' | null>(null)
   // True while a draw is being cancelled: mapbox-gl-draw COMMITS the
   // in-progress shape when the mode is programmatically exited (same
   // draw.create as a real finish), so cancel flags the exit and the create
@@ -262,7 +262,14 @@ export default function FieldMap({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [drawing, setDrawing] = useState(false)
-  const [drawKind, setDrawKind] = useState<'block' | 'line' | 'text' | null>(null)
+  const [drawKind, setDrawKind] = useState<'block' | 'line' | 'text' | 'freehand' | null>(null)
+  // Line tool: ONE toolbar button opens a chooser — freehand stroke or
+  // point-to-point — plus a thickness pick that applies to both.
+  const [lineChooser, setLineChooser] = useState(false)
+  const [lineWidth, setLineWidth] = useState(3)
+  const lineWidthRef = useRef(3)
+  lineWidthRef.current = lineWidth
+  const freehandPtsRef = useRef<[number, number][]>([])
   // Text-label placement: after the grower clicks a spot, this holds the spot
   // while they type the label into the overlay input.
   const [textDraft, setTextDraft] = useState<{
@@ -557,7 +564,7 @@ export default function FieldMap({
         filter: ['==', ['geometry-type'], 'LineString'],
         paint: {
           'line-color': ['get', 'color'] as unknown as mapboxgl.ExpressionSpecification,
-          'line-width': 3,
+          'line-width': ['coalesce', ['get', 'width'], 3] as unknown as mapboxgl.ExpressionSpecification,
         },
       })
       map.addLayer({
@@ -742,7 +749,9 @@ export default function FieldMap({
         await onCreateField(feature.geometry as GeoJSON.Polygon)
       } else if (feature?.geometry?.type === 'LineString') {
         // Reference-line annotation (road, ditch, headland run).
-        await onCreateAnnotationRef.current('line', feature.geometry as GeoJSON.LineString)
+        await onCreateAnnotationRef.current('line', feature.geometry as GeoJSON.LineString, undefined, {
+          width: lineWidthRef.current,
+        })
       }
       draw.deleteAll()
       setDrawing(false)
@@ -976,10 +985,110 @@ export default function FieldMap({
           color: a.color,
           size: a.size ?? 16,
           rotation: a.rotation ?? 0,
+          width: a.width ?? 3,
         },
       })),
     })
   }, [annotations, ready])
+
+  // Freehand line drawing: drag paints the stroke (dragPan pauses while the
+  // tool is active), release saves it as a line annotation at the chosen
+  // thickness. Multi-touch (pinch) is ignored so zooming doesn't scribble.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || drawKind !== 'freehand') return
+    const canvas = map.getCanvas()
+    map.dragPan.disable()
+    canvas.style.cursor = 'crosshair'
+    if (!map.getSource('freehand-preview')) {
+      map.addSource('freehand-preview', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'freehand-preview-line',
+        type: 'line',
+        source: 'freehand-preview',
+        paint: { 'line-color': '#DC2626', 'line-opacity': 0.9, 'line-width': lineWidth },
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+      })
+    } else {
+      map.setPaintProperty('freehand-preview-line', 'line-width', lineWidth)
+    }
+    const src = () => map.getSource('freehand-preview') as mapboxgl.GeoJSONSource | undefined
+    const setPreview = () => {
+      const pts = freehandPtsRef.current
+      src()?.setData(
+        pts.length >= 2
+          ? {
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: pts },
+              properties: {},
+            }
+          : { type: 'FeatureCollection', features: [] },
+      )
+    }
+    let active = false
+    let lastPt: mapboxgl.Point | null = null
+    type PointerEv = (mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) & {
+      points?: mapboxgl.Point[]
+    }
+    const start = (e: PointerEv) => {
+      if (e.points && e.points.length > 1) return
+      active = true
+      freehandPtsRef.current = [[e.lngLat.lng, e.lngLat.lat]]
+      lastPt = e.point
+      e.preventDefault?.()
+    }
+    const move = (e: PointerEv) => {
+      if (!active) return
+      if (e.points && e.points.length > 1) {
+        active = false
+        freehandPtsRef.current = []
+        setPreview()
+        return
+      }
+      if (lastPt && e.point.dist(lastPt) < 4) return
+      lastPt = e.point
+      freehandPtsRef.current.push([e.lngLat.lng, e.lngLat.lat])
+      setPreview()
+    }
+    const end = async () => {
+      if (!active) return
+      active = false
+      const pts = freehandPtsRef.current.slice(0, 500)
+      freehandPtsRef.current = []
+      setPreview()
+      if (pts.length >= 2) {
+        await onCreateAnnotationRef.current(
+          'line',
+          { type: 'LineString', coordinates: pts },
+          undefined,
+          { width: lineWidthRef.current },
+        )
+        setDrawing(false)
+        setDrawKind(null)
+      }
+    }
+    map.on('mousedown', start)
+    map.on('mousemove', move)
+    map.on('mouseup', end)
+    map.on('touchstart', start)
+    map.on('touchmove', move)
+    map.on('touchend', end)
+    return () => {
+      map.off('mousedown', start)
+      map.off('mousemove', move)
+      map.off('mouseup', end)
+      map.off('touchstart', start)
+      map.off('touchmove', move)
+      map.off('touchend', end)
+      map.dragPan.enable()
+      canvas.style.cursor = ''
+      freehandPtsRef.current = []
+      src()?.setData({ type: 'FeatureCollection', features: [] })
+    }
+  }, [drawKind, ready, lineWidth])
 
   // Marker showing where a pending text label will land while typing.
   useEffect(() => {
@@ -1442,6 +1551,7 @@ export default function FieldMap({
     setDrawing(false)
     setDrawKind(null)
     setTextDraft(null)
+    setLineChooser(false)
   }
 
   function toggleDraw() {
@@ -1459,14 +1569,22 @@ export default function FieldMap({
 
   function toggleLine() {
     if (!drawRef.current) return
-    if (drawKind === 'line') {
+    if (drawKind === 'line' || drawKind === 'freehand') {
       cancelDraw()
+    } else if (lineChooser) {
+      setLineChooser(false)
     } else {
       cancelDraw()
-      drawRef.current.changeMode('draw_line_string')
-      setDrawing(true)
-      setDrawKind('line')
+      setLineChooser(true)
     }
+  }
+
+  function startLine(mode: 'freehand' | 'points') {
+    if (!drawRef.current) return
+    cancelDraw()
+    if (mode === 'points') drawRef.current.changeMode('draw_line_string')
+    setDrawing(true)
+    setDrawKind(mode === 'points' ? 'line' : 'freehand')
   }
 
   function toggleText() {
@@ -1605,7 +1723,7 @@ export default function FieldMap({
             disabled={!ready}
             title="Draw a reference line (road, ditch)"
             className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed border-2 ${
-              drawKind === 'line'
+              drawKind === 'line' || drawKind === 'freehand' || lineChooser
                 ? 'bg-primary text-white border-primary'
                 : 'bg-white text-primary border-primary hover:bg-primary/5'
             }`}
@@ -1615,7 +1733,7 @@ export default function FieldMap({
               <circle cx="4.75" cy="15.75" r="1.75" />
               <circle cx="15.25" cy="4.75" r="1.75" />
             </svg>
-            {drawKind === 'line' ? 'Cancel line' : 'Line'}
+            {drawKind === 'line' || drawKind === 'freehand' ? 'Cancel line' : 'Line'}
           </button>
           <button
             type="button"
@@ -1660,9 +1778,53 @@ export default function FieldMap({
           <div className="pointer-events-none rounded-md bg-primary-dark/90 text-white px-3 py-2 text-xs leading-snug max-w-xs shadow-md">
             {drawKind === 'line'
               ? 'Click points along the road or ditch. Double-click the last point to finish. Press Esc to cancel.'
-              : drawKind === 'text'
-                ? 'Click the map where the label should go.'
-                : 'Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.'}
+              : drawKind === 'freehand'
+                ? 'Press and drag to draw. Let go to save the line.'
+                : drawKind === 'text'
+                  ? 'Click the map where the label should go.'
+                  : 'Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.'}
+          </div>
+        )}
+
+        {lineChooser && !drawKind && (
+          <div className="pointer-events-auto rounded-md bg-white shadow-md border border-gray-100 px-3 py-2 flex items-center gap-2 flex-wrap max-w-xs">
+            {(
+              [
+                ['freehand', 'Freehand'],
+                ['points', 'Point to point'],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => startLine(mode)}
+                className="text-xs font-semibold rounded-md border-2 border-primary text-primary px-2.5 py-1.5 hover:bg-primary hover:text-white transition"
+              >
+                {label}
+              </button>
+            ))}
+            <span className="basis-full h-0" />
+            <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
+            {(
+              [
+                [1.5, 'Thin'],
+                [3, 'Medium'],
+                [5, 'Thick'],
+              ] as const
+            ).map(([w, label]) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setLineWidth(w)}
+                className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
+                  lineWidth === w
+                    ? 'bg-primary text-white border-primary'
+                    : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         )}
 

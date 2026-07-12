@@ -24,8 +24,14 @@ export interface OperationEntry {
   blockCount?: number
   acres?: number
   color?: string
-  /** point-in-time crop-map snapshot (SVG markup) */
-  snapshotSvg?: string | null
+  /** the event stored a point-in-time snapshot — links to its record page */
+  hasSnapshot?: boolean
+  /** optional time of operation (HH:MM) */
+  time?: string | null
+  /** LDAF smoke category day (1–5) for burn field work */
+  burnCategory?: string | null
+  /** weather at the field when it happened */
+  weatherSummary?: string | null
   /** plantations the event touched */
   plantations?: string[]
 }
@@ -114,7 +120,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
       .limit(2000),
     supabase
       .from('operation_events')
-      .select('id, kind, title, detail, color, block_ids, block_count, acres, snapshot_svg, occurred_at')
+      .select('id, kind, title, detail, color, block_ids, block_count, acres, has_snapshot, occurred_at, occurred_time, burn_category, weather')
       .eq('org_id', orgId)
       .gte('occurred_at', sinceDate)
       .order('occurred_at', { ascending: false })
@@ -218,7 +224,10 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
       blockCount: ev.block_count,
       acres: ev.acres ? Number(ev.acres) : undefined,
       color: ev.color,
-      snapshotSvg: ev.snapshot_svg ?? null,
+      hasSnapshot: !!ev.has_snapshot,
+      time: ev.occurred_time ? String(ev.occurred_time).slice(0, 5) : null,
+      burnCategory: ev.burn_category ?? null,
+      weatherSummary: (ev.weather as { summary?: string } | null)?.summary ?? null,
       plantations,
     })
   }

@@ -201,7 +201,7 @@ export default function MapShell({
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
-    style?: { size: number; rotation: number },
+    style?: { size?: number; rotation?: number; width?: number },
   ) {
     setBusy(true)
     setError(null)
@@ -212,7 +212,7 @@ export default function MapShell({
         body: JSON.stringify(
           kind === 'text'
             ? { kind, geometry, text, size: style?.size, rotation: style?.rotation }
-            : { kind, geometry },
+            : { kind, geometry, width: style?.width },
         ),
       })
       if (!res.ok) {

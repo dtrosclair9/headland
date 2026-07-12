@@ -3,11 +3,9 @@ import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createClient } from '@/lib/supabase/server'
 import { listFields } from '@/lib/fields'
-import { buildSpraySvg } from '@/lib/plantation-map-svg'
-import { listAnnotations } from '@/lib/annotations'
-import { plantationSvgMarkup } from '@/lib/print-markup'
-import { groupByPlantation } from '@/lib/print-groups'
 import { APPLICATION_TYPE_KEYS, APPLICATION_LABELS } from '@/lib/application-types'
+import { fetchOperationWeather } from '@/lib/operation-weather'
+import { translateToSpanish } from '@/lib/translate'
 
 // Bulk-log one operation onto many blocks at once: a to-do ("spray johnson
 // grass" on 15 blocks) or a field-work application (a plan flown — same
@@ -33,6 +31,13 @@ const BulkSchema = z.object({
       kind: z.literal('application'),
       type: z.enum(APPLICATION_TYPE_KEYS as [string, ...string[]]),
       applied_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      /** optional time of operation (HH:MM) — weather then records that hour */
+      applied_time: z
+        .string()
+        .regex(/^\d{2}:\d{2}$/)
+        .optional(),
+      /** LDAF smoke category day (1–5), for burn field work */
+      burn_category: z.enum(['1', '2', '3', '4', '5']).optional(),
       product: z.string().trim().max(200).optional(),
       rate: z.number().positive().max(100000).optional(),
       unit: z.string().trim().max(20).optional(),
@@ -65,25 +70,22 @@ export async function POST(request: NextRequest) {
   const scopePlantations = new Set(targets.map((b) => b.plantation_id ?? '__none'))
   const contextBlocks = allBlocks.filter((b) => scopePlantations.has(b.plantation_id ?? '__none'))
   const color = parsed.data.color ?? (op.kind === 'todo' ? '#E8A33D' : '#DC2626')
-  const annotations = await listAnnotations(org.id)
-  // One sheet per plantation, exactly like the print system — cramming two
-  // farms onto one canvas halves every block's relative size and floods the
-  // sheet with callout chips. The stored markup is the sheets concatenated;
-  // the full-page viewer stacks them.
-  const snapshotSvg =
-    groupByPlantation(contextBlocks)
-      .map((group) => {
-        const svg = buildSpraySvg(group.blocks, {
-          unitsArpents: org.units_default === 'arpents',
-          annotations,
-          highlight: { ids: idSet, color },
-          canvasWidth: 900,
-        })
-        if (!svg) return ''
-        const title = `<text x="10" y="21" font-size="15" font-weight="700" fill="#1A3D2E">${group.name.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
-        return plantationSvgMarkup(svg, true).replace('</svg>', `${title}</svg>`)
-      })
-      .join('') || null
+  // Point-in-time BLOCK DATA of the touched plantation(s) — the record
+  // document (/operations/events/[id]/print) re-renders sheets from this at
+  // any paper size / label choice, with the print system's exact rules.
+  const snapshotBlocks = contextBlocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    variety: b.variety,
+    current_ratoon: b.current_ratoon,
+    acreage_cached: b.acreage_cached,
+    arpents_cached: b.arpents_cached,
+    plantation_id: b.plantation_id,
+    plantation_name: b.plantation_name,
+    centroid_lng: b.centroid_lng,
+    centroid_lat: b.centroid_lat,
+    geometry: b.geometry,
+  }))
   const acres = targets.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
 
   let title: string
@@ -102,6 +104,17 @@ export async function POST(request: NextRequest) {
   }
   if (context?.trim()) title = `${context.trim()} — ${title}`
 
+  // Record-keeping extras, all best-effort in parallel: weather at the field
+  // when it happened (that hour if a time was given, else the day), and a
+  // Spanish copy of the notes for the crew printout.
+  const occurredTime = op.kind === 'application' ? (op.applied_time ?? null) : null
+  const repLat = targets.reduce((s, b) => s + b.centroid_lat, 0) / targets.length
+  const repLng = targets.reduce((s, b) => s + b.centroid_lng, 0) / targets.length
+  const [weather, detailEs] = await Promise.all([
+    fetchOperationWeather(repLat, repLng, occurredAt, occurredTime),
+    detail ? translateToSpanish(detail) : Promise.resolve(null),
+  ])
+
   const { data: event, error: eventError } = await supabase
     .from('operation_events')
     .insert({
@@ -113,8 +126,12 @@ export async function POST(request: NextRequest) {
       block_ids,
       block_count: targets.length,
       acres,
-      snapshot_svg: snapshotSvg,
+      snapshot_blocks: snapshotBlocks,
       occurred_at: occurredAt,
+      occurred_time: occurredTime,
+      burn_category: op.kind === 'application' ? (op.burn_category ?? null) : null,
+      weather,
+      detail_es: detailEs,
       created_by: user.id,
     })
     .select('id')

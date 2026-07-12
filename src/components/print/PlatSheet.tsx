@@ -33,6 +33,9 @@ export default function PlatSheet({
   style = 'crop',
   activeLabelFields,
   paper = 'letter',
+  autoPrint = true,
+  record,
+  bannerExtra,
 }: {
   orgName: string
   sheets: SheetData[]
@@ -43,6 +46,16 @@ export default function PlatSheet({
   activeLabelFields?: LabelField[]
   /** paper the sheet is laid out for */
   paper?: PaperSize
+  /** open the print dialog on load (off for reference/record views) */
+  autoPrint?: boolean
+  /**
+   * Record-document details printed on EVERY page under the title line:
+   * `line` = kind · date/time accomplished · weather · burn category;
+   * `notes` = the operator's notes (already in the chosen language).
+   */
+  record?: { line: string; notes?: string | null }
+  /** extra banner controls (language toggle, print button, …) */
+  bannerExtra?: React.ReactNode
   // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
   // black boundaries). 'crop' = colored plat map.
   style?: 'crop' | 'spray'
@@ -52,7 +65,7 @@ export default function PlatSheet({
   const spec = paperSpec(paper)
   return (
     <>
-      <AutoPrint />
+      {autoPrint && <AutoPrint />}
 
       <style>{`
         @page { size: ${spec.pageW}in ${spec.pageH}in; margin: 0.3in; }
@@ -82,6 +95,7 @@ export default function PlatSheet({
           {pages.length > 1 ? ` ${pages.length} pages, one per plantation.` : ''}
           {activeLabelFields && <LabelFieldToggles active={activeLabelFields} />}
           {activeLabelFields && <PaperToggle active={paper} />}
+          {bannerExtra}
         </p>
       </div>
 
@@ -158,6 +172,14 @@ export default function PlatSheet({
               <span style={{ fontSize: 7.5, color: '#9CA3AF' }}>headlandmaps.com</span>
             </div>
           </div>
+          {record && (
+            <div style={{ marginBottom: 2 }}>
+              <div style={{ fontSize: 10, color: '#374151' }}>{record.line}</div>
+              {record.notes && (
+                <div style={{ fontSize: 9.5, color: '#6B7280' }}>{record.notes}</div>
+              )}
+            </div>
+          )}
 
           <svg
             viewBox={`0 0 ${sheet.svg!.width} ${sheet.svg!.height}`}
@@ -165,7 +187,7 @@ export default function PlatSheet({
             style={{
               width: '100%',
               height: 'auto',
-              maxHeight: `${spec.heightIn}in`,
+              maxHeight: `${spec.heightIn - (record ? (record.notes ? 0.3 : 0.18) : 0)}in`,
               display: 'block',
               margin: '0 auto',
             }}
@@ -190,7 +212,7 @@ export default function PlatSheet({
                   points={a.points}
                   fill="none"
                   stroke={isSpray ? '#000000' : a.color}
-                  strokeWidth={2.5}
+                  strokeWidth={a.width ?? 2.5}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
