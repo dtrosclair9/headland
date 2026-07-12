@@ -1,8 +1,9 @@
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
-import type { PlantationSvg } from '@/lib/plantation-map-svg'
+import { paperSpec, type PlantationSvg, type PaperSize } from '@/lib/plantation-map-svg'
 import type { LabelField } from '@/lib/label-fields'
 import AutoPrint from './AutoPrint'
 import LabelFieldToggles from './LabelFieldToggles'
+import PaperToggle from './PaperToggle'
 
 interface LegendItem {
   key: string
@@ -31,6 +32,7 @@ export default function PlatSheet({
   emptyMessage,
   style = 'crop',
   activeLabelFields,
+  paper = 'letter',
 }: {
   orgName: string
   sheets: SheetData[]
@@ -39,18 +41,21 @@ export default function PlatSheet({
   emptyMessage: string
   /** which block facts are printing (renders the banner toggles) */
   activeLabelFields?: LabelField[]
+  /** paper the sheet is laid out for */
+  paper?: PaperSize
   // 'spray' = black-and-white outline sheet for sprayer pilots (white fill, heavy
   // black boundaries). 'crop' = colored plat map.
   style?: 'crop' | 'spray'
 }) {
   const isSpray = style === 'spray'
   const pages = sheets.filter((s) => s.svg !== null)
+  const spec = paperSpec(paper)
   return (
     <>
       <AutoPrint />
 
       <style>{`
-        @page { size: letter landscape; margin: 0.3in; }
+        @page { size: ${spec.pageW}in ${spec.pageH}in; margin: 0.3in; }
         @media print {
           .no-print { display: none !important; }
           html, body { margin: 0 !important; padding: 0 !important; }
@@ -63,8 +68,8 @@ export default function PlatSheet({
           .sheet { box-shadow: 0 0 12px rgba(0,0,0,0.08); margin: 24px auto; }
         }
         .sheet {
-          width: 10in;
-          padding: 0.35in;
+          width: ${spec.sheetWidthIn}in;
+          padding: 0.12in 0.15in;
           background: white;
           color: #1f2937;
           font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
@@ -76,6 +81,7 @@ export default function PlatSheet({
           Print or save as PDF — File → Print (⌘P) → &quot;Save as PDF&quot;. Landscape.
           {pages.length > 1 ? ` ${pages.length} pages, one per plantation.` : ''}
           {activeLabelFields && <LabelFieldToggles active={activeLabelFields} />}
+          {activeLabelFields && <PaperToggle active={paper} />}
         </p>
       </div>
 
@@ -87,52 +93,69 @@ export default function PlatSheet({
 
       {pages.map((sheet, si) => (
         <div className="sheet" key={si}>
-          {/* Compact one-line header: title + counts on the left, legend + date on
-              the right, so the map gets the rest of the page. */}
+          {/* ONE thin header line — every point of height here is map we
+              can't give the blocks. Title, counts, legend, date, brand. */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'flex-end',
-              gap: 16,
-              marginBottom: 6,
-              paddingBottom: 6,
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 3,
+              paddingBottom: 3,
               borderBottom: '1px solid #00000014',
             }}
           >
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 9, letterSpacing: 1.5, fontWeight: 700, color: '#6B6B6B', margin: 0, textTransform: 'uppercase' }}>
-                {orgName}
-              </p>
-              <h1 style={{ fontSize: 22, color: '#1A3D2E', fontWeight: 700, margin: '1px 0 0' }}>
-                {sheet.title}
-                <span style={{ fontSize: 11, fontWeight: 400, color: '#6B6B6B', marginLeft: 8 }}>{sheet.meta}</span>
-              </h1>
+            <div style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span style={{ fontSize: 14, color: '#1A3D2E', fontWeight: 700 }}>{sheet.title}</span>
+              <span style={{ fontSize: 9.5, color: '#6B6B6B', marginLeft: 8 }}>
+                {orgName} · {sheet.meta}
+                {unitWord === 'arpents' ? ' · acreage in arpents' : ''}
+              </span>
             </div>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                flexWrap: 'wrap',
+                gap: 8,
                 justifyContent: 'flex-end',
-                fontSize: 10,
+                fontSize: 9,
                 color: '#374151',
+                whiteSpace: 'nowrap',
               }}
             >
               {sheet.legendItems.map((r) => (
-                <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 11, height: 11, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
+                <span key={r.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ width: 9, height: 9, background: r.color, border: '1px solid #00000022', display: 'inline-block' }} />
                   {r.label}
                 </span>
               ))}
               {!isSpray && sheet.hasUnset && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 11, height: 11, background: UNSET_RATOON_COLOR, border: '1px solid #00000022', display: 'inline-block' }} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ width: 9, height: 9, background: UNSET_RATOON_COLOR, border: '1px solid #00000022', display: 'inline-block' }} />
                   No cut set
                 </span>
               )}
-              <span style={{ color: '#6B6B6B', marginLeft: 4 }}>{today}</span>
+              <span style={{ color: '#6B6B6B' }}>{today}</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 15,
+                  height: 15,
+                  background: '#143324',
+                  borderRadius: 3,
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
+                <img
+                  src="/images/headland-logo-kit/svg/mark-white.svg"
+                  alt="Headland"
+                  style={{ height: 10, width: 10 }}
+                />
+              </span>
+              <span style={{ fontSize: 7.5, color: '#9CA3AF' }}>headlandmaps.com</span>
             </div>
           </div>
 
@@ -142,7 +165,7 @@ export default function PlatSheet({
             style={{
               width: '100%',
               height: 'auto',
-              maxHeight: sheet.svg!.smallBlocks.length > 0 ? '5.3in' : '5.9in',
+              maxHeight: sheet.svg!.smallBlocks.length > 0 ? `${spec.heightIn - 0.7}in` : `${spec.heightIn}in`,
               display: 'block',
               margin: '0 auto',
             }}
@@ -238,37 +261,6 @@ export default function PlatSheet({
               ))}
             </div>
           )}
-          <p
-            style={{
-              fontSize: 8,
-              color: '#9CA3AF',
-              marginTop: 6,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            {unitWord === 'arpents' ? <span>Acreage shown in arpents.</span> : null}
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                background: '#143324',
-                borderRadius: 5,
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- print sheet */}
-              <img
-                src="/images/headland-logo-kit/svg/mark-white.svg"
-                alt="Headland"
-                style={{ height: 17, width: 17 }}
-              />
-            </span>
-            headlandmaps.com
-          </p>
         </div>
       ))}
     </>

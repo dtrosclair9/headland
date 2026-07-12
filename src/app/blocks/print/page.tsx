@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields, listFieldsByIds } from '@/lib/fields'
-import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
+import { buildPlantationSvg, buildSpraySvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
@@ -21,6 +21,7 @@ export default async function SelectedBlocksPrintPage({
     scope?: string
     colorby?: string
     labels?: string
+    paper?: string
   }>
 }) {
   const {
@@ -30,6 +31,7 @@ export default async function SelectedBlocksPrintPage({
     scope: scopeRaw,
     colorby: colorbyRaw,
     labels: labelsRaw,
+    paper: paperRaw,
   } = await searchParams
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
@@ -79,6 +81,7 @@ export default async function SelectedBlocksPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
+  const paper = parsePaperSize(paperRaw)
 
   // ONE PAGE PER PLANTATION — a selection spanning three plantations prints
   // as three individual sheets, each titled by its plantation. Plantations
@@ -89,6 +92,7 @@ export default async function SelectedBlocksPrintPage({
       unitsArpents,
       annotations,
       labelFields: labelFieldSet,
+      paper,
       stageColors: colorOverrides.stage,
       ...(byVariety ? { paletteBy: 'variety' as const, varietyColors } : {}),
       ...(isHighlight ? { highlight: { ids: idSet } } : {}),
@@ -143,6 +147,7 @@ export default async function SelectedBlocksPrintPage({
       emptyMessage="No blocks selected to print."
       style={isSpray ? 'spray' : 'crop'}
       activeLabelFields={labelFields}
+      paper={paper}
     />
   )
 }

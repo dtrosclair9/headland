@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getPlantation } from '@/lib/plantations'
 import { listFieldsByPlantation } from '@/lib/fields'
-import { buildPlantationSvg, buildSpraySvg } from '@/lib/plantation-map-svg'
+import { buildPlantationSvg, buildSpraySvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { resolveStageColors } from '@/lib/resolve-colors'
@@ -17,10 +17,10 @@ export default async function PlantationPrintPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ style?: string; labels?: string }>
+  searchParams: Promise<{ style?: string; labels?: string; paper?: string }>
 }) {
   const { id } = await params
-  const { style: styleRaw, labels: labelsRaw } = await searchParams
+  const { style: styleRaw, labels: labelsRaw, paper: paperRaw } = await searchParams
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
   const stageColors = resolveStageColors(colorOverrides.stage)
@@ -36,13 +36,15 @@ export default async function PlantationPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
+  const paper = parsePaperSize(paperRaw)
   const svg = isSpray
-    ? buildSpraySvg(blocks, { unitsArpents, annotations, labelFields: labelFieldSet })
+    ? buildSpraySvg(blocks, { unitsArpents, annotations, labelFields: labelFieldSet, paper })
     : buildPlantationSvg(blocks, {
         unitsArpents,
         stageColors: colorOverrides.stage,
         annotations,
         labelFields: labelFieldSet,
+      paper,
       })
 
   const totalAcres = blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
@@ -73,6 +75,7 @@ export default async function PlantationPrintPage({
       emptyMessage="No blocks in this plantation yet. Assign blocks to it from the map, then print."
       style={isSpray ? 'spray' : 'crop'}
       activeLabelFields={labelFields}
+      paper={paper}
     />
   )
 }

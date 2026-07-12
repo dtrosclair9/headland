@@ -129,12 +129,42 @@ const CHAR_W = 0.62
 // Hard readability floor — below this a label is dropped rather than shrunk.
 const MIN_FONT = 3.4
 
-// Uniform print label size. NON-NEGOTIABLE RULE: every block prints all four
-// facts — id, acres, variety, cycle — on every sheet. Text is NOT scaled to
-// the block; one small fixed size everywhere means nothing ever gets dropped
-// for lack of room. A tiny block may have snug text, but the data is there.
-// 10.5 canvas units ≈ 6.5pt on a letter landscape sheet — old-farmer-readable.
-const PRINT_FONT = 10.5
+// NON-NEGOTIABLE RULE: every block prints all four facts — id, acres,
+// variety, cycle — on every sheet, at a constant PHYSICAL size (~6.5pt,
+// old-farmer-readable). Font is computed per paper size: on legal the same
+// 1100-unit canvas maps to a wider sheet, so the font takes fewer canvas
+// units and blocks gain relative room — bigger paper genuinely fits more.
+export type PaperSize = 'letter' | 'legal' | 'tabloid'
+// Physical sheet in LANDSCAPE orientation (width × height, inches). Adding a
+// paper size is one line here — everything downstream (font scale, aspect,
+// sheet CSS, @page rule) derives from these dims.
+export const PAPER_DIMS: Record<PaperSize, { w: number; h: number; label: string }> = {
+  letter: { w: 11, h: 8.5, label: 'Letter' },
+  legal: { w: 14, h: 8.5, label: 'Legal' },
+  tabloid: { w: 17, h: 11, label: '11×17' },
+}
+const PAGE_MARGIN_IN = 0.3 // @page margin, all sides
+const SHEET_PAD_IN = 0.15 // .sheet horizontal padding
+const CHROME_IN = 0.7 // thin header + paddings above/below the map
+export function paperSpec(paper: PaperSize) {
+  const d = PAPER_DIMS[paper]
+  const sheetWidthIn = d.w - PAGE_MARGIN_IN * 2
+  return {
+    sheetWidthIn,
+    widthIn: sheetWidthIn - SHEET_PAD_IN * 2, // printable map width
+    heightIn: d.h - PAGE_MARGIN_IN * 2 - CHROME_IN, // printable map height
+    pageW: d.w,
+    pageH: d.h,
+    label: d.label,
+  }
+}
+export function parsePaperSize(raw: string | undefined): PaperSize {
+  return raw === 'legal' || raw === 'tabloid' ? raw : raw === 'ledger' ? 'tabloid' : 'letter'
+}
+const FONT_PT = 6.5
+function printFontUnits(paper: PaperSize, canvasWidth: number): number {
+  return (FONT_PT / 72) * (canvasWidth / paperSpec(paper).widthIn)
+}
 
 // The block's own long axis: try each edge direction, keep the orientation
 // whose bounding box has the least area (classic min-area oriented box).
@@ -197,9 +227,9 @@ function planCornerLabels(
   cx: number,
   cy: number,
   parts: { name: string; cut: string; variety: string; acres: string },
+  font: number,
 ): { labels: PlacedLabel[]; callout: string | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
-  const font = PRINT_FONT
   const inset = font * 0.4
   const w = (t: string) => t.length * CHAR_W * font
 
@@ -298,10 +328,13 @@ function planCornerLabels(
   }
 }
 
-// Aspect ratio of the printable map area on a letter-landscape sheet (≈10in
-// wide × ≈6.3in tall after the title/legend). The farm is auto-rotated to best
-// fill this, so a long diagonal farm prints across the page (like FarmWorks).
-const PRINT_AREA_ASPECT = 1.59
+// The farm is auto-rotated to best fill the printable area, so a long
+// diagonal farm prints across the page (like FarmWorks). Aspect comes from
+// the chosen paper's printable map area.
+function printAreaAspect(paper: PaperSize): number {
+  const p = paperSpec(paper)
+  return p.widthIn / p.heightIn
+}
 
 // Project blocks (lng/lat) onto a flat white canvas — local equirectangular
 // with a cos(lat) longitude correction, accurate for a single farm/plantation.
@@ -336,6 +369,8 @@ interface BuildOpts {
    * to all four: name, variety, cut, acres.
    */
   labelFields?: Set<'name' | 'variety' | 'cut' | 'acres'>
+  /** paper the sheet prints on — drives physical font size + page-fit aspect */
+  paper?: PaperSize
   /** which palette paints colored blocks (mirrors the map's Color-by toggle) */
   paletteBy?: 'stage' | 'variety'
   /** resolved per-variety colors, required when paletteBy = 'variety' */
@@ -354,6 +389,9 @@ export function buildSpraySvg(blocks: FieldRow[], opts: BuildOpts = {}): Plantat
 function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): PlantationSvg | null {
   const canvasWidth = opts.canvasWidth ?? 1100
   const pad = opts.pad ?? 28
+  const paper: PaperSize = opts.paper ?? 'letter'
+  const aspect = printAreaAspect(paper)
+  const font = printFontUnits(paper, canvasWidth)
 
   const pts: [number, number][] = []
   for (const b of blocks) {
@@ -398,7 +436,7 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     }
     const w = mxx - mnx || 1e-9
     const h = mxy - mny || 1e-9
-    const score = Math.min(PRINT_AREA_ASPECT / w, 1 / h)
+    const score = Math.min(aspect / w, 1 / h)
     if (score > bestScore) {
       bestScore = score
       bestAngle = t
@@ -493,12 +531,18 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     const [lx, ly] = toXY(b.centroid_lng, b.centroid_lat)
     const wants = (f: 'name' | 'variety' | 'cut' | 'acres') =>
       !opts.labelFields || opts.labelFields.has(f)
-    const { labels, callout } = planCornerLabels(svgRing, lx, ly, {
-      name: wants('name') ? (b.name ?? '') : '',
-      cut: wants('cut') ? cutAbbrev(b.current_ratoon) : '',
-      variety: wants('variety') ? varietyCode(b.variety) : '',
-      acres: wants('acres') ? acreageLabel : '',
-    })
+    const { labels, callout } = planCornerLabels(
+      svgRing,
+      lx,
+      ly,
+      {
+        name: wants('name') ? (b.name ?? '') : '',
+        cut: wants('cut') ? cutAbbrev(b.current_ratoon) : '',
+        variety: wants('variety') ? varietyCode(b.variety) : '',
+        acres: wants('acres') ? acreageLabel : '',
+      },
+      font,
+    )
     if (callout) smallBlocks.push({ name: b.name ?? '', facts: callout })
 
     return {

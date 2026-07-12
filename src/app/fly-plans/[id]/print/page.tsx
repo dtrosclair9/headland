@@ -4,7 +4,7 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields } from '@/lib/fields'
 import { getFlyPlan } from '@/lib/fly-plans'
 import { listAnnotations } from '@/lib/annotations'
-import { buildSpraySvg } from '@/lib/plantation-map-svg'
+import { buildSpraySvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { groupByPlantation } from '@/lib/print-groups'
 import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
@@ -20,10 +20,10 @@ export default async function FlyPlanPrintPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ labels?: string }>
+  searchParams: Promise<{ labels?: string; paper?: string }>
 }) {
   const { id } = await params
-  const { labels: labelsRaw } = await searchParams
+  const { labels: labelsRaw, paper: paperRaw } = await searchParams
   const { org } = await requireUserAndOrg()
   const plan = await getFlyPlan(org.id, id)
   if (!plan) notFound()
@@ -48,11 +48,13 @@ export default async function FlyPlanPrintPage({
     parseLabelFields(org.print_label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
+  const paper = parsePaperSize(paperRaw)
   const sheets: SheetData[] = groupByPlantation(contextBlocks).map((group) => {
     const svg = buildSpraySvg(group.blocks, {
       unitsArpents,
       annotations,
       labelFields: labelFieldSet,
+      paper,
       highlight: { ids: idSet, color: plan.color },
     })
     const counted = group.blocks.filter((b) => idSet.has(b.id))
@@ -79,6 +81,7 @@ export default async function FlyPlanPrintPage({
       emptyMessage="This plan has no blocks."
       style="spray"
       activeLabelFields={labelFields}
+      paper={paper}
     />
   )
 }
