@@ -4,6 +4,8 @@ import type { LabelField } from '@/lib/label-fields'
 import AutoPrint from './AutoPrint'
 import LabelFieldToggles from './LabelFieldToggles'
 import PaperToggle from './PaperToggle'
+import SaveDefaultsButton from './SaveDefaultsButton'
+import PrintNow from './PrintNow'
 
 interface LegendItem {
   key: string
@@ -91,11 +93,12 @@ export default function PlatSheet({
 
       <div className="no-print" style={{ padding: 16, textAlign: 'center', background: '#1A3D2E', color: 'white' }}>
         <p style={{ margin: 0, fontSize: 14 }}>
-          Print or save as PDF — File → Print (⌘P) → &quot;Save as PDF&quot;. Landscape.
-          {pages.length > 1 ? ` ${pages.length} pages, one per plantation.` : ''}
+          {pages.length > 1 ? `${pages.length} pages — one per plantation.` : ''}
           {activeLabelFields && <LabelFieldToggles active={activeLabelFields} />}
           {activeLabelFields && <PaperToggle active={paper} />}
+          {activeLabelFields && <SaveDefaultsButton fields={activeLabelFields} />}
           {bannerExtra}
+          <PrintNow />
         </p>
       </div>
 

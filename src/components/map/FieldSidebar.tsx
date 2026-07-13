@@ -30,6 +30,7 @@ interface FieldSidebarProps {
   onViewPlan: (id: string) => void
   onClosePlan: () => void
   onDeletePlan: (id: string) => Promise<void>
+  onCompletePlan: (id: string) => Promise<void>
   planDraft: { name: string; color: string } | null
   onStartPlanDraft: (draft: { name: string; color: string }) => void
   onCancelPlanDraft: () => void
@@ -71,6 +72,7 @@ export default function FieldSidebar({
   onViewPlan,
   onClosePlan,
   onDeletePlan,
+  onCompletePlan,
   planDraft,
   onStartPlanDraft,
   onCancelPlanDraft,
@@ -230,6 +232,7 @@ export default function FieldSidebar({
           onViewPlan={onViewPlan}
           onClosePlan={onClosePlan}
           onDeletePlan={onDeletePlan}
+          onCompletePlan={onCompletePlan}
           planDraft={planDraft}
           onStartPlanDraft={onStartPlanDraft}
           onCancelPlanDraft={onCancelPlanDraft}

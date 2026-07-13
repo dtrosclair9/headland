@@ -16,6 +16,7 @@ export async function listFlyPlans(orgId: string): Promise<FlyPlanRow[]> {
     .from('fly_plans')
     .select('id, name, color, block_ids')
     .eq('org_id', orgId)
+    .is('completed_at', null)
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as FlyPlanRow[]

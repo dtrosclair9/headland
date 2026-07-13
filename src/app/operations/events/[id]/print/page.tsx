@@ -8,7 +8,6 @@ import { buildSpraySvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { groupByPlantation } from '@/lib/print-groups'
 import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
-import PrintNow from '@/components/print/PrintNow'
 import NotesLangToggle from '@/components/print/NotesLangToggle'
 import { fetchBurnCategory } from '@/lib/burn-category'
 
@@ -170,12 +169,7 @@ export default async function OperationRecordPage({
       paper={paper}
       autoPrint={false}
       record={{ line: recordLine, notes }}
-      bannerExtra={
-        <>
-          {ev.detail_es && <NotesLangToggle active={lang} />}
-          <PrintNow />
-        </>
-      }
+      bannerExtra={ev.detail_es ? <NotesLangToggle active={lang} /> : undefined}
     />
   )
 }

@@ -165,6 +165,21 @@ export default function MapShell({
     }
   }
 
+  // Logging work from a plan completes it: the record lives in Operations,
+  // the plan drops off the Plans tab.
+  async function handleCompletePlan(id: string) {
+    try {
+      await fetch(`/api/fly-plans/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ completed: true }),
+      })
+    } finally {
+      setFlyPlans((prev) => prev.filter((p) => p.id !== id))
+      if (activePlanId === id) setActivePlanId(null)
+    }
+  }
+
   async function handleDeletePlan(id: string) {
     setBusy(true)
     setError(null)
@@ -429,6 +444,7 @@ export default function MapShell({
           }}
           onClosePlan={() => setActivePlanId(null)}
           onDeletePlan={handleDeletePlan}
+          onCompletePlan={handleCompletePlan}
           planDraft={planDraft}
           onStartPlanDraft={(draft) => {
             setPlanDraft(draft)

@@ -22,6 +22,7 @@ export default function PlansPanel({
   onViewPlan,
   onClosePlan,
   onDeletePlan,
+  onCompletePlan,
   planDraft,
   onStartPlanDraft,
   onCancelPlanDraft,
@@ -35,6 +36,7 @@ export default function PlansPanel({
   onViewPlan: (id: string) => void
   onClosePlan: () => void
   onDeletePlan: (id: string) => Promise<void>
+  onCompletePlan: (id: string) => Promise<void>
   planDraft: { name: string; color: string } | null
   onStartPlanDraft: (draft: { name: string; color: string }) => void
   onCancelPlanDraft: () => void
@@ -48,7 +50,7 @@ export default function PlansPanel({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   // "Log work" — bulk-log an application across every block in the plan.
   const [logPlanId, setLogPlanId] = useState<string | null>(null)
-  const [logDone, setLogDone] = useState<string | null>(null)
+  const [logDoneName, setLogDoneName] = useState<string | null>(null)
 
   const byId = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields])
   const planStats = (p: FlyPlanRow) => {
@@ -109,125 +111,6 @@ export default function PlansPanel({
         </div>
       ) : (
         <>
-          {flyPlans.length === 0 && !newOpen && (
-            <p className="text-xs text-gray-500 leading-snug px-4 pt-3">
-              A plan is a named set of blocks with its own color — a spray pass for the pilot, a
-              fertilizer run, a harvest order. Build it once, view it on the white map, print a
-              sheet per plantation, then log the work on every block in one tap.
-            </p>
-          )}
-          <ul className="divide-y divide-gray-50">
-            {flyPlans.map((p) => {
-              const stats = planStats(p)
-              const viewing = activePlanId === p.id
-              return (
-                <li key={p.id} className={viewing ? 'bg-primary/5' : ''}>
-                  <div className="px-4 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
-                      className="w-full text-left flex items-center gap-3"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="w-3.5 h-3.5 rounded-sm flex-shrink-0 border border-black/10"
-                        style={{ background: p.color }}
-                      />
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-semibold text-gray-800 truncate">
-                          {p.name}
-                        </span>
-                        <span className="block text-xs text-gray-500">
-                          {stats.count} block{stats.count === 1 ? '' : 's'} · {stats.area.primary}
-                        </span>
-                      </span>
-                    </button>
-                    {/* Actions on their own row — four of them overflow inline. */}
-                    <span className="mt-1.5 pl-[26px] flex items-center gap-4 text-xs font-semibold">
-                      <button
-                        type="button"
-                        onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
-                        className="text-primary hover:underline"
-                      >
-                        {viewing ? 'Close' : 'View'}
-                      </button>
-                      <a
-                        href={`/fly-plans/${p.id}/print`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Print
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLogDone(null)
-                          setLogPlanId(logPlanId === p.id ? null : p.id)
-                        }}
-                        className="text-primary hover:underline"
-                      >
-                        Log work
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(p.id)}
-                        className="text-red-700 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </span>
-                  </div>
-                  {logDone === p.id && (
-                    <p className="mx-4 mb-2.5 text-xs font-semibold text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1.5">
-                      ✓ Work logged on every block in &ldquo;{p.name}&rdquo; — it&apos;s on the
-                      Operations page now.
-                    </p>
-                  )}
-                  {logPlanId === p.id && (
-                    <div className="px-4 pb-3">
-                      <BulkLogPanel
-                        blockIds={p.block_ids.filter((id) => byId.has(id))}
-                        title={`Log work — ${p.name} (${planStats(p).count} blocks)`}
-                        lockKind="application"
-                        eventColor={p.color}
-                        eventContext={p.name}
-                        onDone={() => {
-                          setLogPlanId(null)
-                          setLogDone(p.id)
-                          setTimeout(() => setLogDone(null), 6000)
-                        }}
-                        onCancel={() => setLogPlanId(null)}
-                      />
-                    </div>
-                  )}
-                  {confirmDelete === p.id && (
-                    <div className="px-4 pb-2.5 flex items-center gap-3 text-xs">
-                      <span className="text-red-800 font-semibold">Delete &ldquo;{p.name}&rdquo;?</span>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await onDeletePlan(p.id)
-                          setConfirmDelete(null)
-                        }}
-                        className="text-red-700 font-bold hover:underline"
-                      >
-                        Yes, delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(null)}
-                        className="text-gray-600 hover:text-primary"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-
           {newOpen ? (
             <div className="p-3 m-3 rounded-md border border-gray-200 space-y-2">
               <input
@@ -290,6 +173,128 @@ export default function PlansPanel({
               </button>
             </div>
           )}
+          {logDoneName && (
+            <p className="mx-4 mt-1 mb-2 text-xs font-semibold text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1.5">
+              ✓ Work logged on every block in &ldquo;{logDoneName}&rdquo; — the plan is complete
+              and its record is on the Operations page.
+            </p>
+          )}
+          {flyPlans.length === 0 && !newOpen && (
+            <p className="text-xs text-gray-500 leading-snug px-4 pt-3">
+              A plan is a named set of blocks with its own color — a spray pass for the pilot, a
+              fertilizer run, a harvest order. Build it once, view it on the white map, print a
+              sheet per plantation, then log the work on every block in one tap.
+            </p>
+          )}
+          <ul className="divide-y divide-gray-50">
+            {flyPlans.map((p) => {
+              const stats = planStats(p)
+              const viewing = activePlanId === p.id
+              return (
+                <li key={p.id} className={viewing ? 'bg-primary/5' : ''}>
+                  <div className="px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
+                      className="w-full text-left flex items-center gap-3"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="w-3.5 h-3.5 rounded-sm flex-shrink-0 border border-black/10"
+                        style={{ background: p.color }}
+                      />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-gray-800 truncate">
+                          {p.name}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {stats.count} block{stats.count === 1 ? '' : 's'} · {stats.area.primary}
+                        </span>
+                      </span>
+                    </button>
+                    {/* Actions on their own row — four of them overflow inline. */}
+                    <span className="mt-1.5 pl-[26px] flex items-center gap-4 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => (viewing ? onClosePlan() : onViewPlan(p.id))}
+                        className="text-primary hover:underline"
+                      >
+                        {viewing ? 'Close' : 'View'}
+                      </button>
+                      <a
+                        href={`/fly-plans/${p.id}/print`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Print
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLogDoneName(null)
+                          setLogPlanId(logPlanId === p.id ? null : p.id)
+                        }}
+                        className="text-primary hover:underline"
+                      >
+                        Log work
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(p.id)}
+                        className="text-red-700 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+                  {logPlanId === p.id && (
+                    <div className="px-4 pb-3">
+                      <BulkLogPanel
+                        blockIds={p.block_ids.filter((id) => byId.has(id))}
+                        title={`Log work — ${p.name} (${planStats(p).count} blocks)`}
+                        lockKind="application"
+                        eventColor={p.color}
+                        eventContext={p.name}
+                        onDone={async () => {
+                          setLogPlanId(null)
+                          // Work logged = plan completed: its record lives in
+                          // Operations; the plan leaves this list.
+                          await onCompletePlan(p.id)
+                          setLogDoneName(p.name)
+                          setTimeout(() => setLogDoneName(null), 8000)
+                        }}
+                        onCancel={() => setLogPlanId(null)}
+                      />
+                    </div>
+                  )}
+                  {confirmDelete === p.id && (
+                    <div className="px-4 pb-2.5 flex items-center gap-3 text-xs">
+                      <span className="text-red-800 font-semibold">Delete &ldquo;{p.name}&rdquo;?</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await onDeletePlan(p.id)
+                          setConfirmDelete(null)
+                        }}
+                        className="text-red-700 font-bold hover:underline"
+                      >
+                        Yes, delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(null)}
+                        className="text-gray-600 hover:text-primary"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+
         </>
       )}
     </div>
