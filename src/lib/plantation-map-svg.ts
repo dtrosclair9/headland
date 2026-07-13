@@ -440,8 +440,10 @@ function planCornerLabels(
   return {
     labels,
     // If the lead printed inside, the chip carries just the facts (the
-    // leader ties them together); otherwise the chip leads with the bold id.
-    callout: leadFits ? { bold: '', text: facts } : { bold: parts.name, text: facts || parts.name },
+    // leader ties them together); otherwise the chip leads with the bold id
+    // (never duplicated into the text slot — a name-only print was rendering
+    // "Block 205 Block 205").
+    callout: leadFits ? { bold: '', text: facts } : { bold: parts.name, text: facts },
   }
 }
 
