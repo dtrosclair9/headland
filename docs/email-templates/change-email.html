@@ -1,0 +1,35 @@
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr>
+        <td align="center" style="background:#1A3D2E;padding:28px 24px;">
+          <img src="https://headlandmaps.com/images/email/logo-white.png" width="150" alt="Headland" style="display:block;max-width:150px;height:auto;" />
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px 40px 8px;">
+          <h1 style="margin:0 0 12px;font-size:22px;color:#1A3D2E;">Confirm your new email</h1>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#374151;">
+            You asked to change your Headland login email to <strong>{{ .NewEmail }}</strong>. Confirm below to make it official.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:4px 40px 28px;">
+          <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email_change&next=/app/settings"
+             style="display:inline-block;background:#1A3D2E;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">
+            Confirm new email
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:20px 40px;border-top:1px solid #f3f4f6;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Headland · Sugarcane farm mapping · <a href="https://headlandmaps.com" style="color:#1A3D2E;">headlandmaps.com</a><br/>
+            Didn&rsquo;t ask for this change? Ignore this email and your login stays the same.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
