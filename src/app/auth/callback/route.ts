@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { notifySignup } from '@/lib/notify'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -96,6 +97,15 @@ export async function GET(request: NextRequest) {
         new URL(`/login?error=${encodeURIComponent(memErr.message)}`, url.origin),
       )
     }
+
+    // Tell Dayne a new farm just landed — first-touch support is the moment
+    // a signup becomes a customer. Best-effort; never blocks the redirect.
+    await notifySignup({
+      farmName,
+      email: user.email ?? 'unknown',
+      state,
+      units,
+    })
   }
 
   return NextResponse.redirect(new URL(next, url.origin))
