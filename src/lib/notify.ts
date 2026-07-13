@@ -8,6 +8,7 @@ const NOTIFY_TO = 'daynetrosclair@icloud.com'
 export async function notifySignup(info: {
   farmName: string
   email: string
+  phone?: string | null
   state: string | null
   units: string
 }): Promise<void> {
@@ -27,6 +28,7 @@ export async function notifySignup(info: {
         text:
           `${info.farmName} just confirmed their account.\n\n` +
           `Email: ${info.email}\n` +
+          `Cell: ${info.phone ?? 'not given'}\n` +
           `State: ${info.state ?? 'not set'}\n` +
           `Units: ${info.units}\n\n` +
           `Reach out and make sure setup goes well — the first import is where farms stick or stall.`,

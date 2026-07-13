@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
       user.user_metadata?.units === 'arpents' ? 'arpents' : 'acres'
     const stateRaw = user.user_metadata?.state
     const state = stateRaw === 'LA' || stateRaw === 'FL' ? stateRaw : null
+    const phone = (user.user_metadata?.phone as string | undefined) ?? null
 
     const admin = createAdminClient()
 
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest) {
         owner_id: user.id,
         units_default: units,
         state,
+        phone,
       })
       .select('id')
       .single()
@@ -103,6 +105,7 @@ export async function GET(request: NextRequest) {
     await notifySignup({
       farmName,
       email: user.email ?? 'unknown',
+      phone,
       state,
       units,
     })

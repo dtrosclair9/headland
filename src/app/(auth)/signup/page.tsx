@@ -63,6 +63,19 @@ export default async function SignupPage({
           <label className="label" htmlFor="email">Email</label>
           <input id="email" name="email" type="email" required className="input" placeholder="you@farm.com" />
         </div>
+        <div>
+          <label className="label" htmlFor="phone">
+            Cell number <span className="text-gray-400 font-normal">(optional — for setup help)</span>
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            maxLength={20}
+            className="input"
+            placeholder="(985) 555-1234"
+          />
+        </div>
 
         <div>
           <label className="label" htmlFor="password">Password</label>
