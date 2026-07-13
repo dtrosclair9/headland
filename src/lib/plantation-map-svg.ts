@@ -283,6 +283,12 @@ function planCornerLabels(
   font: number,
 ): { labels: PlacedLabel[]; callout: { bold: string; text: string } | null } {
   const named = !!parts.name.trim() && parts.name.trim().toLowerCase() !== 'untitled'
+  // A block with nothing to say (label fields off, or its variety/cut just
+  // isn't set) gets no labels and NEVER a callout — an empty chip with a
+  // leader pointing at nothing is worse than silence.
+  if (!named && !parts.cut && !parts.variety && !parts.acres) {
+    return { labels: [], callout: null }
+  }
   const w = (t: string) => textW(t, font)
 
   // ── 1. Page-aligned corner layout (the normal case for full-size blocks) ──
@@ -402,35 +408,40 @@ function planCornerLabels(
     if (labels) return { labels, callout: null }
   }
 
-  // ── 6. Callout: bold id inside the block if it fits, facts on a chip ──
+  // ── 6. Callout: squeeze the LEAD text inside the block if it fits (the
+  // bold id, or — for an unnamed print like variety-only — the facts line
+  // itself, id-style: shrunk a notch and rotated along the axis), and only
+  // what still doesn't fit goes to a chip.
+  const lead = named ? parts.name : facts
   const insetF = font * 0.36
   const longAvail = Math.max(0, fbox.w - 2 * insetF)
   const shortAvail = fbox.h
-  const idFont = clamp(
-    longAvail > 0 ? (longAvail / Math.max(1, textW(parts.name, 1))) : font,
+  const leadFont = clamp(
+    longAvail > 0 ? longAvail / Math.max(1, textW(lead, 1)) : font,
     font * 0.8,
     font,
   )
-  const idFits = named && textW(parts.name, idFont) <= longAvail && shortAvail >= idFont * 0.9
-  const labels: PlacedLabel[] = idFits
+  const leadFits = textW(lead, leadFont) <= longAvail && shortAvail >= leadFont * 0.9
+  const labels: PlacedLabel[] = leadFits
     ? [
         {
           x: cx,
           y: cy,
-          font: idFont,
-          text: parts.name,
-          bold: true,
+          font: leadFont,
+          text: lead,
+          bold: named,
           anchor: 'middle',
-          rotation: shortAvail < idFont * 1.1 || w(parts.name) > box.w ? axis : 0,
+          rotation: shortAvail < leadFont * 1.1 || w(lead) > box.w ? axis : 0,
         },
       ]
     : []
-  if (!facts && idFits) return { labels, callout: null }
+  // Everything the print asked for is inside the block → no chip.
+  if (leadFits && (!named || !facts)) return { labels, callout: null }
   return {
     labels,
-    // If the id printed inside, the chip carries just the facts (the leader
-    // ties them together); otherwise the chip leads with the bold id.
-    callout: { bold: idFits ? '' : parts.name, text: facts || parts.name },
+    // If the lead printed inside, the chip carries just the facts (the
+    // leader ties them together); otherwise the chip leads with the bold id.
+    callout: leadFits ? { bold: '', text: facts } : { bold: parts.name, text: facts || parts.name },
   }
 }
 
