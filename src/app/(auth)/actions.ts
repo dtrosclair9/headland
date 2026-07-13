@@ -14,13 +14,12 @@ const SignUpSchema = z.object({
   farm_name: z.string().min(2).max(100),
   state: z.enum(['LA', 'FL']),
   units: z.enum(['acres', 'arpents']).default('acres'),
-  /** optional cell — lets Dayne actually call new farms for setup help */
+  /** required cell — a farm you can't call is a farm you can't onboard */
   phone: z
     .string()
     .trim()
-    .max(20)
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : null)),
+    .min(7, 'Enter a phone number so we can help you get set up.')
+    .max(20),
 })
 
 const SignInSchema = z.object({
@@ -37,7 +36,7 @@ export async function signUp(formData: FormData) {
     farm_name: formData.get('farm_name'),
     state: formData.get('state'),
     units: formData.get('units') ?? 'acres',
-    phone: formData.get('phone') ?? undefined,
+    phone: formData.get('phone'),
   })
   if (!parsed.success) {
     const msg = parsed.error.issues[0]?.message ?? 'Please fill in farm name, state, email, and a password.'

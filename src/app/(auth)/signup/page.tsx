@@ -65,12 +65,14 @@ export default async function SignupPage({
         </div>
         <div>
           <label className="label" htmlFor="phone">
-            Cell number <span className="text-gray-400 font-normal">(optional — for setup help)</span>
+            Cell number <span className="text-gray-400 font-normal">(we&apos;ll help you get set up)</span>
           </label>
           <input
             id="phone"
             name="phone"
             type="tel"
+            required
+            minLength={7}
             maxLength={20}
             className="input"
             placeholder="(985) 555-1234"
