@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sniffImage } from '@/lib/image-sniff'
 import type { ScoutingCategory } from '@/lib/types'
 
 const BUCKET = 'scouting-photos'
@@ -45,13 +46,6 @@ export async function listScoutingPinsForOrg(
   return (data ?? []) as ScoutingPinForOrgRow[]
 }
 
-const EXT_BY_MIME: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/heic': 'heic',
-}
-
 export interface UploadPhotoInput {
   orgId: string
   fieldId: string
@@ -65,16 +59,19 @@ export async function uploadScoutingPhoto({
   pinId,
   file,
 }: UploadPhotoInput): Promise<string> {
-  const ext = EXT_BY_MIME[file.type] ?? file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${orgId}/${fieldId}/${pinId}.${ext}`
+  const buf = Buffer.from(await file.arrayBuffer())
+  // Verified type drives BOTH the extension and the stored content type; the
+  // client's file.type and filename never touch either.
+  const kind = sniffImage(buf)
+  if (!kind) throw new Error('That file is not a photo we can accept (JPEG, PNG, WebP, or HEIC).')
+  const path = `${orgId}/${fieldId}/${pinId}.${kind.ext}`
 
   // Service-role client: cleaner than fighting Storage RLS for write-through paths
   // (the RLS we wrote covers the user-token path; the server action runs the upload
   // on the user's behalf after we've already verified org membership).
   const admin = createAdminClient()
-  const buf = Buffer.from(await file.arrayBuffer())
   const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buf, {
-    contentType: file.type || 'image/jpeg',
+    contentType: kind.mime,
     upsert: true,
   })
   if (upErr) throw upErr
