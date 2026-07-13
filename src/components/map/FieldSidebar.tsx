@@ -94,7 +94,6 @@ export default function FieldSidebar({
   onStartReposition,
   onRepositionPlantation,
 }: FieldSidebarProps) {
-  const total = formatArea(totalAcres, units)
   // In the white-map state (deselect-all) the print links output the B&W
   // spray-style sheet (and say so).
   const isSpray = deselected && !activePlanId
@@ -151,33 +150,11 @@ export default function FieldSidebar({
 
   return (
     <aside className="w-72 border-r border-gray-100 bg-white flex flex-col shadow-xl md:shadow-none">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
-            Blocks
-          </p>
-          <p className="text-2xl font-bold text-primary mt-1">{fields.length}</p>
-          <p className="text-xs text-gray-500">
-            Total: <span className="font-semibold text-gray-700">{total.primary}</span>
-          </p>
-        </div>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close fields panel"
-            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-primary"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        )}
-      </div>
-
-      {/* Tab bar: block list vs. layer selection */}
+      {/* Tab bar IS the header — the farm's totals already lead the Layers
+          panel ("500 blocks · 3291 ac"), so a separate totals block up top
+          was pure duplication stealing nav height. */}
       {fields.length > 0 && (
-        <div className="px-2 pt-2 border-b border-gray-100 flex gap-1">
+        <div className="px-2 pt-2 border-b border-gray-100 flex gap-1 items-center">
           {(
             [
               ['layers', 'Layers'],
@@ -204,6 +181,18 @@ export default function FieldSidebar({
               )}
             </button>
           ))}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close fields panel"
+              className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-primary shrink-0"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 

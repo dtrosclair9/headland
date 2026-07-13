@@ -173,7 +173,7 @@ export default function LayersPanel({
             rel="noreferrer"
             className="mt-2 block text-center text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"
           >
-            Print these {matched.length} highlighted →
+            Print selected →
           </a>
         )}
         {allOn && (
