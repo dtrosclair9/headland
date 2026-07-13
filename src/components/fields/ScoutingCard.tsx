@@ -108,30 +108,10 @@ export function ScoutingCard({ fieldId, centroidLng, centroidLat, pins }: Props)
             />
           </div>
 
-          <div>
-            <label className="label" htmlFor="lat">Latitude</label>
-            <input
-              id="lat"
-              name="lat"
-              type="number"
-              step="any"
-              required
-              defaultValue={centroidLat.toFixed(6)}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="lng">Longitude</label>
-            <input
-              id="lng"
-              name="lng"
-              type="number"
-              step="any"
-              required
-              defaultValue={centroidLng.toFixed(6)}
-              className="input"
-            />
-          </div>
+          {/* Pins aren't shown on a map anywhere yet, so asking a farmer to
+              type GPS numbers was pure friction — notes pin to the block. */}
+          <input type="hidden" name="lat" value={centroidLat.toFixed(6)} />
+          <input type="hidden" name="lng" value={centroidLng.toFixed(6)} />
 
           <div className="sm:col-span-2">
             <label className="label" htmlFor="scout_note">Note</label>
@@ -146,10 +126,7 @@ export function ScoutingCard({ fieldId, centroidLng, centroidLat, pins }: Props)
           </div>
 
           <div className="sm:col-span-2 flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Location starts at the middle of this block — change the numbers if you
-              marked the spot somewhere else.
-            </p>
+            <p className="text-xs text-gray-500">Saved to this block.</p>
             <button type="submit" className="btn-primary">Add note</button>
           </div>
         </form>
