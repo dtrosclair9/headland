@@ -98,7 +98,7 @@ export default function PlatSheet({
           {activeLabelFields && <PaperToggle active={paper} />}
           {activeLabelFields && <SaveDefaultsButton fields={activeLabelFields} />}
           {bannerExtra}
-          <PrintNow />
+          <PrintNow autoPrintsOnLoad={autoPrint} />
         </p>
       </div>
 
