@@ -3,7 +3,11 @@
 // HTTP API on the already-verified headlandmaps.com domain. Best-effort:
 // a notification failure must never break the signup it's reporting.
 
-const NOTIFY_TO = 'daynetrosclair@icloud.com'
+const NOTIFY_TO = [
+  'daynetrosclair@icloud.com',
+  'info@strykora.com',
+  'info@headlandmaps.com',
+]
 
 export async function notifySignup(info: {
   farmName: string
@@ -23,7 +27,7 @@ export async function notifySignup(info: {
       },
       body: JSON.stringify({
         from: 'Headland <notifications@headlandmaps.com>',
-        to: [NOTIFY_TO],
+        to: NOTIFY_TO,
         subject: `🌱 New Headland signup: ${info.farmName}`,
         text:
           `${info.farmName} just confirmed their account.\n\n` +
