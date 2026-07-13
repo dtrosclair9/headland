@@ -147,9 +147,8 @@ export function ScoutingCard({ fieldId, centroidLng, centroidLat, pins }: Props)
 
           <div className="sm:col-span-2 flex items-center justify-between">
             <p className="text-xs text-gray-500">
-              Coordinates default to the field centroid. From your phone, tap{' '}
-              <code className="bg-gray-100 px-1 rounded">📍</code> on the map to use your
-              GPS location instead (coming soon — paste from a map app for now).
+              Location starts at the middle of this block — change the numbers if you
+              marked the spot somewhere else.
             </p>
             <button type="submit" className="btn-primary">Add note</button>
           </div>

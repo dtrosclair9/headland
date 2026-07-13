@@ -24,7 +24,7 @@ export function WeatherCard({ weather }: Props) {
     <section className="bg-white border border-gray-100 rounded-xl p-6">
       <div className="flex items-baseline justify-between mb-4">
         <h2 className="text-lg font-bold text-primary">Weather</h2>
-        <span className="text-xs text-gray-500">Open-Meteo · field centroid</span>
+        <span className="text-xs text-gray-500">at this block</span>
       </div>
 
       <div className="flex items-center justify-between mb-4">
