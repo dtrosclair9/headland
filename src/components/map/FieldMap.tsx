@@ -174,6 +174,10 @@ export interface FieldMapProps {
   // Stable key for visibleIds so the camera refits only when the plantation
   // selection actually changes.
   visibleKey: string
+  // Signature of the full selection intent (stage/variety/plantation/plan/
+  // deselect). Changes when a LAYER is picked — the camera reframes to the
+  // highlighted blocks then — but not on a plain data refresh.
+  selectionKey: string
   // White-map state (deselect-all or a fly plan): every non-matching block is
   // white but ALL labels stay visible in black — the printed spray-sheet look,
   // live. Replaces the old spray view mode.
@@ -218,6 +222,7 @@ export default function FieldMap({
   focusFieldId,
   visibleIds,
   visibleKey,
+  selectionKey,
   whiteMap,
   highlightColor,
   colorBy,
@@ -905,19 +910,34 @@ export default function FieldMap({
     }
   }, [fields, ready, filterIds, visibleIds])
 
-  // Fit the camera to the farm ONCE on first load, and again only when the
-  // PLANTATION selection changes (picking a plantation zooms to it). Crucially
-  // NOT on every `fields` change: editing actions (rotate, move, log, assign)
-  // call router.refresh(), which hands us a new `fields` array — refitting then
-  // would fling the camera back to the whole farm and lose the grower's place.
+  // Camera framing. Farmers live in layers, so picking one has to reframe the
+  // map to those blocks — select "plant cane" and the camera zooms out to show
+  // every plant-cane block across the farm; pick a plantation and it zooms in.
+  // The refit fires on SELECTION changes (selectionKey), never on a plain data
+  // refresh — so rotate / move / log / assign (which router.refresh) keep the
+  // grower's current view instead of snapping back to the whole farm.
   const didInitialFitRef = useRef(false)
-  const prevVisibleKeyRef = useRef<string | null>(null)
+  const prevSelKeyRef = useRef<string | null>(null)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready || fields.length === 0) return
-    const plantationChanged = prevVisibleKeyRef.current !== visibleKey
-    if (didInitialFitRef.current && !plantationChanged) return // keep the view
-    const target = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
+    const firstFit = !didInitialFitRef.current
+    const selectionChanged = prevSelKeyRef.current !== selectionKey
+    if (!firstFit && !selectionChanged) return // data refresh only → keep view
+
+    // With a layer active, frame the highlighted blocks (e.g. all plant cane).
+    // On first load or a cleared selection, frame the whole farm (or the
+    // isolated plantation).
+    let target: FieldRow[]
+    if (!firstFit && filterIds && filterIds.size > 0) {
+      target = fields.filter((f) => filterIds.has(f.id))
+    } else if (visibleIds) {
+      target = fields.filter((f) => visibleIds.has(f.id))
+    } else {
+      target = fields
+    }
+    didInitialFitRef.current = true
+    prevSelKeyRef.current = selectionKey
     if (target.length === 0) return
     const bounds = new mapboxgl.LngLatBounds()
     for (const f of target) {
@@ -928,14 +948,12 @@ export default function FieldMap({
       }
     }
     if (!bounds.isEmpty()) {
-      // Tight fit: the farm should fill the view at scale, not float in a sea
-      // of blank basemap.
-      map.fitBounds(bounds, { padding: 32, animate: false, maxZoom: 16 })
+      // Tight fit: the selection should fill the view at scale, not float in a
+      // sea of blank basemap. Animate on a layer change, snap on first load.
+      map.fitBounds(bounds, { padding: 32, animate: !firstFit, maxZoom: 16, duration: 500 })
     }
-    didInitialFitRef.current = true
-    prevVisibleKeyRef.current = visibleKey
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey stands in for visibleIds
-  }, [fields, ready, visibleKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey stands in for filterIds/visibleIds
+  }, [fields, ready, selectionKey])
 
   // Deep-link focus: zoom to one block ("half zoomed" — the block plus some
   // neighbors for context). Runs once per focus id, after the farm fit, so

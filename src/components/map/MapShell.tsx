@@ -130,6 +130,23 @@ export default function MapShell({
     .map((p) => p ?? '__none')
     .sort()
     .join(',')
+  // A stable signature of the SELECTION INTENT — changes only when the grower
+  // picks/clears a stage, variety, or plantation, views/closes a plan, or
+  // toggles deselect-all. It deliberately excludes live block taps (drafting)
+  // and the fields data itself, so the camera reframes on a layer change but
+  // NOT on a plain data refresh (rotate/move/log keep your place).
+  const selectionKey = useMemo(
+    () =>
+      [
+        [...layerFilter.stages].sort().join(','),
+        [...layerFilter.varieties].sort().join(','),
+        [...layerFilter.plantations].map((p) => p ?? '__none').sort().join(','),
+        activePlanId ?? '',
+        deselected ? 'D' : '',
+        planDraft ? 'draft' : '',
+      ].join('|'),
+    [layerFilter, activePlanId, deselected, planDraft],
+  )
 
   async function handleCreatePlan(): Promise<boolean> {
     if (!planDraft || selectedIds.size === 0) return false
@@ -545,6 +562,7 @@ export default function MapShell({
         focusFieldId={focusFieldId}
         visibleIds={visibleIds}
         visibleKey={visibleKey}
+        selectionKey={selectionKey}
         whiteMap={whiteMap}
         highlightColor={activePlan?.color ?? (planDraft ? planDraft.color : null)}
         colorBy={colorBy}
