@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Field, RatoonStage } from '@/lib/types'
-import { openTaskCountsByFieldIds } from '@/lib/block-tasks'
+import { openTaskCountsByOrg } from '@/lib/block-tasks'
 import { chunkIds } from '@/lib/chunk-ids'
 import { paginateAll } from '@/lib/paginate'
 
@@ -40,7 +40,7 @@ export async function listFields(orgId: string): Promise<FieldRow[]> {
       .order('created_at', { ascending: true })
       .range(from, to),
   )
-  const counts = await openTaskCountsByFieldIds(rows.map((r) => r.id))
+  const counts = await openTaskCountsByOrg(orgId)
   return rows.map((r) => ({ ...r, open_todo_count: counts[r.id] ?? 0 }))
 }
 

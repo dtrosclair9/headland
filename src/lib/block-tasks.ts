@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { BlockTask } from '@/lib/types'
+import { paginateAll } from '@/lib/paginate'
 
 // All queries are org-scoped by RLS (block_tasks policy checks org membership
 // via the parent block's org), so callers only pass field/task ids.
@@ -57,28 +58,23 @@ export async function deleteBlockTask(taskId: string): Promise<void> {
 }
 
 // Open-task count per block, for the map sidebar badges. Tallied in JS
-// (PostgREST has no GROUP BY count). CRITICAL: the field-id list must be
-// CHUNKED — a big farm (Boudreaux hit 681 blocks) puts every id into the
-// request URL via .in(), and past ~430 ids the URL blows past PostgREST's
-// 16KB header limit and the whole query (and the page that awaits it) 500s.
-export async function openTaskCountsByFieldIds(
-  fieldIds: string[],
-): Promise<Record<string, number>> {
-  if (fieldIds.length === 0) return {}
+// (PostgREST has no GROUP BY count). Scoped by ORG via a join — one query
+// that returns only the (few) open tasks — instead of feeding every field id
+// into an .in() filter. That old approach both overflowed the request URL on
+// big farms AND was slow: 2000 blocks meant 20 sequential round-trips (~1.5s);
+// this org-join is a single ~50ms query. Paginated for the rare farm with
+// 1000+ open to-dos.
+export async function openTaskCountsByOrg(orgId: string): Promise<Record<string, number>> {
   const supabase = await createClient()
-  const counts: Record<string, number> = {}
-  const CHUNK = 100 // ~100 uuids ≈ 4KB URL, safely under the 16KB limit
-  for (let i = 0; i < fieldIds.length; i += CHUNK) {
-    const slice = fieldIds.slice(i, i + CHUNK)
-    const { data, error } = await supabase
+  const rows = await paginateAll<{ field_id: string }>((from, to) =>
+    supabase
       .from('block_tasks')
-      .select('field_id')
-      .in('field_id', slice)
+      .select('field_id, fields!inner(org_id)')
+      .eq('fields.org_id', orgId)
       .eq('done', false)
-    if (error) throw error
-    for (const row of (data ?? []) as { field_id: string }[]) {
-      counts[row.field_id] = (counts[row.field_id] ?? 0) + 1
-    }
-  }
+      .range(from, to),
+  )
+  const counts: Record<string, number> = {}
+  for (const row of rows) counts[row.field_id] = (counts[row.field_id] ?? 0) + 1
   return counts
 }
