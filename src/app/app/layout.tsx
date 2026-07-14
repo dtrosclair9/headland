@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               />
               <span className="font-serif text-lg lg:text-xl font-bold text-primary uppercase tracking-wide">{SITE_NAME}</span>
             </Link>
-            <nav className="hidden md:flex gap-4 lg:gap-6 text-sm font-medium text-gray-700">
+            <nav className="hidden lg:flex gap-4 lg:gap-6 text-sm font-medium text-gray-700">
               <Link href="/app/map" className="hover:text-primary">Map</Link>
               <Link href="/app/operations" className="hover:text-primary">Operations</Link>
               <Link href="/app/plantations" className="hover:text-primary">Plantations</Link>

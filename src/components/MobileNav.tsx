@@ -26,7 +26,7 @@ export default function MobileNav() {
   }, [pathname])
 
   return (
-    <div className="md:hidden">
+    <div className="lg:hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
