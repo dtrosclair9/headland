@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { FieldCycleHistory, RatoonStage } from '@/lib/types'
+import { chunkIds } from '@/lib/chunk-ids'
 
 // Advancing a block one crop year: plant cane → 1st stubble → … → 6th+.
 // Terminal/special stages are intentionally NOT auto-advanced:
@@ -34,28 +35,30 @@ export async function rotateBlocks(input: {
   const cropYear = input.cropYear ?? new Date().getFullYear()
 
   // Gather the target fields' current stages.
-  let query = supabase
+  const query = supabase
     .from('fields')
-    .select('id, current_ratoon')
+    .select('id, current_ratoon, plantation_id')
     .eq('org_id', input.orgId)
     .is('archived_at', null)
 
-  if (input.plantationId && input.fieldIds?.length) {
-    query = query.or(
-      `plantation_id.eq.${input.plantationId},id.in.(${input.fieldIds.join(',')})`,
-    )
-  } else if (input.plantationId) {
-    query = query.eq('plantation_id', input.plantationId)
-  } else if (input.fieldIds?.length) {
-    query = query.in('id', input.fieldIds)
-  } else {
+  if (!input.plantationId && !input.fieldIds?.length) {
     return { advanced: 0, skipped: 0 }
   }
-
+  // Fetch the org's candidate blocks by ORG (never a giant id list in the URL —
+  // that overflows PostgREST's 16KB header limit past ~430 ids), then filter to
+  // the requested plantation and/or field ids in JS.
   const { data: rows, error } = await query
   if (error) throw error
-
-  const targets = (rows ?? []) as { id: string; current_ratoon: RatoonStage | null }[]
+  const idSet = input.fieldIds?.length ? new Set(input.fieldIds) : null
+  const targets = ((rows ?? []) as {
+    id: string
+    current_ratoon: RatoonStage | null
+    plantation_id: string | null
+  }[]).filter(
+    (f) =>
+      (input.plantationId ? f.plantation_id === input.plantationId : false) ||
+      (idSet ? idSet.has(f.id) : false),
+  )
 
   // Group field ids by the stage they'll move TO so each advance is one update.
   const byNextStage = new Map<RatoonStage, string[]>()
@@ -86,12 +89,14 @@ export async function rotateBlocks(input: {
 
   let advanced = 0
   for (const [nextStage, ids] of byNextStage) {
-    const { error: updErr, count } = await supabase
-      .from('fields')
-      .update({ current_ratoon: nextStage }, { count: 'exact' })
-      .in('id', ids)
-    if (updErr) throw updErr
-    advanced += count ?? ids.length
+    for (const slice of chunkIds(ids)) {
+      const { error: updErr, count } = await supabase
+        .from('fields')
+        .update({ current_ratoon: nextStage }, { count: 'exact' })
+        .in('id', slice)
+      if (updErr) throw updErr
+      advanced += count ?? slice.length
+    }
   }
 
   if (historyRows.length > 0) {

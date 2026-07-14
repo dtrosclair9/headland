@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { createClient } from '@/lib/supabase/server'
+import { chunkIds } from '@/lib/chunk-ids'
 
 const PolygonSchema = z.object({
   type: z.literal('Polygon'),
@@ -28,16 +29,20 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient()
 
   // Defense-in-depth on top of RLS: only update blocks that belong to this org.
+  // Chunk the id filter — a big batch overflows the request-URL header limit.
   const ids = parsed.data.features.map((f) => f.id)
-  const { data: owned, error: ownErr } = await supabase
-    .from('fields')
-    .select('id')
-    .eq('org_id', org.id)
-    .in('id', ids)
-  if (ownErr) {
-    return NextResponse.json({ error: ownErr.message }, { status: 500 })
+  const ownedSet = new Set<string>()
+  for (const slice of chunkIds(ids)) {
+    const { data: owned, error: ownErr } = await supabase
+      .from('fields')
+      .select('id')
+      .eq('org_id', org.id)
+      .in('id', slice)
+    if (ownErr) {
+      return NextResponse.json({ error: ownErr.message }, { status: 500 })
+    }
+    for (const r of owned ?? []) ownedSet.add(r.id as string)
   }
-  const ownedSet = new Set((owned ?? []).map((r) => r.id))
   const features = parsed.data.features.filter((f) => ownedSet.has(f.id))
   if (features.length === 0) {
     return NextResponse.json({ error: 'no_owned_fields' }, { status: 400 })

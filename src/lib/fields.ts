@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Field, RatoonStage } from '@/lib/types'
 import { openTaskCountsByFieldIds } from '@/lib/block-tasks'
+import { chunkIds } from '@/lib/chunk-ids'
 
 export async function countActiveFields(orgId: string): Promise<number> {
   const supabase = await createClient()
@@ -57,11 +58,16 @@ export async function listFieldsByPlantation(plantationId: string): Promise<Fiel
 export async function listFieldsByIds(ids: string[], orgId?: string): Promise<FieldRow[]> {
   if (ids.length === 0) return []
   const supabase = await createClient()
-  let q = supabase.from('fields_view').select('*').in('id', ids)
-  if (orgId) q = q.eq('org_id', orgId)
-  const { data, error } = await q.is('archived_at', null).order('created_at', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as FieldRow[]
+  const out: FieldRow[] = []
+  for (const slice of chunkIds(ids)) {
+    let q = supabase.from('fields_view').select('*').in('id', slice)
+    if (orgId) q = q.eq('org_id', orgId)
+    const { data, error } = await q.is('archived_at', null)
+    if (error) throw error
+    out.push(...((data ?? []) as FieldRow[]))
+  }
+  out.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
+  return out
 }
 
 // Pass orgId to enforce ownership explicitly (defense-in-depth on top of the
@@ -131,14 +137,18 @@ export async function bulkAssignPlantation(input: {
 }): Promise<number> {
   if (input.fieldIds.length === 0) return 0
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('fields')
-    .update({ plantation_id: input.plantationId })
-    .eq('org_id', input.orgId)
-    .in('id', input.fieldIds)
-    .select('id')
-  if (error) throw error
-  return data?.length ?? 0
+  let updated = 0
+  for (const slice of chunkIds(input.fieldIds)) {
+    const { data, error } = await supabase
+      .from('fields')
+      .update({ plantation_id: input.plantationId })
+      .eq('org_id', input.orgId)
+      .in('id', slice)
+      .select('id')
+    if (error) throw error
+    updated += data?.length ?? 0
+  }
+  return updated
 }
 
 export async function archiveField(fieldId: string): Promise<void> {

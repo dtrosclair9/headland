@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { chunkIds } from '@/lib/chunk-ids'
 // @ts-expect-error - jszip 2.x ships no types
 import JSZip from 'jszip'
 import {
@@ -68,28 +69,26 @@ export async function generateFarmSnapshot(
   const fieldNameById = new Map((fields ?? []).map((f) => [f.id as string, (f.name as string) ?? '']))
   const ids = (fields ?? []).map((f) => f.id as string)
 
-  const { data: harvests } = ids.length
-    ? await admin
-        .from('harvests')
-        .select('field_id, harvest_year, tons_total, tons_per_acre, notes')
-        .in('field_id', ids)
-    : { data: [] as any[] }
-
-  // Select the real DB column names: wind_direction + wind_speed_mph.
-  // Map to SprayExportRow's wind_dir / wind_speed keys below.
-  const { data: sprays } = ids.length
-    ? await admin
-        .from('applications')
-        .select('field_id, applied_at, product, type, rate, unit, wind_direction, wind_speed_mph, notes')
-        .in('field_id', ids)
-    : { data: [] as any[] }
-
-  const { data: scouting } = ids.length
-    ? await admin
-        .from('scouting_pins')
-        .select('field_id, category, note, created_at')
-        .in('field_id', ids)
-    : { data: [] as any[] }
+  // Chunk the field-id filters — a big farm's full id list overflows the
+  // PostgREST request-URL header limit (see chunk-ids). Merge the batches.
+  async function fetchByFieldIds(table: string, cols: string): Promise<any[]> {
+    const out: any[] = []
+    for (const slice of chunkIds(ids)) {
+      const { data } = await admin.from(table).select(cols).in('field_id', slice)
+      if (data) out.push(...data)
+    }
+    return out
+  }
+  const harvests = await fetchByFieldIds(
+    'harvests',
+    'field_id, harvest_year, tons_total, tons_per_acre, notes',
+  )
+  // Real DB column names: wind_direction + wind_speed_mph (mapped below).
+  const sprays = await fetchByFieldIds(
+    'applications',
+    'field_id, applied_at, product, type, rate, unit, wind_direction, wind_speed_mph, notes',
+  )
+  const scouting = await fetchByFieldIds('scouting_pins', 'field_id, category, note, created_at')
 
   // Build the zip archive.
   const { shp, shx, dbf, prj, cpg } = buildFieldsShapefileSet(
