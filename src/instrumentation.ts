@@ -9,6 +9,9 @@ export async function register() {
   Sentry.init({
     dsn,
     environment: process.env.VERCEL_ENV ?? 'development',
+    // Tag every event with the deploy it came from, so a regression points at
+    // the exact commit. Vercel injects this automatically at build.
+    release: process.env.VERCEL_GIT_COMMIT_SHA,
     tracesSampleRate: 0.1,
     // don't send local dev noise
     enabled: process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview',
