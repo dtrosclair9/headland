@@ -30,7 +30,7 @@ const nextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
       "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
       "img-src 'self' data: blob: https://*.supabase.co https://*.mapbox.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com https://*.sentry.io",
       "worker-src 'self' blob:",
       "font-src 'self' data:",
       "frame-src https://js.stripe.com https://hooks.stripe.com",
@@ -60,4 +60,20 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+const { withSentryConfig } = require('@sentry/nextjs')
+
+// Wraps the build so Sentry can instrument server/edge code and (once
+// SENTRY_AUTH_TOKEN + org/project are set) upload source maps for readable
+// stack traces. With no auth token it degrades gracefully — the app still
+// builds and runs; traces are just minified until Dayne adds the token.
+module.exports = withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  // Route browser Sentry traffic through our own domain so ad-blockers don't
+  // drop it; also keeps the CSP simple.
+  tunnelRoute: '/monitoring',
+  webpack: { treeshake: { removeDebugLogging: true } },
+  // Only upload source maps when a token is present (Dayne can add this later).
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+})
