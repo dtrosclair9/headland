@@ -97,7 +97,6 @@ export default function FieldSidebar({
   // In the white-map state (deselect-all) the print links output the B&W
   // spray-style sheet (and say so).
   const isSpray = deselected && !activePlanId
-  const sprayParam = isSpray ? '&style=spray' : ''
   // Combined acreage of the bulk-selected blocks (live as you tap blocks).
   const selectedArea = useMemo(
     () =>
@@ -414,7 +413,7 @@ export default function FieldSidebar({
       </div>
 
       {selectMode && selectedIds.size > 0 && (
-        <div className="border-t border-gray-100 bg-white p-3 space-y-2">
+        <div className="border-t border-gray-100 bg-white p-3 space-y-2 max-h-[55vh] overflow-y-auto">
           <div className="flex items-baseline justify-between px-1">
             <span className="text-sm font-semibold text-primary">
               {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} selected
@@ -514,14 +513,10 @@ export default function FieldSidebar({
                   </button>
                 </>
               )}
-              <a
-                href={`/blocks/print?ids=${Array.from(selectedIds).join(',')}${sprayParam}`}
-                target="_blank"
-                rel="noreferrer"
-                className="block text-center w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
-              >
-                {isSpray ? `Print spray map of ${selectedIds.size} selected →` : `Print ${selectedIds.size} selected →`}
-              </a>
+              {/* No "print selected blocks" here — a handful of lone blocks
+                  with no surrounding context isn't a useful printout. Context
+                  prints come from the Layers tab (whole plantations/stages)
+                  and per-plantation print. */}
             </>
           )}
         </div>

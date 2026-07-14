@@ -905,13 +905,18 @@ export default function FieldMap({
     }
   }, [fields, ready, filterIds, visibleIds])
 
-  // Fit the camera to the farm on fields changes and when the PLANTATION
-  // selection changes (selecting a plantation zooms to it) — but deliberately
-  // not on stage/variety filter changes, so checking those never yanks the
-  // camera. visibleKey only changes with the plantation picks.
+  // Fit the camera to the farm ONCE on first load, and again only when the
+  // PLANTATION selection changes (picking a plantation zooms to it). Crucially
+  // NOT on every `fields` change: editing actions (rotate, move, log, assign)
+  // call router.refresh(), which hands us a new `fields` array — refitting then
+  // would fling the camera back to the whole farm and lose the grower's place.
+  const didInitialFitRef = useRef(false)
+  const prevVisibleKeyRef = useRef<string | null>(null)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready || fields.length === 0) return
+    const plantationChanged = prevVisibleKeyRef.current !== visibleKey
+    if (didInitialFitRef.current && !plantationChanged) return // keep the view
     const target = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
     if (target.length === 0) return
     const bounds = new mapboxgl.LngLatBounds()
@@ -927,6 +932,8 @@ export default function FieldMap({
       // of blank basemap.
       map.fitBounds(bounds, { padding: 32, animate: false, maxZoom: 16 })
     }
+    didInitialFitRef.current = true
+    prevVisibleKeyRef.current = visibleKey
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleKey stands in for visibleIds
   }, [fields, ready, visibleKey])
 
@@ -1271,13 +1278,22 @@ export default function FieldMap({
       /* label layer may not be ready — ignore */
     }
 
-    // Frame the group with room to drag.
+    // Frame the group ONLY if it isn't already comfortably on screen — a
+    // grower who selected blocks they're already looking at shouldn't have the
+    // camera yanked in. Recenter just when part of the group sits off-view.
     const groupBounds = new mapboxgl.LngLatBounds()
     for (const g of workingMap.values()) {
       for (const ring of g.coordinates) for (const [lng, lat] of ring) groupBounds.extend([lng, lat])
     }
     if (!groupBounds.isEmpty()) {
-      map.fitBounds(groupBounds, { padding: 110, animate: true, maxZoom: 16, duration: 500 })
+      const view = map.getBounds()
+      const onScreen =
+        view &&
+        view.contains(groupBounds.getNorthEast()) &&
+        view.contains(groupBounds.getSouthWest())
+      if (!onScreen) {
+        map.fitBounds(groupBounds, { padding: 110, animate: true, maxZoom: 16, duration: 500 })
+      }
     }
 
     // ── Rotate handle ── a draggable marker above the group; spins the group

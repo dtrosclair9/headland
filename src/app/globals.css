@@ -64,3 +64,15 @@
     @apply block text-sm font-medium text-gray-700 mb-1.5;
   }
 }
+
+/* iOS Safari zooms the WHOLE PAGE in when you focus a form control whose
+   font is under 16px (and doesn't zoom back out on blur — you lose the nav).
+   Several inline inputs use text-sm/text-xs for density; force every text
+   control to 16px on phones so focusing one never triggers that zoom. */
+@media (max-width: 640px) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
