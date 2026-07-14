@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { chunkIds } from '@/lib/chunk-ids'
+import { paginateAll } from '@/lib/paginate'
 // @ts-expect-error - jszip 2.x ships no types
 import JSZip from 'jszip'
 import {
@@ -55,11 +56,10 @@ export async function generateFarmSnapshot(
     .eq('id', orgId)
     .single()
 
-  const { data: fields } = await admin
-    .from('fields_view')
-    .select('*')
-    .eq('org_id', orgId)
-    .is('archived_at', null)
+  // Paginate — export must include EVERY block, not the first 1000 (PostgREST cap).
+  const fields = await paginateAll<any>((from, to) =>
+    admin.from('fields_view').select('*').eq('org_id', orgId).is('archived_at', null).range(from, to),
+  )
 
   const { data: plantations } = await admin
     .from('plantations')

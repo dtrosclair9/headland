@@ -13,7 +13,7 @@ export async function GET() {
 const CreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-  block_ids: z.array(z.string().uuid()).min(1).max(2000),
+  block_ids: z.array(z.string().uuid()).min(1).max(10000),
 })
 
 export async function POST(request: NextRequest) {

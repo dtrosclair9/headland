@@ -6,7 +6,7 @@ import { getPlantation } from '@/lib/plantations'
 
 const BodySchema = z
   .object({
-    field_ids: z.array(z.string().uuid()).max(2000).optional(),
+    field_ids: z.array(z.string().uuid()).max(10000).optional(),
     plantation_id: z.string().uuid().optional(),
     crop_year: z.number().int().min(1980).max(2100).optional(),
   })

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Field, RatoonStage } from '@/lib/types'
 import { openTaskCountsByFieldIds } from '@/lib/block-tasks'
 import { chunkIds } from '@/lib/chunk-ids'
+import { paginateAll } from '@/lib/paginate'
 
 export async function countActiveFields(orgId: string): Promise<number> {
   const supabase = await createClient()
@@ -28,28 +29,32 @@ export interface FieldRow extends Omit<Field, 'geometry'> {
 
 export async function listFields(orgId: string): Promise<FieldRow[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('fields_view')
-    .select('*')
-    .eq('org_id', orgId)
-    .is('archived_at', null)
-    .order('created_at', { ascending: true })
-  if (error) throw error
-  const rows = (data ?? []) as FieldRow[]
+  // Paginate — a farm can exceed the 1000-row PostgREST cap (Boudreaux is at
+  // 681 and climbing); without this the map would silently drop blocks.
+  const rows = await paginateAll<FieldRow>((from, to) =>
+    supabase
+      .from('fields_view')
+      .select('*')
+      .eq('org_id', orgId)
+      .is('archived_at', null)
+      .order('created_at', { ascending: true })
+      .range(from, to),
+  )
   const counts = await openTaskCountsByFieldIds(rows.map((r) => r.id))
   return rows.map((r) => ({ ...r, open_todo_count: counts[r.id] ?? 0 }))
 }
 
 export async function listFieldsByPlantation(plantationId: string): Promise<FieldRow[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('fields_view')
-    .select('*')
-    .eq('plantation_id', plantationId)
-    .is('archived_at', null)
-    .order('created_at', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as FieldRow[]
+  return paginateAll<FieldRow>((from, to) =>
+    supabase
+      .from('fields_view')
+      .select('*')
+      .eq('plantation_id', plantationId)
+      .is('archived_at', null)
+      .order('created_at', { ascending: true })
+      .range(from, to),
+  )
 }
 
 // Fetch a specific set of blocks. Pass orgId to scope explicitly (the "print

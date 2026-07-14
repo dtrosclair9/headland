@@ -13,7 +13,7 @@ const Body = z.object({
   features: z
     .array(z.object({ id: z.string().uuid(), geometry: PolygonSchema }))
     .min(1)
-    .max(2000),
+    .max(10000),
 })
 
 // Save new geometries for a repositioned (moved/rotated) group of blocks.

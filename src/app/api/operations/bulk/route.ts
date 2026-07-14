@@ -10,7 +10,7 @@ import { rateLimit } from '@/lib/rate-limit'
 // product/date across every block). Thin validation wrapper around
 // logOperationEvent — the single path every operation record goes through.
 const BulkSchema = z.object({
-  block_ids: z.array(z.string().uuid()).min(1).max(2000),
+  block_ids: z.array(z.string().uuid()).min(1).max(10000),
   /** event highlight color (a plan's color); defaults by kind */
   color: z
     .string()

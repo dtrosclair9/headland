@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { paginateAll } from '@/lib/paginate'
 
 // A hand-drawn map annotation: a reference line (road, ditch) or a text label
 // ("Hwy 308", "Shop house"). Farm-wide; rendered on the live map and prints.
@@ -18,11 +19,14 @@ export interface AnnotationRow {
 
 export async function listAnnotations(orgId: string): Promise<AnnotationRow[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('map_annotations')
-    .select('id, kind, geometry, text, color, size, rotation, width')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as AnnotationRow[]
+  // Paginate past the 1000-row PostgREST cap — a well-used farm can accumulate
+  // more than 1000 drawn lines/labels over time.
+  return paginateAll<AnnotationRow>((from, to) =>
+    supabase
+      .from('map_annotations')
+      .select('id, kind, geometry, text, color, size, rotation, width')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: true })
+      .range(from, to),
+  )
 }
