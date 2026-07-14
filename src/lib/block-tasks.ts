@@ -56,22 +56,29 @@ export async function deleteBlockTask(taskId: string): Promise<void> {
   if (error) throw error
 }
 
-// Open-task count per block, for the map sidebar badges. One lightweight query
-// across the org's blocks, tallied in JS (PostgREST has no GROUP BY count).
+// Open-task count per block, for the map sidebar badges. Tallied in JS
+// (PostgREST has no GROUP BY count). CRITICAL: the field-id list must be
+// CHUNKED — a big farm (Boudreaux hit 681 blocks) puts every id into the
+// request URL via .in(), and past ~430 ids the URL blows past PostgREST's
+// 16KB header limit and the whole query (and the page that awaits it) 500s.
 export async function openTaskCountsByFieldIds(
   fieldIds: string[],
 ): Promise<Record<string, number>> {
   if (fieldIds.length === 0) return {}
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('block_tasks')
-    .select('field_id')
-    .in('field_id', fieldIds)
-    .eq('done', false)
-  if (error) throw error
   const counts: Record<string, number> = {}
-  for (const row of (data ?? []) as { field_id: string }[]) {
-    counts[row.field_id] = (counts[row.field_id] ?? 0) + 1
+  const CHUNK = 100 // ~100 uuids ≈ 4KB URL, safely under the 16KB limit
+  for (let i = 0; i < fieldIds.length; i += CHUNK) {
+    const slice = fieldIds.slice(i, i + CHUNK)
+    const { data, error } = await supabase
+      .from('block_tasks')
+      .select('field_id')
+      .in('field_id', slice)
+      .eq('done', false)
+    if (error) throw error
+    for (const row of (data ?? []) as { field_id: string }[]) {
+      counts[row.field_id] = (counts[row.field_id] ?? 0) + 1
+    }
   }
   return counts
 }
