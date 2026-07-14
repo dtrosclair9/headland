@@ -39,9 +39,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  await requireUserAndOrg()
+  const { org } = await requireUserAndOrg()
   const { id } = await params
-  const field = await getField(id)
+  const field = await getField(id, org.id)
   if (!field) return NextResponse.json({ error: 'not_found' }, { status: 404 })
   return NextResponse.json({ field })
 }
@@ -50,8 +50,13 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  await requireUserAndOrg()
+  const { org } = await requireUserAndOrg()
   const { id } = await params
+  // Confirm the block is THIS org's before any write — a 404 for someone
+  // else's id, never a silent reach into another farm.
+  if (!(await getField(id, org.id))) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
   const body = await request.json().catch(() => null)
   const parsed = PatchSchema.safeParse(body)
   if (!parsed.success) {
@@ -79,8 +84,11 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  await requireUserAndOrg()
+  const { org } = await requireUserAndOrg()
   const { id } = await params
+  if (!(await getField(id, org.id))) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
   try {
     await archiveField(id)
     return NextResponse.json({ ok: true })

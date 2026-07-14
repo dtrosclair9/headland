@@ -9,7 +9,11 @@ export async function GET(request: NextRequest) {
   const tokenHash = url.searchParams.get('token_hash')
   const type = url.searchParams.get('type') as EmailOtpType | null
   const code = url.searchParams.get('code')
-  const next = url.searchParams.get('next') ?? '/app/map'
+  // `next` is attacker-controllable (it's in the email link). Only allow a
+  // same-origin RELATIVE path — a value like "//evil.com" or "https://evil.com"
+  // would otherwise redirect a just-authenticated user off to a phishing site.
+  const nextRaw = url.searchParams.get('next') ?? '/app/map'
+  const next = nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : '/app/map'
 
   const supabaseError =
     url.searchParams.get('error_description') ??

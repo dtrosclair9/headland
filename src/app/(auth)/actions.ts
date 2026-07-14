@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BASE_URL } from '@/lib/site'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 // Min length kept in sync with the form's minLength and the Supabase setting.
 const PASSWORD = z.string().min(8, 'Password must be at least 8 characters.')
@@ -30,6 +31,9 @@ const SignInSchema = z.object({
 const EmailOnlySchema = z.object({ email: z.string().email() })
 
 export async function signUp(formData: FormData) {
+  if (!(await rateLimit(`signup:${await clientIp()}`, 5, 3600))) {
+    redirect('/signup?error=' + encodeURIComponent('Too many attempts. Please try again later.'))
+  }
   const parsed = SignUpSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
@@ -87,6 +91,9 @@ export async function signIn(formData: FormData) {
 // Fallback / recovery: email a one-time login link instead of a password.
 // Also how existing magic-link users get in to set a password the first time.
 export async function signInWithLink(formData: FormData) {
+  if (!(await rateLimit(`magiclink:${await clientIp()}`, 5, 3600))) {
+    redirect('/login?error=' + encodeURIComponent('Too many login-link requests. Please try again later.'))
+  }
   const parsed = EmailOnlySchema.safeParse({ email: formData.get('email') })
   if (!parsed.success) {
     redirect('/login?error=' + encodeURIComponent('Enter your email to get a login link.'))
@@ -116,6 +123,9 @@ const NewPasswordSchema = z
 // /reset-password. We always show the same confirmation regardless of whether
 // the email exists, to avoid leaking which addresses have accounts.
 export async function requestPasswordReset(formData: FormData) {
+  if (!(await rateLimit(`pwreset:${await clientIp()}`, 5, 3600))) {
+    redirect('/forgot-password?error=' + encodeURIComponent('Too many reset requests. Please try again later.'))
+  }
   const parsed = EmailOnlySchema.safeParse({ email: formData.get('email') })
   if (!parsed.success) {
     redirect('/forgot-password?error=' + encodeURIComponent('Enter a valid email address.'))

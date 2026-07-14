@@ -32,6 +32,8 @@ export default function PrivacyPage() {
             <li><strong>Resend</strong> — delivery of transactional email (sign-up confirmation and password-reset messages).</li>
             <li><strong>Mapbox</strong> — satellite map tiles and geocoding.</li>
             <li><strong>Open-Meteo</strong> — public weather forecasts (no account, queried by lat/lng only).</li>
+            <li><strong>National Weather Service / Iowa State Mesonet</strong> — the official burn category for your area on burn records (queried by lat/lng only).</li>
+            <li><strong>MyMemory</strong> — translates operation notes to Spanish for crew printouts. Only the note text you type is sent, and only when a translation is produced.</li>
             <li><strong>Vercel</strong> — hosting and edge delivery.</li>
             <li><strong>Stripe</strong> — payments and subscription management (when you upgrade to a paid plan).</li>
           </ul>

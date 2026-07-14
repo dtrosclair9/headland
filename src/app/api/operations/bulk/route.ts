@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { APPLICATION_TYPE_KEYS } from '@/lib/application-types'
 import { logOperationEvent } from '@/lib/log-operation-event'
+import { rateLimit } from '@/lib/rate-limit'
 
 // Bulk-log one operation onto many blocks at once: a to-do ("spray johnson
 // grass" on 15 blocks) or a field-work application (a plan flown — same
@@ -43,6 +44,11 @@ const BulkSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const { user, org } = await requireUserAndOrg()
+  // Heaviest write path (up to 2000 rows + 3 external API calls each) — cap
+  // it well above any human pace but low enough to stop a runaway script.
+  if (!(await rateLimit(`bulk:${org.id}`, 30, 60))) {
+    return NextResponse.json({ error: 'rate_limited' }, { status: 429 })
+  }
   const body = await request.json().catch(() => null)
   const parsed = BulkSchema.safeParse(body)
   if (!parsed.success) {

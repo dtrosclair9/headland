@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { area as turfArea } from '@turf/turf'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { rateLimit } from '@/lib/rate-limit'
+import { MAX_IMPORT_BYTES, MAX_IMPORT_FEATURES, totalBytes } from '@/lib/import-limits'
 import { createClient } from '@/lib/supabase/server'
 import { extractShapefileComponents, parseShapefileBuffers } from '@/lib/shapefile-import'
 import { syncSubscriptionAcreage } from '@/lib/stripe-sync'
@@ -119,10 +121,16 @@ export async function POST(request: NextRequest) {
     mapping = {}
   }
 
+  if (!(await rateLimit(`import:${org.id}`, 20, 60))) {
+    return NextResponse.json({ error: 'Too many imports — wait a minute and try again.' }, { status: 429 })
+  }
   const rawFiles = form.getAll('files').filter((x): x is File => x instanceof File)
   const files = await Promise.all(
     rawFiles.map(async (f) => ({ name: f.name, data: Buffer.from(await f.arrayBuffer()) })),
   )
+  if (totalBytes(files) > MAX_IMPORT_BYTES) {
+    return NextResponse.json({ error: 'That file is too large to import.' }, { status: 413 })
+  }
 
   let parsed
   try {
@@ -136,6 +144,12 @@ export async function POST(request: NextRequest) {
   }
   if (parsed.count === 0 || parsed.projected) {
     return NextResponse.json({ error: 'That file could not be imported.' }, { status: 400 })
+  }
+  if (parsed.count > MAX_IMPORT_FEATURES) {
+    return NextResponse.json(
+      { error: `That file has more shapes than we import at once (${MAX_IMPORT_FEATURES}).` },
+      { status: 413 },
+    )
   }
 
   const cutMap = mapping.cutValueMap ?? {}

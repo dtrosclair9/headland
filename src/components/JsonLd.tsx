@@ -8,7 +8,10 @@ export default function JsonLd({ data }: { data: object | object[] }) {
         <script
           key={i}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(d) }}
+          // Escape `<` so a value can never break out of the <script> tag
+          // (e.g. "</script>" in dynamic data). Harmless on today's static
+          // marketing data; correct if any field ever becomes user-supplied.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(d).replace(/</g, '\\u003c') }}
         />
       ))}
     </>

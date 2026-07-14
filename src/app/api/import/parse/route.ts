@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { extractShapefileComponents, parseShapefileBuffers } from '@/lib/shapefile-import'
+import { rateLimit } from '@/lib/rate-limit'
+import { MAX_IMPORT_BYTES, MAX_IMPORT_FEATURES, totalBytes } from '@/lib/import-limits'
 
 export const runtime = 'nodejs'
 
@@ -15,11 +17,17 @@ async function filesFromForm(request: NextRequest) {
 // Step 1 of import: read the uploaded shapefile and return a column summary for
 // the mapping UI. Does NOT touch the database.
 export async function POST(request: NextRequest) {
-  await requireUserAndOrg()
+  const { org } = await requireUserAndOrg()
+  if (!(await rateLimit(`import:${org.id}`, 20, 60))) {
+    return NextResponse.json({ error: 'Too many uploads — wait a minute and try again.' }, { status: 429 })
+  }
 
   const files = await filesFromForm(request)
   if (files.length === 0) {
     return NextResponse.json({ error: 'No file uploaded.' }, { status: 400 })
+  }
+  if (totalBytes(files) > MAX_IMPORT_BYTES) {
+    return NextResponse.json({ error: 'That file is too large to import.' }, { status: 413 })
   }
 
   let parsed
@@ -37,6 +45,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'No field boundaries (polygons) were found in that file.' },
       { status: 400 },
+    )
+  }
+  if (parsed.count > MAX_IMPORT_FEATURES) {
+    return NextResponse.json(
+      { error: `That file has ${parsed.count} shapes — more than we import at once (${MAX_IMPORT_FEATURES}).` },
+      { status: 413 },
     )
   }
   if (parsed.projected) {

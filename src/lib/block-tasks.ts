@@ -35,9 +35,9 @@ export async function setBlockTaskDone(input: {
   taskId: string
   done: boolean
   userId: string
-}): Promise<void> {
+}): Promise<{ ok: boolean }> {
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('block_tasks')
     .update({
       done: input.done,
@@ -45,7 +45,9 @@ export async function setBlockTaskDone(input: {
       completed_by: input.done ? input.userId : null,
     })
     .eq('id', input.taskId)
+    .select('id') // RLS scopes the update; an empty result = not this org's task
   if (error) throw error
+  return { ok: (data?.length ?? 0) > 0 }
 }
 
 export async function deleteBlockTask(taskId: string): Promise<void> {

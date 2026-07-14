@@ -16,6 +16,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_body' }, { status: 400 })
   }
-  await setBlockTaskDone({ taskId: id, done: parsed.data.done, userId: user.id })
+  const { ok } = await setBlockTaskDone({ taskId: id, done: parsed.data.done, userId: user.id })
+  if (!ok) return NextResponse.json({ error: 'not_found' }, { status: 404 })
   return NextResponse.json({ ok: true })
 }

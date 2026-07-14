@@ -63,6 +63,9 @@ export async function logOperationEvent(opts: {
     geometry: b.geometry,
   }))
   const acres = targets.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
+  // Only the ids that passed org validation — never the raw input. A stray
+  // foreign id can't be persisted into the event or spawn a child row.
+  const validIds = targets.map((b) => b.id)
 
   let title: string
   let detail: string | null = null
@@ -106,7 +109,7 @@ export async function logOperationEvent(opts: {
       title,
       detail,
       color,
-      block_ids: blockIds,
+      block_ids: validIds,
       block_count: targets.length,
       acres,
       snapshot_blocks: snapshotBlocks,
@@ -123,7 +126,7 @@ export async function logOperationEvent(opts: {
   if (eventError) return { error: eventError.message, status: 500 }
 
   if (op.kind === 'todo') {
-    const rows = blockIds.map((field_id) => ({
+    const rows = validIds.map((field_id) => ({
       field_id,
       text: op.text,
       created_by: userId,
@@ -132,7 +135,7 @@ export async function logOperationEvent(opts: {
     const { error } = await supabase.from('block_tasks').insert(rows)
     if (error) return { error: error.message, status: 500 }
   } else {
-    const rows = blockIds.map((field_id) => ({
+    const rows = validIds.map((field_id) => ({
       field_id,
       type: op.type,
       applied_at: op.applied_at,

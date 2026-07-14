@@ -60,7 +60,7 @@ export default async function SelectedBlocksPrintPage({
     .map((s) => s.trim())
     .filter(Boolean)
   const scopeSet = scope.length > 0 ? new Set(scope) : null
-  const allBlocks = isHighlight ? await listFields(org.id) : await listFieldsByIds(ids)
+  const allBlocks = isHighlight ? await listFields(org.id) : await listFieldsByIds(ids, org.id)
   const blocks =
     isHighlight && scopeSet
       ? allBlocks.filter((b) => scopeSet.has(b.plantation_id ?? '__none'))

@@ -51,28 +51,27 @@ export async function listFieldsByPlantation(plantationId: string): Promise<Fiel
   return (data ?? []) as FieldRow[]
 }
 
-// Fetch a specific set of blocks (RLS scopes to the caller's org). Used by the
-// "print selected blocks" view.
-export async function listFieldsByIds(ids: string[]): Promise<FieldRow[]> {
+// Fetch a specific set of blocks. Pass orgId to scope explicitly (the "print
+// selected blocks" view takes ids from the URL, so it must not honor another
+// org's ids even if the view's RLS were ever weakened).
+export async function listFieldsByIds(ids: string[], orgId?: string): Promise<FieldRow[]> {
   if (ids.length === 0) return []
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('fields_view')
-    .select('*')
-    .in('id', ids)
-    .is('archived_at', null)
-    .order('created_at', { ascending: true })
+  let q = supabase.from('fields_view').select('*').in('id', ids)
+  if (orgId) q = q.eq('org_id', orgId)
+  const { data, error } = await q.is('archived_at', null).order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as FieldRow[]
 }
 
-export async function getField(fieldId: string): Promise<FieldRow | null> {
+// Pass orgId to enforce ownership explicitly (defense-in-depth on top of the
+// view's RLS) — API routes should always scope to the caller's org so tenant
+// isolation never hinges on a single database flag.
+export async function getField(fieldId: string, orgId?: string): Promise<FieldRow | null> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('fields_view')
-    .select('*')
-    .eq('id', fieldId)
-    .maybeSingle()
+  let q = supabase.from('fields_view').select('*').eq('id', fieldId)
+  if (orgId) q = q.eq('org_id', orgId)
+  const { data, error } = await q.maybeSingle()
   if (error) throw error
   return (data ?? null) as FieldRow | null
 }
