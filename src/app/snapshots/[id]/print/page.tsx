@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getSnapshot } from '@/lib/snapshots'
-import { loadSnapshotBlocks } from '@/lib/snapshot-map'
+import { loadSnapshotBlocks, clusterByProximity } from '@/lib/snapshot-map'
 import { buildPlantationSvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { resolveStageColors } from '@/lib/resolve-colors'
@@ -49,30 +49,35 @@ export default async function SnapshotMapPage({
   const labelFieldSet = new Set(labelFields)
   const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
 
+  // One page per plantation — and when a group's blocks span areas miles
+  // apart (the Unassigned bucket especially), split it into one page per
+  // geographic cluster so each sheet frames one real place instead of
+  // zooming out to confetti.
   const sheets: SheetData[] = groupByPlantation(blocks).flatMap((group) => {
-    const svg = buildPlantationSvg(group.blocks, {
-      unitsArpents,
-      labelFields: labelFieldSet,
-      paper,
-      stageColors: colorOverrides.stage,
-    })
-    const totalAcres = group.blocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
-    const totalArpents = group.blocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
-    const totalLabel = unitsArpents
-      ? `${totalArpents.toFixed(2)} arp`
-      : `${totalAcres.toFixed(2)} ac`
-    const stagesPresent = new Set<string>(
-      group.blocks.flatMap((b) => (b.current_ratoon ? [b.current_ratoon] : [])),
-    )
-    return [
-      {
-        title: group.name,
-        meta: `${group.blocks.length} block${group.blocks.length === 1 ? '' : 's'} · ${totalLabel}`,
+    const clusters = clusterByProximity(group.blocks)
+    return clusters.map((clusterBlocks, ci) => {
+      const svg = buildPlantationSvg(clusterBlocks, {
+        unitsArpents,
+        labelFields: labelFieldSet,
+        paper,
+        stageColors: colorOverrides.stage,
+      })
+      const totalAcres = clusterBlocks.reduce((s, b) => s + Number(b.acreage_cached || 0), 0)
+      const totalArpents = clusterBlocks.reduce((s, b) => s + Number(b.arpents_cached || 0), 0)
+      const totalLabel = unitsArpents
+        ? `${totalArpents.toFixed(2)} arp`
+        : `${totalAcres.toFixed(2)} ac`
+      const stagesPresent = new Set<string>(
+        clusterBlocks.flatMap((b) => (b.current_ratoon ? [b.current_ratoon] : [])),
+      )
+      return {
+        title: clusters.length > 1 ? `${group.name} — area ${ci + 1}` : group.name,
+        meta: `${clusterBlocks.length} block${clusterBlocks.length === 1 ? '' : 's'} · ${totalLabel}`,
         svg,
         legendItems: stageColors.filter((r) => stagesPresent.has(r.key)),
         hasUnset: !!svg?.hasUnset,
-      },
-    ]
+      }
+    })
   })
 
   const taken = new Date(snap.created_at).toLocaleDateString('en-US', {

@@ -6,6 +6,53 @@ import type { RatoonStage } from '@/lib/types'
 
 const BUCKET = 'farm-snapshots'
 
+// Split one print group into geographically-contiguous clusters. The
+// "Unassigned" bucket (and any non-contiguous plantation) can span areas
+// miles apart — fitting them all on ONE sheet zooms out until every block is
+// confetti and no label fits. Blocks chain into the same cluster when their
+// centroids are within gapMeters (transitively), so each printed page frames
+// one real place. A contiguous plantation comes back as a single cluster.
+export function clusterByProximity<T extends { geometry: GeoJSON.Polygon }>(
+  blocks: T[],
+  gapMeters = 1000,
+): T[][] {
+  if (blocks.length <= 1) return blocks.length ? [blocks] : []
+  const cents = blocks.map((b) => {
+    let x = 0,
+      y = 0,
+      n = 0
+    for (const ring of b.geometry?.coordinates ?? []) {
+      for (const c of ring) {
+        x += c[0]
+        y += c[1]
+        n++
+      }
+    }
+    return n ? [x / n, y / n] : [0, 0]
+  })
+  const mLng = 111320 * Math.cos(((cents[0][1] || 30) * Math.PI) / 180)
+  const mLat = 110540
+  // Union-find over centroid proximity.
+  const parent = blocks.map((_, i) => i)
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      const dx = (cents[i][0] - cents[j][0]) * mLng
+      const dy = (cents[i][1] - cents[j][1]) * mLat
+      if (dx * dx + dy * dy <= gapMeters * gapMeters) parent[find(i)] = find(j)
+    }
+  }
+  const byRoot = new Map<number, T[]>()
+  for (let i = 0; i < blocks.length; i++) {
+    const r = find(i)
+    const arr = byRoot.get(r) ?? []
+    arr.push(blocks[i])
+    byRoot.set(r, arr)
+  }
+  // Biggest area first — the main farm leads, outliers follow.
+  return Array.from(byRoot.values()).sort((a, b) => b.length - a.length)
+}
+
 const RATOON = new Set([
   'plant_cane',
   'first_stubble',
