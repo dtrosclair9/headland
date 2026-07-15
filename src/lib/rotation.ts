@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { FieldCycleHistory, RatoonStage } from '@/lib/types'
 import { chunkIds } from '@/lib/chunk-ids'
+import { paginateAll } from '@/lib/paginate'
 
 // Advancing a block one crop year: plant cane → 1st stubble → … → 6th+.
 // Terminal/special stages are intentionally NOT auto-advanced:
@@ -34,21 +35,26 @@ export async function rotateBlocks(input: {
   const supabase = await createClient()
   const cropYear = input.cropYear ?? new Date().getFullYear()
 
-  // Gather the target fields' current stages.
-  const query = supabase
-    .from('fields')
-    .select('id, current_ratoon, plantation_id')
-    .eq('org_id', input.orgId)
-    .is('archived_at', null)
-
   if (!input.plantationId && !input.fieldIds?.length) {
     return { advanced: 0, skipped: 0 }
   }
   // Fetch the org's candidate blocks by ORG (never a giant id list in the URL —
   // that overflows PostgREST's 16KB header limit past ~430 ids), then filter to
-  // the requested plantation and/or field ids in JS.
-  const { data: rows, error } = await query
-  if (error) throw error
+  // the requested plantation and/or field ids in JS. Paginated: PostgREST caps
+  // responses at 1000 rows — without paging, a whole-farm rotation on a
+  // 1000+-block org would silently skip every block past the first 1000.
+  const rows = await paginateAll<{
+    id: string
+    current_ratoon: RatoonStage | null
+    plantation_id: string | null
+  }>((from, to) =>
+    supabase
+      .from('fields')
+      .select('id, current_ratoon, plantation_id')
+      .eq('org_id', input.orgId)
+      .is('archived_at', null)
+      .range(from, to),
+  )
   const idSet = input.fieldIds?.length ? new Set(input.fieldIds) : null
   const targets = ((rows ?? []) as {
     id: string

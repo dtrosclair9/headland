@@ -2,12 +2,17 @@ import { NextResponse } from 'next/server'
 // @ts-expect-error - jszip 2.x ships no types
 import JSZip from 'jszip'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { rateLimit } from '@/lib/rate-limit'
 import { listFields } from '@/lib/fields'
 import { listPlantations } from '@/lib/plantations'
 import { buildFieldsShapefileSet } from '@/lib/farm-export'
 
 export async function GET() {
   const { org } = await requireUserAndOrg()
+  // Full-farm re-encode per call — cheap CPU-amplification lever without a cap.
+  if (!(await rateLimit(`export:${org.id}`, 10, 60))) {
+    return NextResponse.json({ error: 'Too many exports — wait a minute and try again.' }, { status: 429 })
+  }
   const [fields, plantations] = await Promise.all([listFields(org.id), listPlantations(org.id)])
   const { shp, shx, dbf, prj, cpg } = buildFieldsShapefileSet(fields, plantations, org)
 

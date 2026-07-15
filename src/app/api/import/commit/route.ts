@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { z } from 'zod'
 import { area as turfArea } from '@turf/turf'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { rateLimit } from '@/lib/rate-limit'
@@ -20,18 +21,19 @@ const RATOON = new Set([
   'fallow',
 ])
 
-interface Mapping {
-  nameColumn?: string | null
-  varietyColumn?: string | null
-  plantationColumn?: string | null
-  cutColumn?: string | null
-  // Column holding the grower's stated acreage (e.g. FarmWorks "FSA acres").
-  // When set, the importer trusts this over the polygon-derived area — source
-  // polygons are often rough/oversized while the stated acres are correct.
-  acresColumn?: string | null
-  // Maps a raw cut value (e.g. "4") to a ratoon_stage (e.g. "fourth_stubble").
-  cutValueMap?: Record<string, string>
-}
+// Column holding the grower's stated acreage (e.g. FarmWorks "FSA acres"):
+// when set, the importer trusts it over the polygon-derived area — source
+// polygons are often rough/oversized while the stated acres are correct.
+// cutValueMap maps a raw cut value (e.g. "4") to a ratoon_stage.
+const MappingSchema = z.object({
+  nameColumn: z.string().max(200).nullish(),
+  varietyColumn: z.string().max(200).nullish(),
+  plantationColumn: z.string().max(200).nullish(),
+  cutColumn: z.string().max(200).nullish(),
+  acresColumn: z.string().max(200).nullish(),
+  cutValueMap: z.record(z.string().max(200), z.string().max(100)).optional(),
+})
+type Mapping = z.infer<typeof MappingSchema>
 
 function pearson(xs: number[], ys: number[]): number {
   const n = xs.length
@@ -116,7 +118,10 @@ export async function POST(request: NextRequest) {
   let mapping: Mapping = {}
   const mappingRaw = form.get('mapping')
   try {
-    mapping = JSON.parse(typeof mappingRaw === 'string' ? mappingRaw : '{}') as Mapping
+    const parsed = MappingSchema.safeParse(
+      JSON.parse(typeof mappingRaw === 'string' ? mappingRaw : '{}'),
+    )
+    mapping = parsed.success ? parsed.data : {}
   } catch {
     mapping = {}
   }

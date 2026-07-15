@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sniffImage } from '@/lib/image-sniff'
 import type { ScoutingCategory } from '@/lib/types'
+import { paginateAll } from '@/lib/paginate'
 
 const BUCKET = 'scouting-photos'
 
@@ -37,13 +38,15 @@ export async function listScoutingPinsForOrg(
   orgId: string,
 ): Promise<ScoutingPinForOrgRow[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('scouting_pins_for_org')
-    .select('*')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data ?? []) as ScoutingPinForOrgRow[]
+  // Paginated past the 1000-row PostgREST cap — farm-wide pins grow unbounded.
+  return paginateAll<ScoutingPinForOrgRow>((from, to) =>
+    supabase
+      .from('scouting_pins_for_org')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+      .range(from, to),
+  )
 }
 
 export interface UploadPhotoInput {
@@ -117,15 +120,22 @@ export async function createScoutingPin(
   return { id: row.id as string }
 }
 
-export async function deleteScoutingPin(pinId: string): Promise<void> {
+// fieldId scopes the mutation to a block the caller has already verified they
+// own — defense-in-depth so tenant isolation never hinges on RLS alone.
+export async function deleteScoutingPin(pinId: string, fieldId: string): Promise<void> {
   const supabase = await createClient()
   const { data: pin } = await supabase
     .from('scouting_pins')
     .select('photo_url')
     .eq('id', pinId)
+    .eq('field_id', fieldId)
     .maybeSingle()
 
-  const { error } = await supabase.from('scouting_pins').delete().eq('id', pinId)
+  const { error } = await supabase
+    .from('scouting_pins')
+    .delete()
+    .eq('id', pinId)
+    .eq('field_id', fieldId)
   if (error) throw error
 
   if (pin?.photo_url) {

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { APPLICATION_LABELS } from './application-types'
+import { paginateAll } from '@/lib/paginate'
 
 // One row in the farm-wide operations feed: every per-block record type
 // (to-dos, applications/field ops, harvests, scouting, rotations) normalized
@@ -82,61 +83,79 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
   const sinceIso = since.toISOString()
   const sinceDate = sinceIso.slice(0, 10)
 
-  const [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ, eventsQ, fieldsQ] = await Promise.all([
-    supabase
-      .from('block_tasks')
-      .select(`id, text, done, created_at, completed_at, ${FIELD_EMBED}`)
-      .eq('fields.org_id', orgId)
-      .order('created_at', { ascending: false })
-      .limit(2000),
-    supabase
-      .from('applications')
-      .select(`id, applied_at, product, type, rate, unit, notes, ${FIELD_EMBED}`)
-      .eq('fields.org_id', orgId)
-      .is('event_id', null)
-      .gte('applied_at', sinceDate)
-      .order('applied_at', { ascending: false })
-      .limit(3000),
-    supabase
-      .from('harvests')
-      .select(`id, harvest_year, tons_total, tons_per_acre, notes, created_at, ${FIELD_EMBED}`)
-      .eq('fields.org_id', orgId)
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: false })
-      .limit(2000),
-    supabase
-      .from('scouting_pins')
-      .select(`id, category, note, created_at, ${FIELD_EMBED}`)
-      .eq('fields.org_id', orgId)
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: false })
-      .limit(2000),
-    supabase
-      .from('field_cycle_history')
-      .select(`id, crop_year, previous_stage, new_stage, created_at, ${FIELD_EMBED}`)
-      .eq('fields.org_id', orgId)
-      .gte('created_at', sinceIso)
-      .order('created_at', { ascending: false })
-      .limit(2000),
-    supabase
-      .from('operation_events')
-      .select('id, kind, title, detail, color, block_ids, block_count, acres, has_snapshot, occurred_at, occurred_time, burn_category, weather')
-      .eq('org_id', orgId)
-      .gte('occurred_at', sinceDate)
-      .order('occurred_at', { ascending: false })
-      .limit(300),
-    // Block id -> plantation name, to tag events with the plantations touched.
-    supabase.from('fields_view').select('id, plantation_name').eq('org_id', orgId).limit(5000),
-  ])
-  for (const q of [todosQ, appsQ, harvestsQ, scoutingQ, rotationsQ, eventsQ, fieldsQ]) {
-    if (q.error) throw q.error
-  }
-
+  // Every branch paginates: PostgREST silently caps ANY response at 1000 rows
+  // (a .limit(2000) still comes back with 1000), so a big farm's feed would
+  // quietly drop records — oldest to-dos vanishing, rotations under-counting.
   /* eslint-disable @typescript-eslint/no-explicit-any -- PostgREST embed rows */
+  const [todos, apps, harvests, scoutingRows, rotations, events, fieldRows] = await Promise.all([
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('block_tasks')
+        .select(`id, text, done, created_at, completed_at, ${FIELD_EMBED}`)
+        .eq('fields.org_id', orgId)
+        .order('created_at', { ascending: false })
+        .range(from, to),
+    ),
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('applications')
+        .select(`id, applied_at, product, type, rate, unit, notes, ${FIELD_EMBED}`)
+        .eq('fields.org_id', orgId)
+        .is('event_id', null)
+        .gte('applied_at', sinceDate)
+        .order('applied_at', { ascending: false })
+        .range(from, to),
+    ),
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('harvests')
+        .select(`id, harvest_year, tons_total, tons_per_acre, notes, created_at, ${FIELD_EMBED}`)
+        .eq('fields.org_id', orgId)
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: false })
+        .range(from, to),
+    ),
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('scouting_pins')
+        .select(`id, category, note, created_at, ${FIELD_EMBED}`)
+        .eq('fields.org_id', orgId)
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: false })
+        .range(from, to),
+    ),
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('field_cycle_history')
+        .select(`id, crop_year, previous_stage, new_stage, created_at, ${FIELD_EMBED}`)
+        .eq('fields.org_id', orgId)
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: false })
+        .range(from, to),
+    ),
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('operation_events')
+        .select('id, kind, title, detail, color, block_ids, block_count, acres, has_snapshot, occurred_at, occurred_time, burn_category, weather')
+        .eq('org_id', orgId)
+        .gte('occurred_at', sinceDate)
+        .order('occurred_at', { ascending: false })
+        .range(from, to),
+    ),
+    // Block id -> plantation name, to tag events with the plantations touched.
+    paginateAll<any>((from, to) =>
+      supabase
+        .from('fields_view')
+        .select('id, plantation_name')
+        .eq('org_id', orgId)
+        .range(from, to),
+    ),
+  ])
+
   const openTodos: OperationEntry[] = []
   const history: OperationEntry[] = []
 
-  for (const t of (todosQ.data ?? []) as any[]) {
+  for (const t of todos as any[]) {
     const entry: OperationEntry = {
       id: t.id,
       kind: 'todo',
@@ -153,7 +172,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
     }
   }
 
-  for (const a of (appsQ.data ?? []) as any[]) {
+  for (const a of apps as any[]) {
     const label = APPLICATION_LABELS[a.type] ?? a.type
     const rate = a.rate ? ` — ${Number(a.rate)}${a.unit ? ` ${a.unit}` : ''}` : ''
     history.push({
@@ -166,7 +185,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
     })
   }
 
-  for (const h of (harvestsQ.data ?? []) as any[]) {
+  for (const h of harvests as any[]) {
     const tpa = h.tons_per_acre ? ` · ${Number(h.tons_per_acre)} t/ac` : ''
     const tons = h.tons_total ? ` · ${Number(h.tons_total)} tons` : ''
     history.push({
@@ -179,7 +198,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
     })
   }
 
-  for (const s of (scoutingQ.data ?? []) as any[]) {
+  for (const s of scoutingRows as any[]) {
     history.push({
       id: s.id,
       kind: 'scouting',
@@ -194,7 +213,7 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
   // sixty "Rotated 2nd → 3rd" line items is noise — the farmer's record is
   // "the season rolled." One card per day + transition + crop year.
   const rotationGroups = new Map<string, { rows: any[]; from: string; to: string; year: string }>()
-  for (const r of (rotationsQ.data ?? []) as any[]) {
+  for (const r of rotations as any[]) {
     const from = r.previous_stage ? (STAGE_LABELS[r.previous_stage] ?? r.previous_stage) : 'unset'
     const to = STAGE_LABELS[r.new_stage] ?? r.new_stage
     const day = String(r.created_at).slice(0, 10)
@@ -228,9 +247,9 @@ export async function listOperations(orgId: string, sinceMonths: number): Promis
     })
   }
   const plantationByBlock = new Map<string, string>(
-    ((fieldsQ.data ?? []) as any[]).map((f) => [f.id, f.plantation_name ?? 'Unassigned']),
+    (fieldRows as any[]).map((f) => [f.id, f.plantation_name ?? 'Unassigned']),
   )
-  for (const ev of (eventsQ.data ?? []) as any[]) {
+  for (const ev of events as any[]) {
     const plantations = Array.from(
       new Set(
         (ev.block_ids as string[]).map((id) => plantationByBlock.get(id)).filter(Boolean),

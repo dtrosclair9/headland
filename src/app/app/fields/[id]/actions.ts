@@ -15,6 +15,8 @@ import {
   deleteHarvest,
 } from '@/lib/records'
 import { logOperationEvent } from '@/lib/log-operation-event'
+import { rateLimit } from '@/lib/rate-limit'
+import { getPlantation } from '@/lib/plantations'
 import {
   createScoutingPin as createScoutingPinDb,
   deleteScoutingPin as deleteScoutingPinDb,
@@ -81,6 +83,17 @@ export async function updateField(fieldId: string, formData: FormData) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Please check the values entered.'))
   }
 
+  // A plantation id from the client must belong to this org (parity with the
+  // bulk-assign route) — otherwise a field can silently point at a foreign
+  // plantation UUID.
+  if (parsed.data.plantation_id) {
+    const { org } = await requireUserAndOrg()
+    const plantation = await getPlantation(parsed.data.plantation_id)
+    if (!plantation || plantation.org_id !== org.id) {
+      redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Plantation not found.'))
+    }
+  }
+
   try {
     await updateFieldMetadata(fieldId, parsed.data)
   } catch (e) {
@@ -144,7 +157,7 @@ export async function createHarvest(fieldId: string, formData: FormData) {
 export async function removeHarvest(harvestId: string, fieldId: string) {
   await requireOwnedField(fieldId)
   try {
-    await deleteHarvest(harvestId)
+    await deleteHarvest(harvestId, fieldId)
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }
@@ -198,6 +211,12 @@ const ApplicationSchema = z.object({
 export async function createApplication(fieldId: string, formData: FormData) {
   const { user, org } = await requireOwnedField(fieldId)
 
+  // logOperationEvent fans out to weather/translate/burn-category APIs —
+  // share the bulk-ops budget so a scripted loop can't hammer third parties.
+  if (!(await rateLimit(`bulk:${org.id}`, 30, 60))) {
+    redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent('Too many operations at once — wait a minute and try again.'))
+  }
+
   const parsed = ApplicationSchema.safeParse({
     applied_at: formData.get('applied_at'),
     type: formData.get('type'),
@@ -243,7 +262,7 @@ export async function createApplication(fieldId: string, formData: FormData) {
 export async function removeApplication(applicationId: string, fieldId: string) {
   await requireOwnedField(fieldId)
   try {
-    await deleteApplication(applicationId)
+    await deleteApplication(applicationId, fieldId)
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }
@@ -331,7 +350,7 @@ export async function createScoutingPin(fieldId: string, formData: FormData) {
 export async function removeScoutingPin(pinId: string, fieldId: string) {
   await requireOwnedField(fieldId)
   try {
-    await deleteScoutingPinDb(pinId)
+    await deleteScoutingPinDb(pinId, fieldId)
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }
@@ -366,7 +385,7 @@ export async function createBlockTask(fieldId: string, formData: FormData) {
 export async function toggleBlockTask(taskId: string, fieldId: string, done: boolean) {
   const { user } = await requireOwnedField(fieldId)
   try {
-    await setBlockTaskDone({ taskId, done, userId: user.id })
+    await setBlockTaskDone({ taskId, done, userId: user.id, fieldId })
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }
@@ -378,7 +397,7 @@ export async function toggleBlockTask(taskId: string, fieldId: string, done: boo
 export async function removeBlockTask(taskId: string, fieldId: string) {
   await requireOwnedField(fieldId)
   try {
-    await deleteBlockTaskDb(taskId)
+    await deleteBlockTaskDb(taskId, fieldId)
   } catch (e) {
     redirect(`/app/fields/${fieldId}?error=` + encodeURIComponent(e instanceof Error ? e.message : String(e)))
   }

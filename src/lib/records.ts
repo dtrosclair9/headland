@@ -52,9 +52,15 @@ export async function addHarvest(input: AddHarvestInput): Promise<void> {
   if (error) throw error
 }
 
-export async function deleteHarvest(harvestId: string): Promise<void> {
+// fieldId scopes the delete to a block the caller has verified they own —
+// defense-in-depth so tenant isolation never hinges on RLS alone.
+export async function deleteHarvest(harvestId: string, fieldId: string): Promise<void> {
   const supabase = await createClient()
-  const { error } = await supabase.from('harvests').delete().eq('id', harvestId)
+  const { error } = await supabase
+    .from('harvests')
+    .delete()
+    .eq('id', harvestId)
+    .eq('field_id', fieldId)
   if (error) throw error
 }
 
@@ -77,9 +83,13 @@ export async function addApplication(input: AddApplicationInput): Promise<void> 
   if (error) throw error
 }
 
-export async function deleteApplication(applicationId: string): Promise<void> {
+export async function deleteApplication(applicationId: string, fieldId: string): Promise<void> {
   const supabase = await createClient()
-  const { error } = await supabase.from('applications').delete().eq('id', applicationId)
+  const { error } = await supabase
+    .from('applications')
+    .delete()
+    .eq('id', applicationId)
+    .eq('field_id', fieldId)
   if (error) throw error
 }
 

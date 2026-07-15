@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server'
 // @ts-expect-error tokml ships untyped
 import tokml from 'tokml'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { rateLimit } from '@/lib/rate-limit'
 import { listFields } from '@/lib/fields'
 
 export async function GET() {
   const { org } = await requireUserAndOrg()
+  // Full-farm re-encode per call — cheap CPU-amplification lever without a cap.
+  if (!(await rateLimit(`export:${org.id}`, 10, 60))) {
+    return NextResponse.json({ error: 'Too many exports — wait a minute and try again.' }, { status: 429 })
+  }
   const fields = await listFields(org.id)
 
   const featureCollection: GeoJSON.FeatureCollection = {

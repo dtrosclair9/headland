@@ -7,6 +7,7 @@ import {
   updateFieldGeometry,
   updateFieldMetadata,
 } from '@/lib/fields'
+import { getPlantation } from '@/lib/plantations'
 
 const PolygonSchema = z.object({
   type: z.literal('Polygon'),
@@ -61,6 +62,15 @@ export async function PATCH(
   const parsed = PatchSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid_body', details: parsed.error.flatten() }, { status: 400 })
+  }
+
+  // A plantation id must belong to THIS org (parity with bulk-plantation) —
+  // otherwise a field can silently point at a foreign plantation UUID.
+  if (parsed.data.plantation_id) {
+    const plantation = await getPlantation(parsed.data.plantation_id)
+    if (!plantation || plantation.org_id !== org.id) {
+      return NextResponse.json({ error: 'plantation_not_found' }, { status: 404 })
+    }
   }
 
   const { geometry, ...metadata } = parsed.data

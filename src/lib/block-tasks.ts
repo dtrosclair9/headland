@@ -32,13 +32,29 @@ export async function createBlockTask(input: {
   if (error) throw error
 }
 
+// fieldId (when the caller knows it) scopes the mutation to a block they've
+// verified they own; orgId scopes via the parent-field join for callers that
+// only have a task id. Either way tenant isolation never hinges on RLS alone.
 export async function setBlockTaskDone(input: {
   taskId: string
   done: boolean
   userId: string
+  fieldId?: string
+  orgId?: string
 }): Promise<{ ok: boolean }> {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  if (input.orgId && !input.fieldId) {
+    // Resolve + verify the task's parent block belongs to this org first.
+    const { data: task, error: taskErr } = await supabase
+      .from('block_tasks')
+      .select('id, fields!inner(org_id)')
+      .eq('id', input.taskId)
+      .eq('fields.org_id', input.orgId)
+      .maybeSingle()
+    if (taskErr) throw taskErr
+    if (!task) return { ok: false }
+  }
+  let q = supabase
     .from('block_tasks')
     .update({
       done: input.done,
@@ -46,14 +62,19 @@ export async function setBlockTaskDone(input: {
       completed_by: input.done ? input.userId : null,
     })
     .eq('id', input.taskId)
-    .select('id') // RLS scopes the update; an empty result = not this org's task
+  if (input.fieldId) q = q.eq('field_id', input.fieldId)
+  const { data, error } = await q.select('id')
   if (error) throw error
   return { ok: (data?.length ?? 0) > 0 }
 }
 
-export async function deleteBlockTask(taskId: string): Promise<void> {
+export async function deleteBlockTask(taskId: string, fieldId: string): Promise<void> {
   const supabase = await createClient()
-  const { error } = await supabase.from('block_tasks').delete().eq('id', taskId)
+  const { error } = await supabase
+    .from('block_tasks')
+    .delete()
+    .eq('id', taskId)
+    .eq('field_id', fieldId)
   if (error) throw error
 }
 
