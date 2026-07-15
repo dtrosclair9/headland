@@ -112,6 +112,12 @@ export interface Field {
   current_ratoon: RatoonStage | null
   notes: string | null
   plantation_id: string | null
+  // FSA identifiers, per block (Farm > Tract > Field). Captured on import,
+  // written back on export. Per-block so a plantation can span multiple
+  // tracts/farms without losing any block's true numbers.
+  fsa_farm_number: string | null
+  fsa_tract_number: string | null
+  clu_number: string | null
   archived_at: string | null
   created_at: string
 }

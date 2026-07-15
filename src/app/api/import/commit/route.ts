@@ -172,6 +172,9 @@ export async function POST(request: NextRequest) {
       ? mapping.plantationColumn
       : findCol(/tract/i)
   const farmCol = findCol(/farm[\s_]*n/i, /farm[\s_]*num/i, /^farm$/i)
+  // CLU/field number (FSA CLUNBR, FarmWorks clu_number). Match the numbered
+  // column, never the CLUID GUID.
+  const cluCol = findCol(/clu[\s_]*n/i, /^clu$/i)
 
   const features = parsed.features.map((f) => {
     const cutRaw = mapping.cutColumn ? (f.properties[mapping.cutColumn] ?? '') : ''
@@ -186,6 +189,7 @@ export async function POST(request: NextRequest) {
       plantation: val(f.properties, mapping.plantationColumn),
       tract: val(f.properties, tractCol),
       farm: val(f.properties, farmCol),
+      clu: val(f.properties, cluCol),
       acres: Number.isFinite(acresNum) && acresNum > 0 ? String(acresNum) : '',
     }
   })

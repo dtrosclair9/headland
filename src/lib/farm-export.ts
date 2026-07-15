@@ -16,6 +16,7 @@ const FIELDS: ShpField[] = [
   { name: 'plantation', type: 'C', length: 50 },
   { name: 'farm', type: 'C', length: 10 },
   { name: 'tract', type: 'C', length: 10 },
+  { name: 'clu', type: 'C', length: 20 },
   { name: 'notes', type: 'C', length: 100 },
 ]
 
@@ -44,10 +45,16 @@ export function buildFieldsShapefileSet(
       f.plant_date ?? '',
       f.current_ratoon ? f.current_ratoon.replace(/_/g, ' ') : '',
       f.plantation_name ?? '',
-      f.plantation_name
-        ? (farmByName.get(f.plantation_name) ?? org.fsa_farm_number ?? '')
-        : (org.fsa_farm_number ?? ''),
-      f.plantation_name ? (tractByName.get(f.plantation_name) ?? '') : '',
+      // FSA numbers per block first (authoritative — a plantation can span
+      // multiple tracts/farms), then the plantation's, then the org default.
+      f.fsa_farm_number ??
+        (f.plantation_name ? farmByName.get(f.plantation_name) : null) ??
+        org.fsa_farm_number ??
+        '',
+      f.fsa_tract_number ??
+        (f.plantation_name ? tractByName.get(f.plantation_name) : null) ??
+        '',
+      f.clu_number ?? '',
       f.notes ?? '',
     ],
   }))
@@ -69,6 +76,9 @@ export function buildFieldsGeoJSON(fields: FieldRow[]): string {
         plant_date: f.plant_date ?? '',
         cut: f.current_ratoon ?? '',
         plantation: f.plantation_name ?? '',
+        farm: f.fsa_farm_number ?? '',
+        tract: f.fsa_tract_number ?? '',
+        clu: f.clu_number ?? '',
         notes: f.notes ?? '',
       },
     })),
