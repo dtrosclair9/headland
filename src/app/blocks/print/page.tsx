@@ -68,11 +68,17 @@ export default async function SelectedBlocksPrintPage({
   // snapshot map's ids are the archive's deterministic snap-N ids, so the
   // same ids/scope/highlight semantics apply.
   let snapshotBlocks: Awaited<ReturnType<typeof listFields>> | null = null
+  let snapshotLabel: string | null = null
   if (snapshotRaw) {
     const snap = await getSnapshot(snapshotRaw)
     if (snap && snap.org_id === org.id) {
       const raw = await loadSnapshotBlocks(snap.storage_path)
       snapshotBlocks = inheritPlantations(raw ?? [], await listFields(org.id))
+      const [py, pm] = snap.period.split('-').map(Number)
+      snapshotLabel = new Date(py, pm - 1, 1).toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      })
     }
   }
   const idSet2 = new Set(ids)
@@ -96,7 +102,9 @@ export default async function SelectedBlocksPrintPage({
   )
 
   const unitsArpents = org.units_default === 'arpents'
-  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  // A snapshot print is a HISTORICAL document — date it by the archived
+  // month, never by when someone happened to print it.
+  const today = snapshotLabel ?? new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   // Which block facts print: ?labels= override, else the farm's saved preset.
   const labelFields = parseLabelFields(
     labelsRaw,
@@ -162,7 +170,7 @@ export default async function SelectedBlocksPrintPage({
 
   return (
     <PlatSheet
-      orgName={org.name}
+      orgName={snapshotLabel ? `${org.name} — ${snapshotLabel} snapshot` : org.name}
       sheets={sheets}
       today={today}
       unitWord={unitsArpents ? 'arpents' : 'acres'}

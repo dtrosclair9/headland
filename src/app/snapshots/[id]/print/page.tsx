@@ -93,11 +93,9 @@ export default async function SnapshotMapPage({
     })
   })
 
-  const taken = new Date(snap.created_at).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  // Date the sheet by the archived month ("July 2026"), not the capture
+  // timestamp or print day — this is a historical document.
+  const taken = periodLabel(snap.period)
 
   return (
     <PlatSheet
