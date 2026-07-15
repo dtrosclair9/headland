@@ -160,6 +160,19 @@ export async function POST(request: NextRequest) {
   // grower mapping it. Use their mapped column if set, else auto-detect any
   // "acre(s)" column (preferring FSA acres) whose values look like acreages.
   const acresCol = mapping.acresColumn || autoDetectAcresColumn(parsed)
+
+  // FSA identifiers ride along silently (no extra UI). Both FSA CLU
+  // (TRACTNBR/FARMNBR) and FarmWorks (tract_numb/farm_numbe) carry them, and
+  // the export needs them on the plantation to round-trip. Tract defaults to
+  // the plantation column when that's the tract; farm is name-detected.
+  const findCol = (...res: RegExp[]) =>
+    res.map((re) => parsed.columns.find((c) => re.test(c))).find(Boolean) ?? null
+  const tractCol =
+    mapping.plantationColumn && /tract/i.test(mapping.plantationColumn)
+      ? mapping.plantationColumn
+      : findCol(/tract/i)
+  const farmCol = findCol(/farm[\s_]*n/i, /farm[\s_]*num/i, /^farm$/i)
+
   const features = parsed.features.map((f) => {
     const cutRaw = mapping.cutColumn ? (f.properties[mapping.cutColumn] ?? '') : ''
     const ratoon = cutMap[cutRaw]
@@ -171,6 +184,8 @@ export async function POST(request: NextRequest) {
       variety: val(f.properties, mapping.varietyColumn),
       ratoon: ratoon && RATOON.has(ratoon) ? ratoon : '',
       plantation: val(f.properties, mapping.plantationColumn),
+      tract: val(f.properties, tractCol),
+      farm: val(f.properties, farmCol),
       acres: Number.isFinite(acresNum) && acresNum > 0 ? String(acresNum) : '',
     }
   })

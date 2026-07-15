@@ -36,6 +36,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
   const [acresCol, setAcresCol] = useState('')
   const [cutCol, setCutCol] = useState('')
   const [cutMap, setCutMap] = useState<Record<string, string>>({})
+  const [autoFilled, setAutoFilled] = useState<string[]>([])
   const [imported, setImported] = useState<number | null>(null)
 
   async function doParse(e: React.FormEvent) {
@@ -53,8 +54,11 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not read that file.')
       setParse(data as ParseResult)
-      // Auto-suggest the column mapping from common header names so the grower
-      // mostly just confirms. They can override any of these.
+      // Auto-suggest the column mapping. Covers the two real-world sources:
+      // FarmWorks exports ("My Field ID", "tract_numb", "farm_numbe",
+      // "FSA acres", "Year Cane", "Variety") and FSA CLU shapefiles ("CLUNBR",
+      // "TRACTNBR", "FARMNBR", "CALCACRES"). The grower just confirms; every
+      // pick is overridable below.
       const cols: string[] = (data as ParseResult).columns || []
       const pick = (...res: RegExp[]) => {
         for (const re of res) {
@@ -63,10 +67,21 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
         }
         return ''
       }
-      setNameCol(pick(/field\s*i\b/i, /field\s*name/i, /^name$/i, /\bblock\b/i, /label/i))
-      setVarietyCol(pick(/variet/i))
-      setAcresCol(pick(/fsa[\s_]*acre/i, /\bacre/i))
-      setCutCol(pick(/year\s*cane/i, /ratoon/i, /stubble/i, /^cut$/i, /cycle/i))
+      const picks = {
+        // grower's own block id first (FarmWorks "My Field ID"), else the FSA CLU number
+        name: pick(/field\s*name/i, /\bmy\s*field/i, /field\s*id/i, /field\s*i\b/i, /^name$/i, /\blabel\b/i, /clu\s*n?br/i, /clu[\s_]*num/i),
+        plantation: pick(/tract/i, /plantation/i, /\bsection\b/i),
+        // prefer the FSA/official acreage over "My Acres" when both exist
+        acres: pick(/fsa[\s_]*acre/i, /calc[\s_]*acre/i, /gis[\s_]*acre/i, /\bacres?\b/i, /acre/i),
+        variety: pick(/variet/i, /\bcrop\b/i),
+        cut: pick(/year\s*cane/i, /ratoon/i, /stubble/i, /^cut$/i, /\bcycle\b/i),
+      }
+      setNameCol(picks.name)
+      setPlantationCol(picks.plantation)
+      setAcresCol(picks.acres)
+      setVarietyCol(picks.variety)
+      setCutCol(picks.cut)
+      setAutoFilled(Object.entries(picks).filter(([, v]) => v).map(([k]) => k))
       setStep(2)
     } catch (e) {
       setError(friendlyError(e))
@@ -125,7 +140,10 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
     return (
       <div className="space-y-5">
         <div className="rounded-md bg-green-50 border border-green-100 px-4 py-3 text-sm text-green-800">
-          Found <strong>{parse.count}</strong> field{parse.count === 1 ? '' : 's'} in your file. Now tell us which column is which.
+          Found <strong>{parse.count}</strong> field{parse.count === 1 ? '' : 's'} in your file.{' '}
+          {autoFilled.length > 0
+            ? <>We auto-matched <strong>{autoFilled.length}</strong> column{autoFilled.length === 1 ? '' : 's'} below — just confirm they look right (or adjust any).</>
+            : <>Tell us which column is which below.</>}
         </div>
         {error && (
           <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-700">{error}</div>
