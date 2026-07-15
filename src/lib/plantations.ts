@@ -1,43 +1,56 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Plantation } from '@/lib/types'
+import { paginateAll } from '@/lib/paginate'
 
 // One plantation, plus a denormalized count of how many active (un-archived)
-// fields are currently assigned to it. The count is useful for the
-// management UI and avoids an N+1 round-trip per plantation.
+// fields are currently assigned to it, and the distinct FSA tracts those
+// blocks carry (per-block tract is authoritative — a plantation can span
+// several). Both are for the management UI, avoiding N+1 round-trips.
 export interface PlantationWithCount extends Plantation {
   field_count: number
+  block_tracts: string[]
 }
 
 export async function listPlantations(orgId: string): Promise<PlantationWithCount[]> {
   const supabase = await createClient()
   // Two queries instead of a nested PostgREST select — nested filters on
   // joined rows can be flaky and silently drop the archived-at filter.
-  const [plantationsRes, fieldRes] = await Promise.all([
+  // Fields are paginated past the 1000-row PostgREST cap (big farms).
+  const [plantationsRes, fieldRows] = await Promise.all([
     supabase
       .from('plantations')
       .select('*')
       .eq('org_id', orgId)
       .is('archived_at', null)
       .order('name', { ascending: true }),
-    supabase
-      .from('fields')
-      .select('plantation_id')
-      .eq('org_id', orgId)
-      .is('archived_at', null)
-      .not('plantation_id', 'is', null),
+    paginateAll<{ plantation_id: string | null; fsa_tract_number: string | null }>((from, to) =>
+      supabase
+        .from('fields')
+        .select('plantation_id, fsa_tract_number')
+        .eq('org_id', orgId)
+        .is('archived_at', null)
+        .not('plantation_id', 'is', null)
+        .range(from, to),
+    ),
   ])
   if (plantationsRes.error) throw plantationsRes.error
-  if (fieldRes.error) throw fieldRes.error
 
   const counts = new Map<string, number>()
-  for (const row of (fieldRes.data ?? []) as { plantation_id: string | null }[]) {
+  const tracts = new Map<string, Set<string>>()
+  for (const row of fieldRows) {
     if (!row.plantation_id) continue
     counts.set(row.plantation_id, (counts.get(row.plantation_id) ?? 0) + 1)
+    if (row.fsa_tract_number) {
+      const set = tracts.get(row.plantation_id) ?? new Set<string>()
+      set.add(row.fsa_tract_number)
+      tracts.set(row.plantation_id, set)
+    }
   }
 
   return ((plantationsRes.data ?? []) as Plantation[]).map((s) => ({
     ...s,
     field_count: counts.get(s.id) ?? 0,
+    block_tracts: [...(tracts.get(s.id) ?? [])].sort(),
   }))
 }
 

@@ -23,8 +23,9 @@ export default async function PlantationsPage({
     <div className="container-wide py-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-primary mb-1">Plantations</h1>
       <p className="text-sm text-gray-600 mb-6">
-        Group your blocks by location (e.g. <em>Rosedale</em>, <em>Woodlawn</em>). Lines up with
-        the FSA Farm / Tract concept — add the farm and tract numbers if you have them.
+        Group your blocks by location (e.g. <em>Rosedale</em>, <em>Woodlawn</em>). A plantation
+        usually matches an FSA <strong>farm</strong>; tract numbers live on each block (a
+        plantation can span several tracts).
       </p>
 
       {error && (
@@ -159,6 +160,17 @@ export default async function PlantationsPage({
                         defaultValue={plantation.fsa_tract_number ?? ''}
                         className="input"
                       />
+                      {plantation.block_tracts.length > 0 ? (
+                        <p className="mt-1 text-xs text-gray-500">
+                          {plantation.block_tracts.length === 1
+                            ? <>Blocks carry tract <strong>{plantation.block_tracts[0]}</strong>.</>
+                            : <>Blocks span tracts <strong>{plantation.block_tracts.join(', ')}</strong> — leave this blank; each block keeps its own.</>}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Used for blocks that don&apos;t carry their own tract (e.g. hand-drawn).
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div>
