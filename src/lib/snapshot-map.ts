@@ -138,6 +138,18 @@ export async function loadSnapshotBlocks(storagePath: string): Promise<FieldRow[
       const p = (f.properties ?? {}) as Record<string, unknown>
       const cut = String(p.cut ?? '')
       const plantation = String(p.plantation ?? '') || null
+      // Real centroid — the map flies here when the block is selected, so
+      // (0,0) placeholders would launch the camera into the Atlantic.
+      let cx = 0,
+        cy = 0,
+        cn = 0
+      for (const ring of (f.geometry as GeoJSON.Polygon).coordinates ?? []) {
+        for (const c of ring) {
+          cx += c[0]
+          cy += c[1]
+          cn++
+        }
+      }
       return {
         // Synthetic ids — these blocks exist only in the archive. The
         // plantation NAME doubles as the grouping id so one page prints per
@@ -146,8 +158,8 @@ export async function loadSnapshotBlocks(storagePath: string): Promise<FieldRow[
         org_id: '',
         name: String(p.name ?? ''),
         geometry: f.geometry as GeoJSON.Polygon,
-        centroid_lng: 0,
-        centroid_lat: 0,
+        centroid_lng: cn ? cx / cn : 0,
+        centroid_lat: cn ? cy / cn : 0,
         acreage_cached: Number(p.acres ?? 0),
         arpents_cached: Number(p.arpents ?? 0),
         variety: String(p.variety ?? '') || null,

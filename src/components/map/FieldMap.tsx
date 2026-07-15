@@ -543,7 +543,9 @@ export default function FieldMap({
             `<div style="font-family:system-ui,sans-serif;min-width:150px">` +
               `<div style="font-weight:700;color:#1A3D2E;font-size:15px">${name}</div>` +
               `<div style="color:#4b5563;font-size:12px;margin-top:2px">${meta}</div>` +
-              `<a href="/app/fields/${featureId}" style="display:inline-block;margin-top:10px;font-weight:600;font-size:14px;color:#1A3D2E">Open block →</a>` +
+              (readOnlyRef.current
+                ? ''
+                : `<a href="/app/fields/${featureId}" style="display:inline-block;margin-top:10px;font-weight:600;font-size:14px;color:#1A3D2E">Open block →</a>`) +
               `</div>`,
           )
           .addTo(map)
