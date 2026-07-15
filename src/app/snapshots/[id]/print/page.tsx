@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { getSnapshot } from '@/lib/snapshots'
-import { loadSnapshotBlocks, clusterByProximity } from '@/lib/snapshot-map'
+import { loadSnapshotBlocks, clusterByProximity, inheritPlantations } from '@/lib/snapshot-map'
+import { listFields } from '@/lib/fields'
+import { listAnnotations } from '@/lib/annotations'
 import { buildPlantationSvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { resolveStageColors } from '@/lib/resolve-colors'
 import { groupByPlantation } from '@/lib/print-groups'
-import { parseLabelFields, type LabelField } from '@/lib/label-fields'
+import { parseLabelFields } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
 
 export const metadata: Metadata = { title: 'Farm snapshot map' }
@@ -25,10 +27,10 @@ export default async function SnapshotMapPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ paper?: string; labels?: string }>
+  searchParams: Promise<{ paper?: string; labels?: string; plantation?: string }>
 }) {
   const { id } = await params
-  const { paper: paperRaw, labels: labelsRaw } = await searchParams
+  const { paper: paperRaw, labels: labelsRaw, plantation: plantationRaw } = await searchParams
   const { org } = await requireUserAndOrg()
 
   const snap = await getSnapshot(id)
@@ -38,14 +40,24 @@ export default async function SnapshotMapPage({
     )
   }
 
-  const blocks = (await loadSnapshotBlocks(snap.storage_path)) ?? []
-  const colorOverrides = await getOrgColors(org.id)
+  const [rawBlocks, liveFields, colorOverrides, annotations] = await Promise.all([
+    loadSnapshotBlocks(snap.storage_path),
+    listFields(org.id),
+    getOrgColors(org.id),
+    listAnnotations(org.id),
+  ])
+  // Old snapshots stored no plantation per block — inherit today's
+  // assignments by location so pages carry real names, not "Unassigned".
+  const allSnapshotBlocks = inheritPlantations(rawBlocks ?? [], liveFields)
+  // ?plantation=<id|__none>: print just that plantation's page(s).
+  const blocks = plantationRaw
+    ? allSnapshotBlocks.filter((b) => (b.plantation_id ?? '__none') === plantationRaw)
+    : allSnapshotBlocks
   const stageColors = resolveStageColors(colorOverrides.stage)
   const unitsArpents = org.units_default === 'arpents'
-  const labelFields = parseLabelFields(
-    labelsRaw,
-    parseLabelFields(org.print_label_fields as LabelField[] | undefined),
-  )
+  // A record document shows ALL FOUR block facts by default (id, variety,
+  // cycle, acres) — ?labels= can still trim it.
+  const labelFields = parseLabelFields(labelsRaw)
   const labelFieldSet = new Set(labelFields)
   const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))
 
@@ -58,6 +70,7 @@ export default async function SnapshotMapPage({
     return clusters.map((clusterBlocks, ci) => {
       const svg = buildPlantationSvg(clusterBlocks, {
         unitsArpents,
+        annotations,
         labelFields: labelFieldSet,
         paper,
         stageColors: colorOverrides.stage,

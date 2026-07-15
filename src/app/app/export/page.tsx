@@ -91,12 +91,18 @@ export default async function ExportPage() {
                 </span>
                 <span className="flex items-center gap-4 whitespace-nowrap">
                   <a
-                    href={`/snapshots/${s.id}/print`}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={`/app/snapshots/${s.id}/map`}
                     className="font-semibold text-primary hover:underline"
                   >
                     View map →
+                  </a>
+                  <a
+                    href={`/snapshots/${s.id}/print`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-gray-500 hover:text-primary hover:underline"
+                  >
+                    Print
                   </a>
                   <a
                     href={`/api/snapshots/${s.id}/download`}

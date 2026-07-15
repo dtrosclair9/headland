@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields, listFieldsByIds } from '@/lib/fields'
+import { getSnapshot } from '@/lib/snapshots'
+import { loadSnapshotBlocks, inheritPlantations } from '@/lib/snapshot-map'
 import { buildPlantationSvg, buildSpraySvg, parsePaperSize } from '@/lib/plantation-map-svg'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
@@ -22,6 +24,7 @@ export default async function SelectedBlocksPrintPage({
     colorby?: string
     labels?: string
     paper?: string
+    snapshot?: string
   }>
 }) {
   const {
@@ -32,6 +35,7 @@ export default async function SelectedBlocksPrintPage({
     colorby: colorbyRaw,
     labels: labelsRaw,
     paper: paperRaw,
+    snapshot: snapshotRaw,
   } = await searchParams
   const { org } = await requireUserAndOrg()
   const colorOverrides = await getOrgColors(org.id)
@@ -60,7 +64,25 @@ export default async function SelectedBlocksPrintPage({
     .map((s) => s.trim())
     .filter(Boolean)
   const scopeSet = scope.length > 0 ? new Set(scope) : null
-  const allBlocks = isHighlight ? await listFields(org.id) : await listFieldsByIds(ids, org.id)
+  // ?snapshot=: print from an archived month instead of the live farm. The
+  // snapshot map's ids are the archive's deterministic snap-N ids, so the
+  // same ids/scope/highlight semantics apply.
+  let snapshotBlocks: Awaited<ReturnType<typeof listFields>> | null = null
+  if (snapshotRaw) {
+    const snap = await getSnapshot(snapshotRaw)
+    if (snap && snap.org_id === org.id) {
+      const raw = await loadSnapshotBlocks(snap.storage_path)
+      snapshotBlocks = inheritPlantations(raw ?? [], await listFields(org.id))
+    }
+  }
+  const idSet2 = new Set(ids)
+  const allBlocks = snapshotBlocks
+    ? isHighlight
+      ? snapshotBlocks
+      : snapshotBlocks.filter((b) => idSet2.has(b.id))
+    : isHighlight
+      ? await listFields(org.id)
+      : await listFieldsByIds(ids, org.id)
   const blocks =
     isHighlight && scopeSet
       ? allBlocks.filter((b) => scopeSet.has(b.plantation_id ?? '__none'))

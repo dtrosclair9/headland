@@ -56,6 +56,10 @@ interface FieldSidebarProps {
   onStartReposition: () => void
   // Reposition a whole plantation's blocks at once (the "farm drifted as a unit" case).
   onRepositionPlantation: (plantationId: string) => void
+  // Set when viewing an archived monthly snapshot: hides every mutating
+  // affordance (select mode, bulk ops, plans, edit links) and routes print
+  // links through the snapshot's data instead of the live farm.
+  snapshot?: { id: string } | null
 }
 
 export default function FieldSidebar({
@@ -93,6 +97,7 @@ export default function FieldSidebar({
   onBulkRotate,
   onStartReposition,
   onRepositionPlantation,
+  snapshot = null,
 }: FieldSidebarProps) {
   // In the white-map state (deselect-all) the print links output the B&W
   // spray-style sheet (and say so).
@@ -158,7 +163,7 @@ export default function FieldSidebar({
             [
               ['layers', 'Layers'],
               ['blocks', 'Blocks'],
-              ['plans', 'Plans'],
+              ...(snapshot ? [] : ([['plans', 'Plans']] as const)),
             ] as const
           ).map(([key, label]) => (
             <button
@@ -210,6 +215,7 @@ export default function FieldSidebar({
           stageColors={stageColors}
           varietyColors={varietyColors}
           isSpray={isSpray}
+          snapshotId={snapshot?.id ?? null}
         />
       ) : tab === 'plans' && fields.length > 0 ? (
         <PlansPanel
@@ -229,7 +235,7 @@ export default function FieldSidebar({
         />
       ) : (
         <>
-      {fields.length > 0 && (
+      {fields.length > 0 && !snapshot && (
         // Mode visibility: while selecting, the whole bar tints amber and the
         // exit is a loud yellow pill — the user always knows where they are.
         <div
@@ -284,7 +290,7 @@ export default function FieldSidebar({
                     <span>{group.fields.length} · {groupArea.primary}</span>
                     {plantationId && !selectMode && (
                       <span className="flex items-center gap-4 pl-1">
-                        {!isSpray && (
+                        {!isSpray && !snapshot && (
                           <button
                             type="button"
                             onClick={() => onRepositionPlantation(plantationId)}
@@ -295,7 +301,7 @@ export default function FieldSidebar({
                           </button>
                         )}
                         <a
-                          href={`/plantations/${plantationId}/print${isSpray ? '?style=spray' : ''}`}
+                          href={snapshot ? `/snapshots/${snapshot.id}/print?plantation=${plantationId}` : `/plantations/${plantationId}/print${isSpray ? '?style=spray' : ''}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-primary font-semibold hover:underline"
@@ -384,7 +390,7 @@ export default function FieldSidebar({
                           </div>
                         </button>
 
-                        {!selectMode && isHighlighted && (
+                        {!selectMode && isHighlighted && !snapshot && (
                           <div className="px-4 pb-3 flex gap-2">
                             <a
                               href={`/app/fields/${f.id}`}

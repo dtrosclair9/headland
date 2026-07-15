@@ -53,6 +53,54 @@ export function clusterByProximity<T extends { geometry: GeoJSON.Polygon }>(
   return Array.from(byRoot.values()).sort((a, b) => b.length - a.length)
 }
 
+// Give archived blocks their plantation names by matching each one to the
+// nearest CURRENT block (centroid within maxMeters). Old snapshots stored no
+// plantation on the geojson (and a block's plantation is organizational, not
+// historical fact), so page titles inherit today's assignments — "Woodlawn",
+// not "Unassigned — area 3". Blocks that already carry a plantation keep it;
+// unmatched blocks stay unassigned and fall back to geographic clustering.
+export function inheritPlantations(
+  snapBlocks: FieldRow[],
+  liveFields: Pick<FieldRow, 'centroid_lng' | 'centroid_lat' | 'plantation_id' | 'plantation_name'>[],
+  maxMeters = 150,
+): FieldRow[] {
+  const live = liveFields.filter((f) => f.plantation_id && f.plantation_name)
+  if (live.length === 0) return snapBlocks
+  const mLng = 111320 * Math.cos(((live[0].centroid_lat || 30) * Math.PI) / 180)
+  const mLat = 110540
+  const maxSq = maxMeters * maxMeters
+  return snapBlocks.map((b) => {
+    if (b.plantation_name) return b
+    let cx = 0,
+      cy = 0,
+      n = 0
+    for (const ring of b.geometry?.coordinates ?? []) {
+      for (const c of ring) {
+        cx += c[0]
+        cy += c[1]
+        n++
+      }
+    }
+    if (!n) return b
+    cx /= n
+    cy /= n
+    let best: (typeof live)[number] | null = null
+    let bestSq = maxSq
+    for (const f of live) {
+      const dx = (cx - f.centroid_lng) * mLng
+      const dy = (cy - f.centroid_lat) * mLat
+      const d = dx * dx + dy * dy
+      if (d <= bestSq) {
+        bestSq = d
+        best = f
+      }
+    }
+    return best
+      ? { ...b, plantation_id: best.plantation_id, plantation_name: best.plantation_name }
+      : b
+  })
+}
+
 const RATOON = new Set([
   'plant_cane',
   'first_stubble',

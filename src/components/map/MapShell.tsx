@@ -42,6 +42,9 @@ interface MapShellProps {
   // Deep link (?focus=blockId): select this block and zoom the map to it —
   // how Operations to-dos land you on the right block.
   focusFieldId: string | null
+  // Archived monthly snapshot: the same map, read-only — layers, plantation
+  // isolation, color-by, and printing all work; nothing can be edited.
+  snapshot?: { id: string; label: string } | null
 }
 
 export default function MapShell({
@@ -52,6 +55,7 @@ export default function MapShell({
   initialAnnotations,
   initialFlyPlans,
   focusFieldId,
+  snapshot = null,
 }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -521,6 +525,7 @@ export default function MapShell({
               new Set(fields.filter((f) => f.plantation_id === plantationId).map((f) => f.id)),
             )
           }
+          snapshot={snapshot}
         />
       </div>
 
@@ -537,6 +542,7 @@ export default function MapShell({
       <FieldMap
         fields={fields}
         state={state}
+        readOnly={!!snapshot}
         selectedFieldId={selectedFieldId}
         onSelectField={setSelectedFieldId}
         onCreateField={handleCreate}
@@ -572,6 +578,26 @@ export default function MapShell({
         onCreateAnnotation={handleCreateAnnotation}
         onDeleteAnnotation={handleDeleteAnnotation}
       />
+
+      {snapshot && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-primary text-white shadow-lg px-4 py-2 text-sm">
+            <span className="font-semibold">{snapshot.label}</span>
+            <span className="text-white/70 hidden sm:inline">read-only history</span>
+            <a
+              href={`/snapshots/${snapshot.id}/print`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold underline underline-offset-2 hover:text-accent"
+            >
+              Print
+            </a>
+            <a href="/app/map" className="font-semibold underline underline-offset-2 hover:text-accent">
+              Today&apos;s map
+            </a>
+          </div>
+        </div>
+      )}
 
       {(busy || error) && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">

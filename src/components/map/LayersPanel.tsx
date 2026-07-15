@@ -30,6 +30,7 @@ export default function LayersPanel({
   stageColors,
   varietyColors,
   isSpray,
+  snapshotId = null,
 }: {
   fields: FieldRow[]
   units: Units
@@ -44,6 +45,8 @@ export default function LayersPanel({
   stageColors: StageColor[]
   varietyColors: Record<string, string>
   isSpray: boolean
+  // Archived-snapshot view: print links pull blocks from the snapshot, not the live farm.
+  snapshotId?: string | null
 }) {
   const active = isLayerFilterActive(filter)
 
@@ -168,7 +171,7 @@ export default function LayersPanel({
               filter.plantations.length > 0
                 ? `&scope=${filter.plantations.map((pid) => pid ?? '__none').join(',')}`
                 : ''
-            }${colorBy === 'variety' ? '&colorby=variety' : ''}`}
+            }${colorBy === 'variety' ? '&colorby=variety' : ''}${snapshotId ? `&snapshot=${snapshotId}` : ''}`}
             target="_blank"
             rel="noreferrer"
             className="mt-2 block text-center text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"

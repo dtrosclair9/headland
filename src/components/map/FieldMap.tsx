@@ -151,6 +151,9 @@ export interface FieldMapProps {
   onUpdateField: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
   onDrawingChange?: (drawing: boolean) => void
   onShowFields?: () => void
+  // Snapshot/history views: hide every edit affordance (draw, line, text,
+  // geometry edits, annotation deletes). The map becomes look-and-zoom only.
+  readOnly?: boolean
   // Bulk-select mode: tapping a block on the map toggles it in/out of the set.
   selectMode: boolean
   selectedIds: Set<string>
@@ -210,6 +213,7 @@ export default function FieldMap({
   onUpdateField,
   onDrawingChange,
   onShowFields,
+  readOnly = false,
   selectMode,
   selectedIds,
   onToggleFieldSelected,
@@ -261,6 +265,8 @@ export default function FieldMap({
   const cancelingDrawRef = useRef(false)
   const onCreateAnnotationRef = useRef(onCreateAnnotation)
   const onDeleteAnnotationRef = useRef(onDeleteAnnotation)
+  const readOnlyRef = useRef(readOnly)
+  readOnlyRef.current = readOnly
   onCreateAnnotationRef.current = onCreateAnnotation
   onDeleteAnnotationRef.current = onDeleteAnnotation
   const [savingReposition, setSavingReposition] = useState(false)
@@ -622,7 +628,8 @@ export default function FieldMap({
           await onDeleteAnnotationRef.current(annId)
           popupRef.current?.remove()
         }
-        node.append(label, btn)
+        node.append(label)
+        if (!readOnlyRef.current) node.append(btn)
         popupRef.current = new mapboxgl.Popup({ closeButton: true, offset: 8, maxWidth: '220px' })
           .setLngLat(lngLat)
           .setDOMContent(node)
@@ -743,6 +750,11 @@ export default function FieldMap({
     })
 
     map.on('draw.create', async (e: { features: GeoJSON.Feature[] }) => {
+      if (readOnlyRef.current) {
+        draw.deleteAll()
+        setDrawing(false)
+        return
+      }
       if (cancelingDrawRef.current) {
         // Cancelled — discard whatever the mode exit tried to commit.
         draw.deleteAll()
@@ -762,6 +774,7 @@ export default function FieldMap({
       setDrawing(false)
     })
     map.on('draw.update', async (e: { features: GeoJSON.Feature[] }) => {
+      if (readOnlyRef.current) return
       const feature = e.features[0]
       const id = feature?.properties?.headlandFieldId
       if (typeof id === 'string' && feature?.geometry?.type === 'Polygon') {
@@ -1723,6 +1736,7 @@ export default function FieldMap({
               Blocks ({fields.length})
             </button>
           )}
+          {!readOnly && (<>
           <button
             type="button"
             onClick={toggleDraw}
@@ -1785,6 +1799,7 @@ export default function FieldMap({
             </svg>
             {drawKind === 'text' ? 'Cancel text' : 'Text'}
           </button>
+          </>)}
 
           <button
             type="button"
