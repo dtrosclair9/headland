@@ -203,7 +203,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
           className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:text-white file:px-4 file:py-2 file:text-sm file:font-semibold hover:file:bg-primary-light"
         />
         <p className="mt-2 text-xs text-gray-500">
-          Select the <code>.shp</code>, <code>.dbf</code> (and <code>.shx</code>/<code>.prj</code>) together, or a single <code>.zip</code>. Coordinates must be latitude/longitude.
+          Select the <code>.shp</code>, <code>.dbf</code> (and <code>.shx</code>/<code>.prj</code>) together, or a single <code>.zip</code>. Include the <code>.prj</code> and we&apos;ll auto-convert projected files (UTM, State Plane) from your FSA CLU export.
         </p>
         {files.length > 0 && (
           <p className="mt-2 text-xs text-gray-600">{files.length} file{files.length === 1 ? '' : 's'} selected.</p>

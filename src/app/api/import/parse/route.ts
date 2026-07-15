@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'This file uses a projected coordinate system. Re-export it in latitude/longitude (WGS84 / geographic) and try again.',
+          "This file uses a projected coordinate system we couldn't read (its .prj may be missing or non-standard). Include the .prj file, or re-export in latitude/longitude (WGS84 / geographic), and try again.",
       },
       { status: 400 },
     )

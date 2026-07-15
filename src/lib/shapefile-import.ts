@@ -2,6 +2,7 @@
 import * as shapefile from 'shapefile'
 // @ts-expect-error - jszip 2.x ships no types
 import JSZip from 'jszip'
+import proj4 from 'proj4'
 
 export interface ShpComponents {
   shp: Buffer
@@ -59,6 +60,40 @@ function toArrayBuffer(b: Buffer): ArrayBuffer {
   return new Uint8Array(b).buffer
 }
 
+// Build a converter from the shapefile's own CRS (the ESRI .prj / WKT) to
+// WGS84 lng/lat. FSA CLU exports are almost always in a projected CRS (UTM
+// meters, State Plane, etc.), which Mapbox/GeoJSON can't use — so we normalize
+// to WGS84 at the import boundary instead of rejecting the file. Returns null
+// if proj4 can't parse the .prj, so the caller can fall back to rejecting
+// rather than importing garbage coordinates.
+function buildReprojector(
+  prj?: string | null,
+): ((x: number, y: number) => [number, number]) | null {
+  if (!prj || !/PROJCS/i.test(prj)) return null
+  try {
+    const conv = proj4(prj, 'WGS84')
+    const test = conv.forward([0, 0])
+    if (!Number.isFinite(test[0]) || !Number.isFinite(test[1])) return null
+    return (x, y) => {
+      const r = conv.forward([x, y])
+      return [r[0], r[1]]
+    }
+  } catch {
+    return null
+  }
+}
+
+function inWgs84Range(lng: number, lat: number): boolean {
+  return (
+    Number.isFinite(lng) &&
+    Number.isFinite(lat) &&
+    lng >= -180 &&
+    lng <= 180 &&
+    lat >= -90 &&
+    lat <= 90
+  )
+}
+
 // Parse the raw shapefile components into features + a column summary.
 // Geometry is normalized to Polygons (MultiPolygons split into parts, each part
 // carrying the same attributes) since the fields.geometry column is POLYGON.
@@ -67,7 +102,16 @@ export async function parseShapefileBuffers(input: {
   dbf: Buffer
   prj?: string | null
 }): Promise<ParsedShapefile> {
-  const projected = !!input.prj && /PROJCS/i.test(input.prj)
+  const isProjected = !!input.prj && /PROJCS/i.test(input.prj)
+  // FSA/USDA shapefiles are usually in a projected CRS (UTM meters). Reproject
+  // to WGS84 lng/lat here rather than rejecting the file. If we can't parse the
+  // .prj, reproj stays null and we leave `projected` true so the route rejects
+  // rather than importing meters-as-degrees.
+  const reproj = isProjected ? buildReprojector(input.prj) : null
+  const reprojectPolygon = (coords: number[][][]): number[][][] =>
+    reproj
+      ? coords.map((ring) => ring.map(([x, y]) => reproj(x, y)))
+      : coords
 
   const fc = await shapefile.read(toArrayBuffer(input.shp), toArrayBuffer(input.dbf))
 
@@ -79,14 +123,24 @@ export async function parseShapefileBuffers(input: {
       props[k] = v === null || v === undefined ? '' : String(v).trim()
     }
     if (f.geometry.type === 'Polygon') {
-      features.push({ geometry: f.geometry as GeoJSON.Polygon, properties: props })
+      const coordinates = reprojectPolygon((f.geometry as GeoJSON.Polygon).coordinates)
+      features.push({ geometry: { type: 'Polygon', coordinates }, properties: props })
     } else if (f.geometry.type === 'MultiPolygon') {
       for (const poly of (f.geometry as GeoJSON.MultiPolygon).coordinates) {
-        features.push({ geometry: { type: 'Polygon', coordinates: poly }, properties: props })
+        const coordinates = reprojectPolygon(poly)
+        features.push({ geometry: { type: 'Polygon', coordinates }, properties: props })
       }
     }
     // Non-polygon geometries are skipped (this importer is field boundaries).
   }
+
+  // A file is only "still projected" (and thus rejected downstream) if it was
+  // projected AND we couldn't reproject it — either the .prj wouldn't parse, or
+  // the result isn't valid lng/lat. A successfully reprojected file is geographic.
+  const firstPt = features[0]?.geometry.coordinates?.[0]?.[0]
+  const reprojectFailed =
+    isProjected && (!reproj || (firstPt ? !inWgs84Range(firstPt[0], firstPt[1]) : false))
+  const projected = reprojectFailed
 
   const columns = features.length ? Object.keys(features[0].properties) : []
   const samples: Record<string, string> = {}
