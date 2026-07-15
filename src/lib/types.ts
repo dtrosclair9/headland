@@ -118,6 +118,9 @@ export interface Field {
   fsa_farm_number: string | null
   fsa_tract_number: string | null
   clu_number: string | null
+  // FSA's permanent per-CLU GUID — the durable key for matching blocks against
+  // a future updated FSA file (clu_number repeats across tracts).
+  clu_id: string | null
   archived_at: string | null
   created_at: string
 }

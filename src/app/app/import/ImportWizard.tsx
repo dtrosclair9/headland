@@ -70,7 +70,10 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       const picks = {
         // grower's own block id first (FarmWorks "My Field ID"), else the FSA CLU number
         name: pick(/field\s*name/i, /\bmy\s*field/i, /field\s*id/i, /field\s*i\b/i, /^name$/i, /\blabel\b/i, /clu\s*n?br/i, /clu[\s_]*num/i),
-        plantation: pick(/tract/i, /plantation/i, /\bsection\b/i),
+        // Farm > Tract > Field: the FSA farm number is the bigger grouping,
+        // closest to a grower's "plantation" — tracts are subsets within it.
+        // Tract/farm/CLU numbers are captured per-block automatically either way.
+        plantation: pick(/plantation/i, /\bsection\b/i, /farm\s*name/i, /farm[\s_]*n(um|br)/i, /^farm$/i, /tract/i),
         // prefer the FSA/official acreage over "My Acres" when both exist
         acres: pick(/fsa[\s_]*acre/i, /calc[\s_]*acre/i, /gis[\s_]*acre/i, /\bacres?\b/i, /acre/i),
         variety: pick(/variet/i, /\bcrop\b/i),
@@ -152,9 +155,13 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
         <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-5">
           <ColumnSelect label="Field name" hint="What labels each block (optional)" cols={cols} samples={parse.samples} value={nameCol} onChange={setNameCol} />
           <ColumnSelect label="Variety" hint="Cane variety (optional)" cols={cols} samples={parse.samples} value={varietyCol} onChange={setVarietyCol} />
-          <ColumnSelect label="Plantation" hint="Groups blocks — we'll create these plantations (optional)" cols={cols} samples={parse.samples} value={plantationCol} onChange={setPlantationCol} />
+          <ColumnSelect label="Plantation" hint="Groups blocks into named areas — we'll create these plantations. FSA farm number is usually the closest grouping. (optional)" cols={cols} samples={parse.samples} value={plantationCol} onChange={setPlantationCol} />
           <ColumnSelect label="Acreage" hint="Your stated acres (e.g. FSA acres). Recommended — we trust this over the polygon size." cols={cols} samples={parse.samples} value={acresCol} onChange={setAcresCol} />
           <ColumnSelect label="Cut / ratoon" hint="Which column holds the year-cane / stubble (optional)" cols={cols} samples={parse.samples} value={cutCol} onChange={(v) => { setCutCol(v); setCutMap({}) }} />
+
+          <p className="text-xs text-gray-500 border-t border-gray-100 pt-4">
+            FSA <strong>farm</strong>, <strong>tract</strong>, and <strong>CLU</strong> numbers are detected and saved on each block automatically — no mapping needed.
+          </p>
 
           {cutCol && cutValues.length > 0 && (
             <div className="rounded-lg bg-gray-50 border border-gray-100 p-4">

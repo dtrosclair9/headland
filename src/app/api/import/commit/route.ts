@@ -175,6 +175,9 @@ export async function POST(request: NextRequest) {
   // CLU/field number (FSA CLUNBR, FarmWorks clu_number). Match the numbered
   // column, never the CLUID GUID.
   const cluCol = findCol(/clu[\s_]*n/i, /^clu$/i)
+  // CLUID — FSA's permanent GUID per CLU. The durable key for matching blocks
+  // against a future updated FSA file (CLUNBR repeats across tracts).
+  const cluIdCol = findCol(/^clu[\s_]*id$/i, /cluid/i)
 
   const features = parsed.features.map((f) => {
     const cutRaw = mapping.cutColumn ? (f.properties[mapping.cutColumn] ?? '') : ''
@@ -190,6 +193,7 @@ export async function POST(request: NextRequest) {
       tract: val(f.properties, tractCol),
       farm: val(f.properties, farmCol),
       clu: val(f.properties, cluCol),
+      clu_id: val(f.properties, cluIdCol),
       acres: Number.isFinite(acresNum) && acresNum > 0 ? String(acresNum) : '',
     }
   })
@@ -205,6 +209,29 @@ export async function POST(request: NextRequest) {
       { error: 'Something went wrong saving your fields. Please try again.' },
       { status: 500 },
     )
+  }
+
+  // A plantation (usually grouped by FSA farm) can span multiple tracts — in
+  // that case a single tract number on the plantation is wrong/misleading, so
+  // clear it. The per-block tract stays authoritative either way. Best-effort.
+  try {
+    const multiTract = new Map<string, Set<string>>()
+    for (const f of features) {
+      if (!f.plantation) continue
+      const set = multiTract.get(f.plantation) ?? new Set<string>()
+      if (f.tract) set.add(f.tract)
+      multiTract.set(f.plantation, set)
+    }
+    const spanning = [...multiTract.entries()].filter(([, s]) => s.size > 1).map(([p]) => p)
+    if (spanning.length > 0) {
+      await supabase
+        .from('plantations')
+        .update({ fsa_tract_number: null })
+        .eq('org_id', org.id)
+        .in('name', spanning.slice(0, 100))
+    }
+  } catch (e) {
+    console.error('[import/commit] multi-tract plantation cleanup failed', e)
   }
 
   // Catch the bill up to the freshly-imported acreage immediately (prorated),
