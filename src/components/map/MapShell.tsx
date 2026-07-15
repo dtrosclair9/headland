@@ -584,14 +584,6 @@ export default function MapShell({
           <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-primary text-white shadow-lg px-4 py-2 text-sm">
             <span className="font-semibold">{snapshot.label}</span>
             <span className="text-white/70 hidden sm:inline">read-only history</span>
-            <a
-              href={`/snapshots/${snapshot.id}/print`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-semibold underline underline-offset-2 hover:text-accent"
-            >
-              Print
-            </a>
             <a href="/app/map" className="font-semibold underline underline-offset-2 hover:text-accent">
               Today&apos;s map
             </a>

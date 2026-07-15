@@ -97,14 +97,6 @@ export default async function ExportPage() {
                     View map →
                   </a>
                   <a
-                    href={`/snapshots/${s.id}/print`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-gray-500 hover:text-primary hover:underline"
-                  >
-                    Print
-                  </a>
-                  <a
                     href={`/api/snapshots/${s.id}/download`}
                     className="text-gray-500 hover:text-primary hover:underline"
                   >
