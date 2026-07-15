@@ -6,17 +6,22 @@ import type { Organization, Plantation } from '@/lib/types'
 export const NAD83_PRJ =
   'GEOGCS["GCS_North_American_1983",DATUM["D_North_American_1983",SPHEROID["GRS_1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]]'
 
+// FSA-relevant columns use FSA's exact names (FARMNBR/TRACTNBR/CLUNBR/CLUID/
+// CALCACRES — what a county office's ArcGIS CLU workflow expects to join on);
+// grower-only columns keep our names since FSA has no equivalent. DBF caps
+// column names at 10 chars — all of these fit.
 const FIELDS: ShpField[] = [
   { name: 'name', type: 'C', length: 50 },
-  { name: 'acres', type: 'N', length: 13, decimals: 3 },
+  { name: 'CALCACRES', type: 'N', length: 13, decimals: 3 },
   { name: 'arpents', type: 'N', length: 13, decimals: 3 },
   { name: 'variety', type: 'C', length: 20 },
   { name: 'plant_dt', type: 'C', length: 10 },
   { name: 'cut', type: 'C', length: 20 },
   { name: 'plantation', type: 'C', length: 50 },
-  { name: 'farm', type: 'C', length: 10 },
-  { name: 'tract', type: 'C', length: 10 },
-  { name: 'clu', type: 'C', length: 20 },
+  { name: 'FARMNBR', type: 'C', length: 10 },
+  { name: 'TRACTNBR', type: 'C', length: 10 },
+  { name: 'CLUNBR', type: 'C', length: 20 },
+  { name: 'CLUID', type: 'C', length: 40 },
   { name: 'notes', type: 'C', length: 100 },
 ]
 
@@ -55,6 +60,7 @@ export function buildFieldsShapefileSet(
         (f.plantation_name ? tractByName.get(f.plantation_name) : null) ??
         '',
       f.clu_number ?? '',
+      f.clu_id ?? '',
       f.notes ?? '',
     ],
   }))
@@ -79,6 +85,7 @@ export function buildFieldsGeoJSON(fields: FieldRow[]): string {
         farm: f.fsa_farm_number ?? '',
         tract: f.fsa_tract_number ?? '',
         clu: f.clu_number ?? '',
+        clu_id: f.clu_id ?? '',
         notes: f.notes ?? '',
       },
     })),
