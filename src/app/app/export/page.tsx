@@ -70,7 +70,7 @@ export default async function ExportPage() {
       <div className="mt-8 border-t border-gray-100 pt-6">
         <h2 className="text-lg font-bold text-primary mb-1">Monthly archive</h2>
         <p className="text-sm text-gray-600 mb-4">
-          A dated backup of your whole farm, saved automatically on the 1st of each month. Download any month, any year.
+          Your farm, saved automatically on the 1st of each month. Open any month to see the crop map exactly as it stood — what was plant cane, what was stubble — and print or download it, any month, any year.
         </p>
         <SnapshotButton />
         {snapshots.length === 0 ? (
@@ -80,7 +80,7 @@ export default async function ExportPage() {
         ) : (
           <ul className="mt-4 divide-y divide-gray-100 border border-gray-100 rounded-lg">
             {snapshots.map((s) => (
-              <li key={s.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <span>
                   <span className="font-semibold text-primary">
                     {periodLabel(s.period)}
@@ -89,12 +89,22 @@ export default async function ExportPage() {
                     {' '}· {s.block_count} block{s.block_count === 1 ? '' : 's'} · {Number(s.acreage).toLocaleString()} ac
                   </span>
                 </span>
-                <a
-                  href={`/api/snapshots/${s.id}/download`}
-                  className="font-semibold text-primary hover:underline"
-                >
-                  Download
-                </a>
+                <span className="flex items-center gap-4 whitespace-nowrap">
+                  <a
+                    href={`/snapshots/${s.id}/print`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    View map →
+                  </a>
+                  <a
+                    href={`/api/snapshots/${s.id}/download`}
+                    className="text-gray-500 hover:text-primary hover:underline"
+                  >
+                    Download
+                  </a>
+                </span>
               </li>
             ))}
           </ul>
