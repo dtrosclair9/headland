@@ -10,12 +10,16 @@ export interface ShpComponents {
   prj: string | null
 }
 
-// Pull the .shp/.dbf/.prj out of an upload — works whether the farmer sends a
-// single .zip or the loose files (FarmWorks exports loose files, so we accept
-// both). Throws a farmer-readable message if the required parts are missing.
-export function extractShapefileComponents(
-  files: { name: string; data: Buffer }[],
-): ShpComponents {
+// What an upload turned out to be: an Esri shapefile set, or a GeoJSON file
+// (FarmMind and most web tools export GeoJSON).
+export type ImportSource =
+  | ({ kind: 'shapefile' } & ShpComponents)
+  | { kind: 'geojson'; data: Buffer }
+
+// Identify + pull the boundary file(s) out of an upload — a single .zip, loose
+// shapefile parts (FarmWorks exports loose files), or a .geojson/.json.
+// Throws a farmer-readable message if nothing usable is there.
+export function extractImportSource(files: { name: string; data: Buffer }[]): ImportSource {
   let entries = files
   const zipFile = files.find((f) => f.name.toLowerCase().endsWith('.zip'))
   if (zipFile) {
@@ -24,16 +28,35 @@ export function extractShapefileComponents(
       .filter((n) => !n.endsWith('/'))
       .map((n) => ({ name: n, data: zip.file(n).asNodeBuffer() as Buffer }))
   }
-  const find = (ext: string) => entries.find((e) => e.name.toLowerCase().endsWith(ext))
+  const find = (...exts: string[]) =>
+    entries.find((e) => exts.some((ext) => e.name.toLowerCase().endsWith(ext)))
   const shp = find('.shp')
   const dbf = find('.dbf')
-  const prj = find('.prj')
-  if (!shp || !dbf) {
-    throw new Error(
-      'Missing shapefile parts. Upload the .shp and .dbf together (and .prj if you have it), or a .zip containing them.',
-    )
+  if (shp && dbf) {
+    const prj = find('.prj')
+    return {
+      kind: 'shapefile',
+      shp: shp.data,
+      dbf: dbf.data,
+      prj: prj ? prj.data.toString('utf8') : null,
+    }
   }
-  return { shp: shp.data, dbf: dbf.data, prj: prj ? prj.data.toString('utf8') : null }
+  const geojson = find('.geojson', '.json')
+  if (geojson) return { kind: 'geojson', data: geojson.data }
+  throw new Error(
+    'Missing boundary files. Upload a shapefile (.shp and .dbf together, or a .zip of them) or a .geojson file.',
+  )
+}
+
+// Back-compat name used by the import routes prior to GeoJSON support.
+export function extractShapefileComponents(
+  files: { name: string; data: Buffer }[],
+): ShpComponents {
+  const src = extractImportSource(files)
+  if (src.kind !== 'shapefile') {
+    throw new Error('Upload the .shp and .dbf together, or a .zip containing them.')
+  }
+  return { shp: src.shp, dbf: src.dbf, prj: src.prj }
 }
 
 export interface ImportFeature {
@@ -142,7 +165,16 @@ export async function parseShapefileBuffers(input: {
     isProjected && (!reproj || (firstPt ? !inWgs84Range(firstPt[0], firstPt[1]) : false))
   const projected = reprojectFailed
 
-  const columns = features.length ? Object.keys(features[0].properties) : []
+  return summarize(features, projected)
+}
+
+// Column summary (names, first samples, distinct values) shared by every
+// import format.
+function summarize(features: ImportFeature[], projected: boolean): ParsedShapefile {
+  // Union of keys across features — GeoJSON rows can have ragged properties.
+  const colSet = new Set<string>()
+  for (const f of features) for (const k of Object.keys(f.properties)) colSet.add(k)
+  const columns = [...colSet]
   const samples: Record<string, string> = {}
   const sets: Record<string, Set<string>> = {}
   for (const col of columns) sets[col] = new Set()
@@ -163,4 +195,46 @@ export async function parseShapefileBuffers(input: {
   }
 
   return { count: features.length, columns, samples, distinct, features, projected }
+}
+
+// Parse a GeoJSON FeatureCollection (FarmMind and most web tools export
+// this). GeoJSON is WGS84 lng/lat by spec — but guard against projected
+// coordinates sneaking in so the route rejects them instead of importing
+// meters-as-degrees. Nested object properties (FarmMind's _fm blobs) are
+// dropped; scalars are stringified like dbf values.
+export function parseGeoJSONBuffer(buf: Buffer): ParsedShapefile {
+  let fc: GeoJSON.FeatureCollection
+  try {
+    fc = JSON.parse(buf.toString('utf8')) as GeoJSON.FeatureCollection
+  } catch {
+    throw new Error('That .geojson file could not be read — it is not valid GeoJSON.')
+  }
+
+  const features: ImportFeature[] = []
+  for (const f of fc.features ?? []) {
+    if (!f?.geometry) continue
+    const props: Record<string, string> = {}
+    for (const [k, v] of Object.entries(f.properties ?? {})) {
+      if (v === null || v === undefined) props[k] = ''
+      else if (typeof v === 'object') continue
+      else props[k] = String(v).trim()
+    }
+    if (f.geometry.type === 'Polygon') {
+      features.push({ geometry: f.geometry as GeoJSON.Polygon, properties: props })
+    } else if (f.geometry.type === 'MultiPolygon') {
+      for (const poly of (f.geometry as GeoJSON.MultiPolygon).coordinates) {
+        features.push({ geometry: { type: 'Polygon', coordinates: poly }, properties: props })
+      }
+    }
+  }
+
+  const first = features[0]?.geometry.coordinates?.[0]?.[0]
+  const projected = first ? !inWgs84Range(first[0], first[1]) : false
+  return summarize(features, projected)
+}
+
+// Parse any accepted upload into the common shape.
+export async function parseImportSource(src: ImportSource): Promise<ParsedShapefile> {
+  if (src.kind === 'geojson') return parseGeoJSONBuffer(src.data)
+  return parseShapefileBuffers(src)
 }

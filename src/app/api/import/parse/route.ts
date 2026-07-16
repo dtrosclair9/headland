@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { requireUserAndOrg } from '@/lib/orgs'
-import { extractShapefileComponents, parseShapefileBuffers } from '@/lib/shapefile-import'
+import { extractImportSource, parseImportSource } from '@/lib/shapefile-import'
 import { rateLimit } from '@/lib/rate-limit'
 import { MAX_IMPORT_BYTES, MAX_IMPORT_FEATURES, totalBytes } from '@/lib/import-limits'
 
@@ -32,11 +32,11 @@ export async function POST(request: NextRequest) {
 
   let parsed
   try {
-    parsed = await parseShapefileBuffers(extractShapefileComponents(files))
+    parsed = await parseImportSource(extractImportSource(files))
   } catch (e) {
     console.error('[import/parse] parse failed', e)
     return NextResponse.json(
-      { error: 'We could not read that file. Make sure it is a zipped shapefile or a KML, then try again.' },
+      { error: 'We could not read that file. Upload a zipped shapefile or a .geojson file, then try again.' },
       { status: 400 },
     )
   }
