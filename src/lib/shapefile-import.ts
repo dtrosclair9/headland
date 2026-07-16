@@ -30,6 +30,33 @@ export function extractImportSource(files: { name: string; data: Buffer }[]): Im
   }
   const find = (...exts: string[]) =>
     entries.find((e) => exts.some((ext) => e.name.toLowerCase().endsWith(ext)))
+
+  // Group shapefile parts by BASENAME — an FSA folder ships several layers
+  // side by side (clu_a_* field boundaries AND wet_p_* wetland points), and a
+  // select-all upload must never pair one layer's .shp with another's .dbf.
+  // When several complete sets exist, prefer the CLU (field-boundary) layer.
+  const byBase = new Map<string, { shp?: Buffer; dbf?: Buffer; prj?: Buffer }>()
+  for (const e of entries) {
+    const lower = e.name.toLowerCase()
+    const m = lower.match(/^(.*)\.(shp|dbf|prj)$/)
+    if (!m) continue
+    const set = byBase.get(m[1]) ?? {}
+    set[m[2] as 'shp' | 'dbf' | 'prj'] = e.data
+    byBase.set(m[1], set)
+  }
+  const complete = [...byBase.entries()].filter(([, s]) => s.shp && s.dbf)
+  if (complete.length > 0) {
+    complete.sort(([a], [b]) => Number(b.includes('clu')) - Number(a.includes('clu')))
+    const [, set] = complete[0]
+    return {
+      kind: 'shapefile',
+      shp: set.shp as Buffer,
+      dbf: set.dbf as Buffer,
+      prj: set.prj ? set.prj.toString('utf8') : null,
+    }
+  }
+  // Loose mismatched parts (e.g. a lone .shp with a differently-named .dbf):
+  // fall back to first-of-each so a sloppy-but-single-layer upload still works.
   const shp = find('.shp')
   const dbf = find('.dbf')
   if (shp && dbf) {
