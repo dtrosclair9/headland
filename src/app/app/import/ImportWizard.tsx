@@ -264,8 +264,8 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
           <p className="mt-2 text-xs text-gray-600">{files.length} file{files.length === 1 ? '' : 's'} selected.</p>
         )}
       </div>
-      <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">
-        {busy ? 'Reading…' : 'Read file'}
+      <button type="submit" disabled={busy || files.length === 0} className="btn-primary disabled:opacity-50">
+        {busy ? 'Reading…' : files.length > 0 ? 'Import farm' : 'Read file'}
       </button>
     </form>
   )
