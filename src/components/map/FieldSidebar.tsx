@@ -51,6 +51,8 @@ interface FieldSidebarProps {
   onToggleFieldSelected: (id: string) => void
   // plantationId: pass a UUID to assign, or null to unassign.
   onBulkAssignPlantation: (plantationId: string | null) => Promise<void>
+  // Bulk-set the same variety or cycle on every selected block.
+  onBulkEdit: (set: { variety: string | null } | { cycle: string | null }) => Promise<void>
   onBulkRotate: () => Promise<{ advanced: number; skipped: number } | null>
   // Reposition (move/rotate) the currently-selected blocks on the map.
   onStartReposition: () => void
@@ -94,6 +96,7 @@ export default function FieldSidebar({
   onToggleSelectMode,
   onToggleFieldSelected,
   onBulkAssignPlantation,
+  onBulkEdit,
   onBulkRotate,
   onStartReposition,
   onRepositionPlantation,
@@ -111,7 +114,8 @@ export default function FieldSidebar({
       ),
     [fields, selectedIds, units],
   )
-  const [assignOpen, setAssignOpen] = useState(false)
+  // "Assign to…" tree: menu -> plantation | cycle (year cane) | variety.
+  const [assignView, setAssignView] = useState<null | 'menu' | 'plantation' | 'cycle' | 'variety'>(null)
   const [rotateOpen, setRotateOpen] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   const [logSuccess, setLogSuccess] = useState<string | null>(null)
@@ -437,12 +441,63 @@ export default function FieldSidebar({
               }}
               onCancel={() => setLogOpen(false)}
             />
-          ) : assignOpen ? (
+          ) : assignView === 'menu' ? (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-primary">
+                Assign {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'} to…
+              </p>
+              {(
+                [
+                  ['plantation', 'Plantation…'],
+                  ['cycle', 'Cycle / year cane…'],
+                  ['variety', 'Variety…'],
+                ] as const
+              ).map(([view, label]) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setAssignView(view)}
+                  className="w-full text-left text-sm font-semibold rounded-md border border-gray-200 text-primary px-3 py-2 hover:bg-primary/5"
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setAssignView(null)}
+                className="text-xs text-gray-500 hover:text-primary w-full text-center pt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : assignView === 'plantation' ? (
             <AssignToPlantationPanel
-              onCancel={() => setAssignOpen(false)}
+              onCancel={() => setAssignView('menu')}
               onAssign={async (plantationId) => {
                 await onBulkAssignPlantation(plantationId)
-                setAssignOpen(false)
+                setAssignView(null)
+              }}
+            />
+          ) : assignView === 'cycle' ? (
+            <AssignCyclePanel
+              count={selectedIds.size}
+              stageColors={stageColors}
+              onCancel={() => setAssignView('menu')}
+              onPick={async (cycle) => {
+                await onBulkEdit({ cycle })
+                setAssignView(null)
+              }}
+            />
+          ) : assignView === 'variety' ? (
+            <AssignVarietyPanel
+              count={selectedIds.size}
+              varieties={Array.from(
+                new Set(fields.flatMap((f) => (f.variety ? [f.variety.trim()] : []))),
+              ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))}
+              onCancel={() => setAssignView('menu')}
+              onPick={async (variety) => {
+                await onBulkEdit({ variety })
+                setAssignView(null)
               }}
             />
           ) : rotateOpen ? (
@@ -498,10 +553,10 @@ export default function FieldSidebar({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAssignOpen(true)}
+                    onClick={() => setAssignView('menu')}
                     className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
                   >
-                    Assign {selectedIds.size} to plantation…
+                    Assign {selectedIds.size} to…
                   </button>
                   <button
                     type="button"
@@ -530,6 +585,153 @@ export default function FieldSidebar({
         </>
       )}
     </aside>
+  )
+}
+
+// ── Bulk-assign cycle (year cane) panel ────────────────────────────────
+
+function AssignCyclePanel({
+  count,
+  stageColors,
+  onCancel,
+  onPick,
+}: {
+  count: number
+  stageColors: import('@/lib/resolve-colors').StageColor[]
+  onCancel: () => void
+  onPick: (cycle: string | null) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const pick = async (cycle: string | null) => {
+    setSaving(true)
+    try {
+      await onPick(cycle)
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-primary">
+        Set the cycle on {count} block{count === 1 ? '' : 's'}
+      </p>
+      <div className="max-h-44 overflow-y-auto space-y-1">
+        {stageColors.map((st) => (
+          <button
+            key={st.key}
+            type="button"
+            disabled={saving}
+            onClick={() => pick(st.key)}
+            className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-primary/5 text-primary font-semibold flex items-center gap-2 disabled:opacity-50"
+          >
+            <span
+              aria-hidden="true"
+              className="w-3 h-3 rounded-sm border border-black/10 shrink-0"
+              style={{ backgroundColor: st.color }}
+            />
+            {st.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => pick(null)}
+          className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-gray-100 text-gray-700 disabled:opacity-50"
+        >
+          — Clear cycle (no cut set)
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={saving}
+        className="text-xs text-gray-500 hover:text-primary w-full text-center pt-1"
+      >
+        {saving ? 'Saving…' : '← Back'}
+      </button>
+    </div>
+  )
+}
+
+// ── Bulk-assign variety panel ──────────────────────────────────────────
+
+function AssignVarietyPanel({
+  count,
+  varieties,
+  onCancel,
+  onPick,
+}: {
+  count: number
+  varieties: string[]
+  onCancel: () => void
+  onPick: (variety: string | null) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [newVariety, setNewVariety] = useState('')
+  const pick = async (variety: string | null) => {
+    setSaving(true)
+    try {
+      await onPick(variety)
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-primary">
+        Set the variety on {count} block{count === 1 ? '' : 's'}
+      </p>
+      {varieties.length > 0 && (
+        <div className="max-h-40 overflow-y-auto space-y-1">
+          {varieties.map((v) => (
+            <button
+              key={v}
+              type="button"
+              disabled={saving}
+              onClick={() => pick(v)}
+              className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-primary/5 text-primary font-semibold disabled:opacity-50"
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 pt-2 border-t border-gray-100">
+        <input
+          type="text"
+          value={newVariety}
+          onChange={(e) => setNewVariety(e.target.value)}
+          maxLength={50}
+          placeholder={varieties.length ? 'Or type a new variety' : 'Variety (e.g. L 01-299)'}
+          className="flex-1 input text-xs py-1.5"
+          disabled={saving}
+        />
+        <button
+          type="button"
+          onClick={() => newVariety.trim() && pick(newVariety.trim())}
+          disabled={saving || !newVariety.trim()}
+          className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+        >
+          {saving ? '…' : 'Set'}
+        </button>
+      </div>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => pick(null)}
+        className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-gray-100 text-gray-700 disabled:opacity-50"
+      >
+        — Clear variety
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={saving}
+        className="text-xs text-gray-500 hover:text-primary w-full text-center pt-1"
+      >
+        ← Back
+      </button>
+    </div>
   )
 }
 

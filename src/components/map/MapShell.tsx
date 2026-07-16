@@ -377,6 +377,33 @@ export default function MapShell({
   }
 
 
+  // Bulk "Assign to…" — same variety or same cycle on every selected block.
+  async function handleBulkEdit(
+    set: { variety: string | null } | { cycle: string | null },
+  ): Promise<void> {
+    if (selectedIds.size === 0) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fields/bulk-edit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ field_ids: Array.from(selectedIds), set }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Bulk edit failed')
+      }
+      setSelectedIds(new Set())
+      setSelectMode(false)
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleBulkRotate(): Promise<{ advanced: number; skipped: number } | null> {
     if (selectedIds.size === 0) return null
     setBusy(true)
@@ -512,6 +539,7 @@ export default function MapShell({
             })
           }}
           onBulkAssignPlantation={handleBulkAssignPlantation}
+          onBulkEdit={handleBulkEdit}
           onBulkRotate={handleBulkRotate}
           onStartReposition={() => {
             if (selectedIds.size) {
