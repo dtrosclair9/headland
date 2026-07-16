@@ -23,6 +23,35 @@ const RATOON_OPTIONS: { value: string; label: string }[] = [
   { value: 'fallow', label: 'Fallow' },
 ]
 
+// Guess the ratoon stage from a raw cut value. Real files spell it every
+// way — FarmWorks "P"/"1"/"4", FarmMind "Plant cane"/"1st year stubble"/
+// "Fallow" — but the vocabulary is tiny: P/plant→plant cane, F/fallow→fallow,
+// first digit 1–5 → that stubble, 6+ → 6th+. Unknown values stay unmapped
+// for the grower to pick.
+function suggestStage(raw: string): string {
+  const v = raw.trim().toLowerCase()
+  if (!v) return ''
+  if (v.includes('fallow') || v === 'f') return 'fallow'
+  if (v.includes('plant') || v === 'p' || v === 'pc' || v === '0') return 'plant_cane'
+  const word = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'].findIndex((w) => v.includes(w))
+  const digit = word >= 0 ? word + 1 : parseInt(v.match(/\d+/)?.[0] ?? '', 10)
+  if (Number.isFinite(digit) && digit >= 1) {
+    if (digit >= 6) return 'sixth_stubble_plus'
+    return ['first_stubble', 'second_stubble', 'third_stubble', 'fourth_stubble', 'fifth_stubble_plus'][digit - 1]
+  }
+  return ''
+}
+
+// Pre-fill the cut value-map with suggestions for a column's distinct values.
+function suggestCutMap(values: string[] | undefined): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const v of values ?? []) {
+    const stage = suggestStage(v)
+    if (stage) map[v] = stage
+  }
+  return map
+}
+
 export default function ImportWizard({ existingCount }: { existingCount: number }) {
   const [files, setFiles] = useState<File[]>([])
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -84,6 +113,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
       setAcresCol(picks.acres)
       setVarietyCol(picks.variety)
       setCutCol(picks.cut)
+      setCutMap(picks.cut ? suggestCutMap((data as ParseResult).distinct[picks.cut]) : {})
       setAutoFilled(Object.entries(picks).filter(([, v]) => v).map(([k]) => k))
       setStep(2)
     } catch (e) {
@@ -157,7 +187,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
           <ColumnSelect label="Variety" hint="Cane variety (optional)" cols={cols} samples={parse.samples} value={varietyCol} onChange={setVarietyCol} />
           <ColumnSelect label="Plantation" hint="Groups blocks into named areas — we'll create these plantations. FSA farm number is usually the closest grouping. (optional)" cols={cols} samples={parse.samples} value={plantationCol} onChange={setPlantationCol} />
           <ColumnSelect label="Acreage" hint="Your stated acres (e.g. FSA acres). Recommended — we trust this over the polygon size." cols={cols} samples={parse.samples} value={acresCol} onChange={setAcresCol} />
-          <ColumnSelect label="Cut / ratoon" hint="Which column holds the year-cane / stubble (optional)" cols={cols} samples={parse.samples} value={cutCol} onChange={(v) => { setCutCol(v); setCutMap({}) }} />
+          <ColumnSelect label="Cut / ratoon" hint="Which column holds the year-cane / stubble (optional)" cols={cols} samples={parse.samples} value={cutCol} onChange={(v) => { setCutCol(v); setCutMap(suggestCutMap(parse.distinct[v])) }} />
 
           <p className="text-xs text-gray-500 border-t border-gray-100 pt-4">
             FSA <strong>farm</strong>, <strong>tract</strong>, and <strong>CLU</strong> numbers are detected and saved on each block automatically — no mapping needed.
@@ -167,7 +197,7 @@ export default function ImportWizard({ existingCount }: { existingCount: number 
             <div className="rounded-lg bg-gray-50 border border-gray-100 p-4">
               <p className="text-sm font-semibold text-primary mb-1">Match your cut values to stages</p>
               <p className="text-xs text-gray-500 mb-3">
-                Your file uses these codes in <strong>{cutCol}</strong>. Tell us what each one means so the crop map colors right.
+                Your file uses these codes in <strong>{cutCol}</strong>. We&apos;ve pre-matched the obvious ones — check them and fill any left on &ldquo;skip&rdquo;.
               </p>
               <div className="space-y-2">
                 {cutValues.map((v) => (
