@@ -10,6 +10,8 @@ import type { FieldRow } from '@/lib/fields'
 import type { CaneState } from '@/lib/types'
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import type { StageColor } from '@/lib/resolve-colors'
+import * as Sentry from '@sentry/nextjs'
+import LiteMap from './LiteMap'
 import type { AnnotationRow } from '@/lib/annotations'
 import { cornerLabelAnchors } from './cornerLabels'
 
@@ -272,6 +274,9 @@ export default function FieldMap({
   const [savingReposition, setSavingReposition] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // No-WebGL2 machines (old farm-office Windows boxes) get the SVG crop map
+  // instead of a dead pane — see LiteMap.
+  const [liteMode, setLiteMode] = useState(false)
   const [drawing, setDrawing] = useState(false)
   const [drawKind, setDrawKind] = useState<'block' | 'line' | 'text' | 'freehand' | null>(null)
   // Line tool: ONE toolbar button opens a chooser — freehand stroke or
@@ -319,6 +324,34 @@ export default function FieldMap({
     let tapCleanup: (() => void) | null = null
     let readyTimer: ReturnType<typeof setTimeout> | null = null
 
+    // ?lite=1 forces the SVG fallback — for testing and for demoing what an
+    // old machine will see.
+    if (window.location.search.includes('lite=1')) {
+      setLiteMode(true)
+      return
+    }
+
+    // WebGL2 pre-flight on a THROWAWAY canvas — never Mapbox's own canvas
+    // (probing that one after Mapbox grabs it returns null = false positive,
+    // which is why an earlier check here was removed). Mapbox GL v3 hard-
+    // requires WebGL2; without it the map can never render, so fall back to
+    // the SVG crop map instead of a blank pane.
+    try {
+      const probe = document.createElement('canvas')
+      const gl = probe.getContext('webgl2')
+      if (!gl) {
+        Sentry.captureMessage('webgl2-unavailable: falling back to LiteMap', {
+          level: 'warning',
+          extra: { ua: navigator.userAgent },
+        })
+        setLiteMode(true)
+        return
+      }
+    } catch {
+      setLiteMode(true)
+      return
+    }
+
     try {
       mapboxgl.accessToken = MAPBOX_TOKEN
       const center = state ? STATE_CENTERS[state] : STATE_CENTERS.LA
@@ -333,9 +366,10 @@ export default function FieldMap({
         clickTolerance: 8,
       })
     } catch (e) {
-      setError(
-        `Mapbox failed to initialize: ${e instanceof Error ? e.message : String(e)}`,
-      )
+      // Constructor threw (context creation failed despite the probe, driver
+      // quirk, etc.) — same story: give them the SVG crop map, tell Sentry.
+      Sentry.captureException(e)
+      setLiteMode(true)
       return
     }
 
@@ -1646,6 +1680,17 @@ export default function FieldMap({
       setDrawKind('text')
       setTextDraft(null)
     }
+  }
+
+  if (liteMode) {
+    return (
+      <LiteMap
+        fields={fields}
+        selectedFieldId={selectedFieldId}
+        onSelectField={onSelectField}
+        stageColorMap={Object.fromEntries(stageColors.map((r) => [r.key, r.color]))}
+      />
+    )
   }
 
   if (error) {
