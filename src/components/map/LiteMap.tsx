@@ -81,11 +81,14 @@ export default function LiteMap({
   useEffect(() => {
     if (!holderRef.current || mapRef.current) return
     const map = L.map(holderRef.current, {
-      zoomControl: true,
+      zoomControl: false,
       attributionControl: false,
       // canvas renderer: fastest non-GPU path for hundreds of polygons
       preferCanvas: true,
     })
+    // Zoom top-right, same corner as the full map's navigation control —
+    // and clear of the draw-tools column top-left.
+    L.control.zoom({ position: 'topright' }).addTo(map)
     mapRef.current = map
     blocksRef.current = L.layerGroup().addTo(map)
     annosRef.current = L.layerGroup().addTo(map)
@@ -178,11 +181,23 @@ export default function LiteMap({
         live.current.onSelectField(f.id)
       })
       if (showLabels) {
-        poly.bindTooltip(f.name, {
-          permanent: true,
-          direction: 'center',
-          className: sat ? 'lite-label lite-label-sat' : 'lite-label',
-        })
+        const cutShort: Record<string, string> = {
+          plant_cane: 'PC', first_stubble: '1st', second_stubble: '2nd', third_stubble: '3rd',
+          fourth_stubble: '4th', fifth_stubble_plus: '5th', sixth_stubble_plus: '6th+', fallow: 'F',
+        }
+        const facts = [
+          Number(f.acreage_cached || 0) ? `${Number(f.acreage_cached).toFixed(2)} ac` : '',
+          f.variety ?? '',
+          f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
+        ].filter(Boolean).join(' · ')
+        poly.bindTooltip(
+          `<div style="text-align:center"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`,
+          {
+            permanent: true,
+            direction: 'center',
+            className: sat ? 'lite-label lite-label-sat' : 'lite-label',
+          },
+        )
       }
       poly.addTo(group)
       // reshape mode for the selected block — geoman vertex editing
