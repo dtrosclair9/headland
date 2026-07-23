@@ -315,11 +315,15 @@ export default function FieldMap({
   // draw.create as a real finish), so cancel flags the exit and the create
   // handler swallows it.
   const cancelingDrawRef = useRef(false)
+  const onCreateFieldRef = useRef(onCreateField)
+  const onUpdateFieldRef = useRef(onUpdateField)
   const onCreateAnnotationRef = useRef(onCreateAnnotation)
   const onUpdateAnnotationRef = useRef(onUpdateAnnotation)
   const onDeleteAnnotationRef = useRef(onDeleteAnnotation)
   const readOnlyRef = useRef(readOnly)
   readOnlyRef.current = readOnly
+  onCreateFieldRef.current = onCreateField
+  onUpdateFieldRef.current = onUpdateField
   onCreateAnnotationRef.current = onCreateAnnotation
   onUpdateAnnotationRef.current = onUpdateAnnotation
   onDeleteAnnotationRef.current = onDeleteAnnotation
@@ -981,7 +985,7 @@ export default function FieldMap({
       }
       const feature = e.features[0]
       if (feature?.geometry?.type === 'Polygon') {
-        await onCreateField(feature.geometry as GeoJSON.Polygon)
+        await onCreateFieldRef.current(feature.geometry as GeoJSON.Polygon)
       } else if (feature?.geometry?.type === 'LineString') {
         // Reference-line annotation (road, ditch, headland run).
         await onCreateAnnotationRef.current('line', feature.geometry as GeoJSON.LineString, undefined, {
@@ -997,7 +1001,7 @@ export default function FieldMap({
       const feature = e.features[0]
       const id = feature?.properties?.headlandFieldId
       if (typeof id === 'string' && feature?.geometry?.type === 'Polygon') {
-        await onUpdateField(id, feature.geometry as GeoJSON.Polygon)
+        await onUpdateFieldRef.current(id, feature.geometry as GeoJSON.Polygon)
       }
     })
 
@@ -1013,6 +1017,8 @@ export default function FieldMap({
         setDrawing(false)
         setDrawKind(null)
         setTextDraft(null)
+        setTextEdit(null)
+        setLineEdit(null)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1160,7 +1166,7 @@ export default function FieldMap({
     // First mount with a remembered position → go straight back there
     // instead of framing the whole farm. (Live map only; a layer selection
     // or Layers change still reframes as an explicit action.)
-    if (firstFit && !readOnly) {
+    if (firstFit && !readOnly && !focusFieldId) {
       const saved = loadSavedCamera(fields[0]?.org_id)
       if (saved) {
         didInitialFitRef.current = true
@@ -1411,20 +1417,24 @@ export default function FieldMap({
     map.on('mousedown', onDown)
     map.on('mousemove', onMove)
     map.on('mouseup', onUp)
-    map.on('mouseenter', 'line-edit-line', () => {
+    const onEnterLine = () => {
       const c = map.getCanvas?.()
       if (c) c.style.cursor = 'move'
-    })
-    map.on('mouseleave', 'line-edit-line', () => {
+    }
+    const onLeaveLine = () => {
       const c = map.getCanvas?.()
       if (c) c.style.cursor = ''
-    })
+    }
+    map.on('mouseenter', 'line-edit-line', onEnterLine)
+    map.on('mouseleave', 'line-edit-line', onLeaveLine)
 
     return () => {
       try {
         map.off('mousedown', onDown)
         map.off('mousemove', onMove)
         map.off('mouseup', onUp)
+        map.off('mouseenter', 'line-edit-line', onEnterLine)
+        map.off('mouseleave', 'line-edit-line', onLeaveLine)
         markers.forEach((m) => m.remove())
         if (map.getLayer('line-edit-line')) map.removeLayer('line-edit-line')
         if (map.getSource('line-edit')) map.removeSource('line-edit')
@@ -1568,16 +1578,24 @@ export default function FieldMap({
     map.on('touchmove', move)
     map.on('touchend', end)
     return () => {
-      map.off('mousedown', start)
-      map.off('mousemove', move)
-      map.off('mouseup', end)
-      map.off('touchstart', start)
-      map.off('touchmove', move)
-      map.off('touchend', end)
-      map.dragPan.enable()
-      canvas.style.cursor = ''
+      // Guarded: this cleanup can run AFTER the init effect's map.remove()
+      // on unmount (React cleans up in definition order) — the crash class
+      // that took down navigation once already.
+      try {
+        map.off('mousedown', start)
+        map.off('mousemove', move)
+        map.off('mouseup', end)
+        map.off('touchstart', start)
+        map.off('touchmove', move)
+        map.off('touchend', end)
+        map.dragPan.enable()
+        const c = map.getCanvas?.()
+        if (c) c.style.cursor = ''
+        src()?.setData({ type: 'FeatureCollection', features: [] })
+      } catch {
+        /* map already removed */
+      }
       freehandPtsRef.current = []
-      src()?.setData({ type: 'FeatureCollection', features: [] })
     }
   }, [drawKind, ready, lineWidth])
 
@@ -1672,6 +1690,9 @@ export default function FieldMap({
       // in-progress draw vertex dots — must survive the crop-map layer hider
       'draw-progress-dots',
       'line-edit-line',
+      'me-accuracy-fill',
+      'me-accuracy-line',
+      'freehand-preview-line',
     ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {
@@ -1915,6 +1936,9 @@ export default function FieldMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready || !selectedFieldId) return
+    // Deep-link focus provides its own padded context framing — don't clobber
+    // it with the tighter fly-to.
+    if (selectedFieldId === focusFieldId) return
     const sel = fields.find((f) => f.id === selectedFieldId)
     if (sel) {
       map.flyTo({ center: [sel.centroid_lng, sel.centroid_lat], zoom: 15, speed: 1.4 })
@@ -2117,6 +2141,11 @@ export default function FieldMap({
         whiteMap={whiteMap}
         readOnly={readOnly}
         onShowFields={onShowFields}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleFieldSelected={onToggleFieldSelected}
+        selectionKey={selectionKey}
+        focusFieldId={focusFieldId}
         repositionIds={repositionIds}
         onSaveReposition={onSaveReposition}
         onCancelReposition={onCancelReposition}

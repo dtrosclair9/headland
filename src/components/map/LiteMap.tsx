@@ -26,6 +26,11 @@ export default function LiteMap({
   onSelectField,
   stageColorMap,
   onShowFields,
+  selectMode = false,
+  selectedIds,
+  onToggleFieldSelected,
+  selectionKey = '',
+  focusFieldId = null,
   repositionIds = null,
   onSaveReposition,
   onCancelReposition,
@@ -48,6 +53,11 @@ export default function LiteMap({
   onSelectField: (id: string | null) => void
   stageColorMap: Record<string, string>
   onShowFields?: () => void
+  selectMode?: boolean
+  selectedIds?: Set<string>
+  onToggleFieldSelected?: (id: string) => void
+  selectionKey?: string
+  focusFieldId?: string | null
   repositionIds?: Set<string> | null
   onSaveReposition?: (features: { id: string; geometry: GeoJSON.Polygon }[]) => Promise<void>
   onCancelReposition?: () => void
@@ -120,8 +130,24 @@ export default function LiteMap({
 
   // Refs mirror the props/state the imperative Leaflet handlers need — the
   // map is created once; handlers must read current values.
-  const live = useRef({ tool, onSelectField, onCreateField, onCreateAnnotation })
-  live.current = { tool, onSelectField, onCreateField, onCreateAnnotation }
+  const live = useRef({
+    tool,
+    onSelectField,
+    onCreateField,
+    onCreateAnnotation,
+    selectMode,
+    onToggleFieldSelected,
+    repositioning: false,
+  })
+  live.current = {
+    tool,
+    onSelectField,
+    onCreateField,
+    onCreateAnnotation,
+    selectMode,
+    onToggleFieldSelected,
+    repositioning: !!repositionIds && repositionIds.size > 0,
+  }
 
   // ── map lifecycle ──────────────────────────────────────────────────
   useEffect(() => {
@@ -239,6 +265,7 @@ export default function LiteMap({
     const showLabels = map.getZoom() >= 14
     for (const f of shown) {
       const sel = f.id === selectedFieldId
+      const bulkSel = selectMode && !!selectedIds?.has(f.id)
       // Mirrors the full map's fillColorExpression: selected > plain/white >
       // fly-plan color > variety palette > stage palette.
       const fill = sel
@@ -254,14 +281,18 @@ export default function LiteMap({
         ring.map(([lng, lat]) => [lat, lng] as [number, number]),
       )
       const poly = L.polygon(latlngs, {
-        color: sel ? '#111827' : sat ? '#facc15' : '#374151',
-        weight: sel ? 3 : sat ? 1.5 : 1,
+        color: bulkSel ? SELECTED_COLOR : sel ? '#111827' : sat ? '#facc15' : '#374151',
+        weight: bulkSel ? 4 : sel ? 3 : sat ? 1.5 : 1,
         fillColor: fill,
         fillOpacity: repositioning ? 0.25 : sat ? (sel ? 0.35 : 0.08) : 0.9,
       })
       poly.on('click', (ev) => {
-        if (live.current.tool !== 'none') return
+        if (live.current.tool !== 'none' || live.current.repositioning) return
         L.DomEvent.stopPropagation(ev)
+        if (live.current.selectMode) {
+          live.current.onToggleFieldSelected?.(f.id)
+          return
+        }
         live.current.onSelectField(f.id)
       })
       if (showLabels) {
@@ -290,7 +321,7 @@ export default function LiteMap({
         editTargetRef.current = poly
       }
     }
-  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick, repositionIds])
+  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick, repositionIds, selectMode, selectedIds])
 
   // ── annotations layer ──────────────────────────────────────────────
   useEffect(() => {
@@ -643,6 +674,54 @@ export default function LiteMap({
     if (lineEdit) lineEditLayerRef.current?.setStyle({ weight: lineEdit.width, color: lineEdit.color })
   }, [lineEdit])
 
+  // Camera parity with the full map: layer/plantation selection reframes.
+  const prevSelKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || fields.length === 0) return
+    if (prevSelKeyRef.current === null) {
+      prevSelKeyRef.current = selectionKey
+      return // mount handled by saved-camera/fit
+    }
+    if (prevSelKeyRef.current === selectionKey) return
+    prevSelKeyRef.current = selectionKey
+    const target =
+      filterIds && filterIds.size > 0
+        ? fields.filter((f) => filterIds.has(f.id))
+        : visibleIds
+          ? fields.filter((f) => visibleIds.has(f.id))
+          : fields
+    const pts: [number, number][] = []
+    for (const f of target)
+      for (const ring of f.geometry?.coordinates ?? [])
+        for (const [lng, lat] of ring) pts.push([lat, lng])
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.04))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey, fields])
+
+  // Deep-link focus: zoom to the block with context (once per id).
+  const focusedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !focusFieldId || focusedRef.current === focusFieldId) return
+    const f = fields.find((x) => x.id === focusFieldId)
+    if (!f) return
+    focusedRef.current = focusFieldId
+    const pts: [number, number][] = []
+    for (const ring of f.geometry?.coordinates ?? [])
+      for (const [lng, lat] of ring) pts.push([lat, lng])
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(1.2))
+  }, [focusFieldId, fields])
+
+  // Fly to a newly selected block (skip the deep-link case — focus framed it).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !selectedFieldId || selectedFieldId === focusFieldId) return
+    const f = fields.find((x) => x.id === selectedFieldId)
+    if (f) map.setView([f.centroid_lat, f.centroid_lng], Math.max(map.getZoom(), 16))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFieldId])
+
   // Esc cancels any in-progress tool — same as the full map.
   useEffect(() => {
     if (tool === 'none' && !lineChooser) return
@@ -651,6 +730,8 @@ export default function LiteMap({
         mapRef.current?.pm.disableDraw()
         setTool('none')
         setLineChooser(false)
+        setLineEdit(null)
+        setTextDraft(null)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -726,7 +807,7 @@ export default function LiteMap({
 
   return (
     <div className="relative flex-1 h-full">
-      <div ref={holderRef} className="absolute inset-0 z-0" />
+      <div ref={holderRef} className={`absolute inset-0 z-0 ${tool !== 'none' ? 'lite-pencil' : ''}`} />
       <style>{`
         .lite-label { background: transparent; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #111827; }
         .lite-label-sat { color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
@@ -986,28 +1067,18 @@ export default function LiteMap({
               placeholder="Hwy 308, Shop house, N…"
               className="input text-sm w-full"
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Size</span>
-              {(
-                [
-                  ['S', 12],
-                  ['M', 16],
-                  ['L', 24],
-                  ['XL', 36],
-                ] as const
-              ).map(([label, px]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setTextDraft({ ...textDraft, size: px })}
-                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
-                    textDraft.size === px
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
-                  }`}
-                >
-                  {label}
-                </button>
+              <input type="range" min={8} max={48} step={1} value={textDraft.size}
+                onChange={(e) => setTextDraft({ ...textDraft, size: Number(e.target.value) })} className="flex-1" aria-label="Label size" />
+              <span className="text-xs text-gray-500 w-9 text-right">{textDraft.size}px</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Color</span>
+              {ANNO_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setTextDraft({ ...textDraft, color: c })} aria-label={`Label color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${textDraft.color === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }} />
               ))}
             </div>
             <div className="flex items-center gap-2">

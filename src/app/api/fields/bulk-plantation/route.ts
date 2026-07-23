@@ -5,7 +5,7 @@ import { bulkAssignPlantation } from '@/lib/fields'
 import { getPlantation } from '@/lib/plantations'
 
 const BodySchema = z.object({
-  field_ids: z.array(z.string().uuid()).min(1).max(500),
+  field_ids: z.array(z.string().uuid()).min(1).max(10000),
   // null = unassign all selected fields from any plantation.
   plantation_id: z.string().uuid().nullable(),
 })
