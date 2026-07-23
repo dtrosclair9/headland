@@ -1689,6 +1689,12 @@ export default function FieldMap({
         selectedFieldId={selectedFieldId}
         onSelectField={onSelectField}
         stageColorMap={Object.fromEntries(stageColors.map((r) => [r.key, r.color]))}
+        colorBy={colorBy}
+        varietyColors={varietyColors}
+        highlightColor={highlightColor}
+        filterIds={filterIds}
+        visibleIds={visibleIds}
+        whiteMap={whiteMap}
       />
     )
   }

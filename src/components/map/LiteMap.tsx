@@ -25,11 +25,28 @@ export default function LiteMap({
   selectedFieldId,
   onSelectField,
   stageColorMap,
+  colorBy = 'stage',
+  varietyColors = {},
+  highlightColor = null,
+  filterIds = null,
+  visibleIds = null,
+  whiteMap = false,
 }: {
   fields: FieldRow[]
   selectedFieldId: string | null
   onSelectField: (id: string) => void
   stageColorMap: Record<string, string>
+  /** stage = year-cane colors, variety = variety palette (mirrors the full map) */
+  colorBy?: 'stage' | 'variety'
+  varietyColors?: Record<string, string>
+  /** fly-plan viewing: paint matching blocks this one color */
+  highlightColor?: string | null
+  /** layer highlight: blocks outside the set render white, labels kept */
+  filterIds?: Set<string> | null
+  /** plantation scoping: blocks outside are omitted entirely */
+  visibleIds?: Set<string> | null
+  /** pilot map: everything white */
+  whiteMap?: boolean
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [mode, setMode] = useState<'crop' | 'satellite'>('crop')
@@ -124,6 +141,16 @@ export default function LiteMap({
   const zoomLevel = base.w / v.w
   const showLabels = zoomLevel > 3
   const sat = mode === 'satellite'
+  const shown = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
+  // Mirrors the full map's fillColorExpression: selected > plain/white >
+  // fly-plan color > variety palette > stage palette.
+  const fillFor = (f: FieldRow): string => {
+    if (f.id === selectedFieldId) return '#E8A33D'
+    if (whiteMap || (filterIds && !filterIds.has(f.id))) return '#FFFFFF'
+    if (highlightColor) return highlightColor
+    if (colorBy === 'variety') return varietyColors[f.variety ?? ''] ?? '#e5e7eb'
+    return (f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb'
+  }
 
   return (
     <div className="relative flex-1 h-full bg-white">
@@ -162,14 +189,13 @@ export default function LiteMap({
               preserveAspectRatio="none"
             />
           ))}
-        {fields.map((f) => {
-          const fill = (f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb'
+        {shown.map((f) => {
           const sel = f.id === selectedFieldId
           return (
             <path
               key={f.id}
               d={blockPaths.get(f.id) ?? ''}
-              fill={sat ? 'transparent' : fill}
+              fill={sat ? 'transparent' : fillFor(f)}
               fillOpacity={sat ? 0 : 0.9}
               stroke={sel ? (sat ? '#38bdf8' : '#111827') : sat ? '#facc15' : '#374151'}
               strokeWidth={(sel ? 2.5 : sat ? 1.2 : 0.8) * (v.w / 800)}
@@ -182,7 +208,7 @@ export default function LiteMap({
           )
         })}
         {showLabels &&
-          fields.map((f) => (
+          shown.map((f) => (
             <text
               key={`t-${f.id}`}
               x={mx(f.centroid_lng)}
