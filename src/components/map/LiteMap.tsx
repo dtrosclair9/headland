@@ -6,6 +6,9 @@ import '@geoman-io/leaflet-geoman-free'
 import 'leaflet/dist/leaflet.css'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import * as turf from '@turf/turf'
+import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
+import type { StageColor } from '@/lib/resolve-colors'
+import MapLegend from './MapLegend'
 import type { FieldRow } from '@/lib/fields'
 import type { AnnotationRow } from '@/lib/annotations'
 
@@ -42,6 +45,7 @@ export default function LiteMap({
   onDeleteAnnotation,
   colorBy = 'stage',
   varietyColors = {},
+  stageColors = [],
   highlightColor = null,
   blockColors = null,
   filterIds = null,
@@ -85,6 +89,8 @@ export default function LiteMap({
   onDeleteAnnotation?: (id: string) => Promise<void>
   colorBy?: 'stage' | 'variety'
   varietyColors?: Record<string, string>
+  // Ordered stage palette with labels — feeds the shared MapLegend.
+  stageColors?: StageColor[]
   highlightColor?: string | null
   // Per-block colors for plan-set viewing/drafting — wins over highlightColor.
   blockColors?: Record<string, string> | null
@@ -174,6 +180,7 @@ export default function LiteMap({
       maxZoom: 19,
       minZoom: 3,
     })
+    L.control.scale({ imperial: true, metric: false }).addTo(map)
     // Zoom top-right, same corner as the full map's navigation control —
     // and clear of the draw-tools column top-left.
     L.control.zoom({ position: 'topright' }).addTo(map)
@@ -346,6 +353,23 @@ export default function LiteMap({
     }
   }, [fields, visibleIds])
 
+  // ONE fill resolver for both the polygon styles AND the label text rule —
+  // mirrors FieldMap's fill expression exactly (selected → highlight, plan
+  // step colors, single highlight, palette, cyan unset). Any divergence here
+  // is a lite-parity bug (Lance caught the grey-vs-cyan unset mismatch).
+  const fillFor = (f: FieldRow): string => {
+    if (f.id === selectedFieldId) return SELECTED_COLOR
+    const member = filterIds ? filterIds.has(f.id) : !whiteMap
+    if (!member) return '#FFFFFF'
+    return (
+      blockColors?.[f.id] ??
+      (highlightColor ??
+        (colorBy === 'variety'
+          ? (varietyColors[f.variety ?? ''] ?? UNSET_RATOON_COLOR)
+          : (f.current_ratoon && stageColorMap[f.current_ratoon]) || UNSET_RATOON_COLOR))
+    )
+  }
+
   // ── blocks: STYLE (setStyle in place — cheap even at thousands of blocks;
   // zoom is deliberately NOT a dependency).
   useEffect(() => {
@@ -364,20 +388,7 @@ export default function LiteMap({
       }
       const sel = id === selectedFieldId
       const bulkSel = selectMode && !!selectedIds?.has(id)
-      // Member = this block is part of the active selection (plan/step/layer
-      // pick). Non-members go white on the white map; members keep their
-      // colors — per-block plan colors first, then the single highlight,
-      // then the palette. Mirrors FieldMap's fill expression exactly.
-      const member = filterIds ? filterIds.has(id) : !whiteMap
-      const fill = sel
-        ? SELECTED_COLOR
-        : !member
-          ? '#FFFFFF'
-          : (blockColors?.[id] ??
-            (highlightColor ??
-              (colorBy === 'variety'
-                ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
-                : (f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')))
+      const fill = fillFor(f)
       poly.setStyle({
         color: bulkSel ? SELECTED_COLOR : sel ? '#111827' : sat ? '#facc15' : '#374151',
         weight: bulkSel ? 4 : sel ? 3 : sat ? 1.5 : 1,
@@ -404,15 +415,23 @@ export default function LiteMap({
       fourth_stubble: '4th', fifth_stubble_plus: '5th', sixth_stubble_plus: '6th+', fallow: 'F',
     }
     const className = sat ? 'lite-label lite-label-sat' : 'lite-label'
-    const contentFor = (f: FieldRow) => {
-      const facts = [
+    const factsFor = (f: FieldRow) =>
+      [
         Number(f.acreage_cached || 0) ? `${Number(f.acreage_cached).toFixed(2)} ac` : '',
         f.variety ?? '',
         f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
       ]
         .filter(Boolean)
         .join(' · ')
-      return `<div style="text-align:center"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`
+    const contentFor = (f: FieldRow) => {
+      const facts = factsFor(f)
+      // Same label rule as the full map: white text with a dark halo on
+      // colored blocks, black with a white halo on white/plain blocks.
+      const colored = fillFor(f) !== '#FFFFFF'
+      const textStyle = colored
+        ? 'color:#FFFFFF;text-shadow:0 0 3px #0F2A1F,0 0 3px #0F2A1F'
+        : 'color:#111827;text-shadow:0 0 2px #FFFFFF,0 0 2px #FFFFFF'
+      return `<div style="text-align:center;${textStyle}"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`
     }
     // Rank in-view candidates by distance to center and cap the count — a
     // dense viewport otherwise mounts hundreds of label nodes in one burst.
@@ -430,7 +449,30 @@ export default function LiteMap({
       }
       candidates.sort((a, b) => a.d - b.d)
     }
-    const labeled = new Set(candidates.slice(0, MAX_LABELS).map((c) => c.id))
+    // Collision culling — the exact behavior that makes the full map read
+    // clean: constant-size labels, show the ones that fit, HIDE the rest
+    // (they appear as you zoom in and space opens up). Boxes sized to the
+    // MEASURED tooltip: ~6px Leaflet padding per side, name ~8px/char at
+    // 11px bold, facts ~5.5px/char at 10px, plus a small breathing gap.
+    const labeled = new Set<string>()
+    const placedBoxes: { x1: number; y1: number; x2: number; y2: number }[] = []
+    for (const c of candidates) {
+      if (labeled.size >= MAX_LABELS) break
+      const f = byId.get(c.id)!
+      const pt = map.latLngToContainerPoint(L.latLng(f.centroid_lat, f.centroid_lng))
+      const facts = factsFor(f)
+      const w = Math.max((f.name ?? '').length * 8, facts.length * 5.5) + 20
+      const h = (facts ? 44 : 30) + 4
+      const box = { x1: pt.x - w / 2, y1: pt.y - h / 2, x2: pt.x + w / 2, y2: pt.y + h / 2 }
+      if (
+        placedBoxes.some(
+          (b) => !(box.x2 < b.x1 || box.x1 > b.x2 || box.y2 < b.y1 || box.y1 > b.y2),
+        )
+      )
+        continue
+      placedBoxes.push(box)
+      labeled.add(c.id)
+    }
     for (const [id, poly] of polys) {
       const f = byId.get(id)
       const wants = !!f && labeled.has(id)
@@ -447,7 +489,7 @@ export default function LiteMap({
         poly.unbindTooltip()
       }
     }
-  }, [fields, mode, viewTick, repositionIds])
+  }, [fields, mode, viewTick, repositionIds, colorBy, varietyColors, stageColorMap, filterIds, whiteMap, highlightColor, blockColors, selectedFieldId])
 
   // ── blocks: RESHAPE (geoman on the persistent polygon — survives zooms).
   useEffect(() => {
@@ -967,6 +1009,15 @@ export default function LiteMap({
         .lite-label::before { display: none; }
         .lite-pencil, .lite-pencil * { cursor: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAuUlEQVR4nO2U4Q2CMBBGe13CRHeQCWQSx2MSnEB2qIlTfOZMmhz0BHq98MuX8AMK77VpSgh/jgIAtOfRS/4eejUSveSMFole8swyYg4AwKXvwuk+FmMyElvkjBbheyIiUwBCnpERKWeoVS5J43Mmr1oBDPLdARjluwJokG8GWuWrAQ/5z4CXnCleOt+u6l/RIq8+aKlSXgR49izhy0O+ugIZSUb5LJBnn5GbTEb591sZkAOvx2SWHsoH0v2NW7G57dwAAAAASUVORK5CYII=) 2 21, crosshair !important; }
       `}</style>
+
+      {/* Palette legend — the SAME shared component as the full map, same
+          show/hide rule (hidden while plan colors paint). z-[1000] because
+          Leaflet panes stack above plain z-10. */}
+      {!blockColors && (fields.some((f) => f.current_ratoon) || mode === 'crop' || colorBy === 'variety') && (
+        <div className="z-[1000] absolute inset-0 pointer-events-none [&>div]:pointer-events-auto">
+          <MapLegend colorBy={colorBy} stageColors={stageColors} varietyColors={varietyColors} />
+        </div>
+      )}
 
       {/* Labeled action buttons — overlay the map at top-left. EXACT clone of
           the full map's toolbar: same buttons, classes, copy, and positions.
