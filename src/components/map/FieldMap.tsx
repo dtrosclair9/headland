@@ -48,6 +48,9 @@ function loadSavedCamera(orgId: string | undefined): {
 }
 
 // Pencil cursor while a draw tool is armed — hotspot at the pencil tip.
+// Annotation color choices — dark default first (readable on both map styles).
+const ANNO_COLORS = ['#111827', '#DC2626', '#2563EB', '#16A34A', '#EA580C', '#7C3AED']
+
 export const PENCIL_CURSOR =
   'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAuUlEQVR4nO2U4Q2CMBBGe13CRHeQCWQSx2MSnEB2qIlTfOZMmhz0BHq98MuX8AMK77VpSgh/jgIAtOfRS/4eejUSveSMFole8swyYg4AwKXvwuk+FmMyElvkjBbheyIiUwBCnpERKWeoVS5J43Mmr1oBDPLdARjluwJokG8GWuWrAQ/5z4CXnCleOt+u6l/RIq8+aKlSXgR49izhy0O+ugIZSUb5LJBnn5GbTEb591sZkAOvx2SWHsoH0v2NW7G57dwAAAAASUVORK5CYII=) 2 21, crosshair'
 const UNSET_COLOR = UNSET_RATOON_COLOR
@@ -234,7 +237,7 @@ export interface FieldMapProps {
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
-    style?: { size?: number; rotation?: number; width?: number },
+    style?: { size?: number; rotation?: number; width?: number; color?: string },
   ) => Promise<void>
   onUpdateAnnotation?: (
     id: string,
@@ -244,6 +247,7 @@ export interface FieldMapProps {
       size?: number
       rotation?: number
       width?: number | null
+      color?: string
     },
   ) => Promise<void>
   onDeleteAnnotation: (id: string) => Promise<void>
@@ -338,8 +342,9 @@ export default function FieldMap({
     value: string
     size: number
     rotation: number
+    color: string
   } | null>(null)
-  const [lineEdit, setLineEdit] = useState<{ id: string; width: number } | null>(null)
+  const [lineEdit, setLineEdit] = useState<{ id: string; width: number; color: string } | null>(null)
   const annotEditRef = useRef(false)
   annotEditRef.current = !!textEdit || !!lineEdit
   const textEditMarkerRef = useRef<mapboxgl.Marker | null>(null)
@@ -348,6 +353,9 @@ export default function FieldMap({
   const [lineWidth, setLineWidth] = useState(3)
   const lineWidthRef = useRef(3)
   lineWidthRef.current = lineWidth
+  const [lineColor, setLineColor] = useState('#111827')
+  const lineColorRef = useRef('#111827')
+  lineColorRef.current = lineColor
   const freehandPtsRef = useRef<[number, number][]>([])
   // Text-label placement: after the grower clicks a spot, this holds the spot
   // while they type the label into the overlay input.
@@ -357,6 +365,7 @@ export default function FieldMap({
     value: string
     size: number
     rotation: number
+    color: string
   } | null>(null)
   const textMarkerRef = useRef<mapboxgl.Marker | null>(null)
   drawKindRef.current = drawKind
@@ -823,9 +832,10 @@ export default function FieldMap({
               value: String(props?.text ?? ''),
               size: Number(props?.size ?? 16),
               rotation: Number(props?.rotation ?? 0),
+              color: String(props?.color ?? '#111827'),
             })
           } else {
-            setLineEdit({ id: annId, width: Number(props?.width ?? 3) })
+            setLineEdit({ id: annId, width: Number(props?.width ?? 3), color: String(props?.color ?? '#111827') })
           }
         }
         node.append(label)
@@ -843,10 +853,11 @@ export default function FieldMap({
           openAnnotationDelete(e.features?.[0]?.properties, e.lngLat)
         })
         map.on('mouseenter', layerId, () => {
+          if (drawKindRef.current) return
           map.getCanvas().style.cursor = 'pointer'
         })
         map.on('mouseleave', layerId, () => {
-          map.getCanvas().style.cursor = ''
+          map.getCanvas().style.cursor = drawKindRef.current ? PENCIL_CURSOR : ''
         })
       }
 
@@ -854,7 +865,7 @@ export default function FieldMap({
       // takes the label text.
       map.on('click', (e) => {
         if (drawKindRef.current === 'text') {
-          setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '', size: 16, rotation: 0 })
+          setTextDraft({ lng: e.lngLat.lng, lat: e.lngLat.lat, value: '', size: 16, rotation: 0, color: '#111827' })
           setDrawKind(null)
           setDrawing(false)
           return
@@ -936,9 +947,14 @@ export default function FieldMap({
         canvasEl.removeEventListener('touchend', onTapEnd)
       }
       map.on('mouseenter', 'fields-fill', () => {
+        if (drawKindRef.current) return
         map.getCanvas().style.cursor = 'pointer'
       })
       map.on('mouseleave', 'fields-fill', () => {
+        if (drawKindRef.current) {
+          map.getCanvas().style.cursor = PENCIL_CURSOR
+          return
+        }
         map.getCanvas().style.cursor = ''
       })
 
@@ -970,6 +986,7 @@ export default function FieldMap({
         // Reference-line annotation (road, ditch, headland run).
         await onCreateAnnotationRef.current('line', feature.geometry as GeoJSON.LineString, undefined, {
           width: lineWidthRef.current,
+          color: lineColorRef.current,
         })
       }
       draw.deleteAll()
@@ -1287,30 +1304,150 @@ export default function FieldMap({
     if (!el || !textEdit) return
     el.style.fontSize = Math.min(textEdit.size, 28) + 'px'
     el.style.transform = 'rotate(' + textEdit.rotation + 'deg)'
+    el.style.color = textEdit.color
     el.textContent = textEdit.value || 'label'
   }, [textEdit])
 
-  // ── Move/reshape an existing LINE: load it into the draw plugin
-  // (simple_select drags the whole line; click it again to drag corners).
+  // ── Move/reshape an existing LINE — WYSIWYG: the line stays visible on a
+  // dedicated preview layer (live width/color), each corner is a draggable
+  // handle, and dragging the line itself slides the whole thing.
+  const lineEditCoordsRef = useRef<[number, number][]>([])
   useEffect(() => {
     const map = mapRef.current
-    const draw = drawRef.current
-    if (!map || !ready || !draw || !lineEdit) return
+    if (!map || !ready || !lineEdit) return
     const ann = annotations.find((a) => a.id === lineEdit.id)
     if (!ann || ann.geometry.type !== 'LineString') return
-    const fid = 'ann-' + lineEdit.id
-    draw.add({ type: 'Feature', id: fid, properties: {}, geometry: ann.geometry })
-    draw.changeMode('simple_select', { featureIds: [fid] })
+    lineEditCoordsRef.current = ann.geometry.coordinates.map(([lng, lat]) => [lng, lat])
+
+    const data = (): GeoJSON.Feature => ({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'LineString', coordinates: lineEditCoordsRef.current },
+    })
+    try {
+      if (map.getLayer('line-edit-line')) map.removeLayer('line-edit-line')
+      if (map.getSource('line-edit')) map.removeSource('line-edit')
+    } catch {
+      /* leftovers */
+    }
+    map.addSource('line-edit', { type: 'geojson', data: data() })
+    map.addLayer({
+      id: 'line-edit-line',
+      type: 'line',
+      source: 'line-edit',
+      paint: {
+        'line-color': lineEdit.color,
+        'line-width': [
+          'interpolate',
+          ['exponential', 2],
+          ['zoom'],
+          10,
+          lineEdit.width / 32,
+          15,
+          lineEdit.width,
+          20,
+          lineEdit.width * 32,
+        ] as unknown as mapboxgl.ExpressionSpecification,
+      },
+    })
+    const push = () => {
+      const src = map.getSource('line-edit') as mapboxgl.GeoJSONSource | undefined
+      src?.setData(data())
+    }
+
+    // corner handles
+    const markers: mapboxgl.Marker[] = []
+    const mkHandle = (i: number) => {
+      const el = document.createElement('div')
+      el.style.cssText =
+        'width:16px;height:16px;border-radius:9999px;background:#fff;border:3px solid #E8A33D;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:grab;'
+      const m = new mapboxgl.Marker({ element: el, draggable: true })
+        .setLngLat(lineEditCoordsRef.current[i] as [number, number])
+        .addTo(map)
+      m.on('drag', () => {
+        const ll = m.getLngLat()
+        lineEditCoordsRef.current[i] = [ll.lng, ll.lat]
+        push()
+      })
+      markers.push(m)
+    }
+    lineEditCoordsRef.current.forEach((_, i) => mkHandle(i))
+
+    // drag the line itself to slide the whole thing
+    let moveBase: [number, number][] | null = null
+    let moveStart: mapboxgl.LngLat | null = null
+    const onDown = (e: mapboxgl.MapMouseEvent) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: ['line-edit-line'] })
+      if (hit.length === 0) return
+      e.preventDefault()
+      map.dragPan.disable()
+      moveBase = lineEditCoordsRef.current.map(([x, y]) => [x, y])
+      moveStart = e.lngLat
+    }
+    const onMove = (e: mapboxgl.MapMouseEvent) => {
+      if (!moveBase || !moveStart) return
+      const dLng = e.lngLat.lng - moveStart.lng
+      const dLat = e.lngLat.lat - moveStart.lat
+      lineEditCoordsRef.current = moveBase.map(([x, y]) => [x + dLng, y + dLat])
+      push()
+      markers.forEach((m, i) => m.setLngLat(lineEditCoordsRef.current[i] as [number, number]))
+    }
+    const onUp = () => {
+      if (!moveBase) return
+      moveBase = null
+      moveStart = null
+      map.dragPan.enable()
+    }
+    map.on('mousedown', onDown)
+    map.on('mousemove', onMove)
+    map.on('mouseup', onUp)
+    map.on('mouseenter', 'line-edit-line', () => {
+      const c = map.getCanvas?.()
+      if (c) c.style.cursor = 'move'
+    })
+    map.on('mouseleave', 'line-edit-line', () => {
+      const c = map.getCanvas?.()
+      if (c) c.style.cursor = ''
+    })
+
     return () => {
       try {
-        draw.delete(fid)
-        draw.changeMode('simple_select')
+        map.off('mousedown', onDown)
+        map.off('mousemove', onMove)
+        map.off('mouseup', onUp)
+        markers.forEach((m) => m.remove())
+        if (map.getLayer('line-edit-line')) map.removeLayer('line-edit-line')
+        if (map.getSource('line-edit')) map.removeSource('line-edit')
+        map.dragPan.enable()
       } catch {
-        /* map may be tearing down */
+        /* map tearing down */
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineEdit?.id, ready])
+
+  // live width/color preview while the edit bar sliders move
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !lineEdit) return
+    try {
+      if (!map.getLayer('line-edit-line')) return
+      map.setPaintProperty('line-edit-line', 'line-color', lineEdit.color)
+      map.setPaintProperty('line-edit-line', 'line-width', [
+        'interpolate',
+        ['exponential', 2],
+        ['zoom'],
+        10,
+        lineEdit.width / 32,
+        15,
+        lineEdit.width,
+        20,
+        lineEdit.width * 32,
+      ] as unknown as mapboxgl.ExpressionSpecification)
+    } catch {
+      /* layer mid-teardown */
+    }
+  }, [lineEdit, ready])
 
   // Pencil cursor while any draw tool is armed; clear the progress dots when
   // the tool changes (finish, cancel, Esc).
@@ -1408,7 +1545,7 @@ export default function FieldMap({
           'line',
           { type: 'LineString', coordinates: pts },
           undefined,
-          { width: lineWidthRef.current },
+          { width: lineWidthRef.current, color: lineColorRef.current },
         )
         setDrawing(false)
         setDrawKind(null)
@@ -1524,6 +1661,7 @@ export default function FieldMap({
       'annotations-text',
       // in-progress draw vertex dots — must survive the crop-map layer hider
       'draw-progress-dots',
+      'line-edit-line',
     ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {
@@ -2188,28 +2326,37 @@ export default function FieldMap({
                 {label}
               </button>
             ))}
-            <span className="basis-full h-0" />
-            <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
-            {(
-              [
-                [1.5, 'Thin'],
-                [3, 'Medium'],
-                [5, 'Thick'],
-              ] as const
-            ).map(([w, label]) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => setLineWidth(w)}
-                className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
-                  lineWidth === w
-                    ? 'bg-primary text-white border-primary'
-                    : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            <div className="basis-full flex items-center gap-2 pt-1">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Thickness</span>
+              <input
+                type="range"
+                min={0.5}
+                max={8}
+                step={0.5}
+                value={lineWidth}
+                onChange={(e) => setLineWidth(Number(e.target.value))}
+                className="flex-1"
+                aria-label="Line thickness"
+              />
+              <span className="text-xs text-gray-500 w-7 text-right">{lineWidth}</span>
+            </div>
+            <div
+              className="basis-full rounded-full"
+              style={{ height: Math.max(2, lineWidth), backgroundColor: lineColor }}
+            />
+            <div className="basis-full flex items-center gap-1.5 pt-1">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Color</span>
+              {ANNO_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setLineColor(c)}
+                  aria-label={`Line color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${lineColor === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -2245,6 +2392,7 @@ export default function FieldMap({
                 text: value,
                 size: textEdit.size,
                 rotation: textEdit.rotation,
+                color: textEdit.color,
               })
               setTextEdit(null)
             }}
@@ -2259,21 +2407,31 @@ export default function FieldMap({
               onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
               className="input text-sm w-full"
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Size</span>
-              {([['S', 12], ['M', 16], ['L', 24], ['XL', 36]] as const).map(([label, px]) => (
+              <input
+                type="range"
+                min={8}
+                max={48}
+                step={1}
+                value={textEdit.size}
+                onChange={(e) => setTextEdit({ ...textEdit, size: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Label size"
+              />
+              <span className="text-xs text-gray-500 w-9 text-right">{textEdit.size}px</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Color</span>
+              {ANNO_COLORS.map((c) => (
                 <button
-                  key={label}
+                  key={c}
                   type="button"
-                  onClick={() => setTextEdit({ ...textEdit, size: px })}
-                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
-                    textEdit.size === px
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
-                  }`}
-                >
-                  {label}
-                </button>
+                  onClick={() => setTextEdit({ ...textEdit, color: c })}
+                  aria-label={`Label color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${textEdit.color === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }}
+                />
               ))}
             </div>
             <div className="flex items-center gap-2">
@@ -2308,23 +2466,34 @@ export default function FieldMap({
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
           <div className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72">
             <p className="text-xs text-gray-500 leading-snug">
-              Drag the line to move it. Click it, then drag the corners to reshape.
+              Drag the gold corner dots to reshape. Drag the line itself to move the whole thing.
             </p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
-              {([[1.5, 'Thin'], [3, 'Medium'], [5, 'Thick']] as const).map(([w, label]) => (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Thickness</span>
+              <input
+                type="range"
+                min={0.5}
+                max={8}
+                step={0.5}
+                value={lineEdit.width}
+                onChange={(e) => setLineEdit({ ...lineEdit, width: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Line thickness"
+              />
+              <span className="text-xs text-gray-500 w-7 text-right">{lineEdit.width}</span>
+            </div>
+            <div className="rounded-full" style={{ height: Math.max(2, lineEdit.width), backgroundColor: lineEdit.color }} />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Color</span>
+              {ANNO_COLORS.map((c) => (
                 <button
-                  key={w}
+                  key={c}
                   type="button"
-                  onClick={() => setLineEdit({ ...lineEdit, width: w })}
-                  className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
-                    lineEdit.width === w
-                      ? 'bg-primary text-white border-primary'
-                      : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  {label}
-                </button>
+                  onClick={() => setLineEdit({ ...lineEdit, color: c })}
+                  aria-label={`Line color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${lineEdit.color === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }}
+                />
               ))}
             </div>
             <div className="flex gap-2">
@@ -2333,12 +2502,13 @@ export default function FieldMap({
                 className="btn-primary text-xs px-3 py-1.5"
                 onClick={async () => {
                   if (!onUpdateAnnotation) return
-                  const f = drawRef.current?.get('ann-' + lineEdit.id)
-                  const geometry =
-                    f?.geometry?.type === 'LineString' ? (f.geometry as GeoJSON.LineString) : undefined
+                  const coords = lineEditCoordsRef.current
                   await onUpdateAnnotation(lineEdit.id, {
-                    ...(geometry ? { geometry } : {}),
+                    ...(coords.length >= 2
+                      ? { geometry: { type: 'LineString', coordinates: coords } as GeoJSON.LineString }
+                      : {}),
                     width: lineEdit.width,
+                    color: lineEdit.color,
                   })
                   setLineEdit(null)
                 }}
@@ -2411,7 +2581,7 @@ export default function FieldMap({
                 'text',
                 { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
                 value,
-                { size: textDraft.size, rotation: textDraft.rotation },
+                { size: textDraft.size, rotation: textDraft.rotation, color: textDraft.color },
               )
               setTextDraft(null)
             }}
@@ -2425,30 +2595,33 @@ export default function FieldMap({
               placeholder="Hwy 308, Shop house, N…"
               className="input text-sm w-full"
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">
                 Size
               </span>
-              {(
-                [
-                  ['S', 12],
-                  ['M', 16],
-                  ['L', 24],
-                  ['XL', 36],
-                ] as const
-              ).map(([label, px]) => (
+              <input
+                type="range"
+                min={8}
+                max={48}
+                step={1}
+                value={textDraft.size}
+                onChange={(e) => setTextDraft({ ...textDraft, size: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Label size"
+              />
+              <span className="text-xs text-gray-500 w-9 text-right">{textDraft.size}px</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Color</span>
+              {ANNO_COLORS.map((c) => (
                 <button
-                  key={label}
+                  key={c}
                   type="button"
-                  onClick={() => setTextDraft({ ...textDraft, size: px })}
-                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
-                    textDraft.size === px
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
-                  }`}
-                >
-                  {label}
-                </button>
+                  onClick={() => setTextDraft({ ...textDraft, color: c })}
+                  aria-label={`Label color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${textDraft.color === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }}
+                />
               ))}
             </div>
             <div className="flex items-center gap-2">
@@ -2471,10 +2644,11 @@ export default function FieldMap({
             {textDraft.value.trim() && (
               <div className="h-16 flex items-center justify-center overflow-hidden">
                 <span
-                  className="font-bold text-gray-800"
+                  className="font-bold"
                   style={{
                     fontSize: Math.min(textDraft.size, 28),
                     transform: `rotate(${textDraft.rotation}deg)`,
+                    color: textDraft.color,
                   }}
                 >
                   {textDraft.value}

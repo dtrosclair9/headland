@@ -12,6 +12,7 @@ import type { AnnotationRow } from '@/lib/annotations'
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 const SAT_TILES = `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${MAPBOX_TOKEN}`
 const SELECTED_COLOR = '#E8A33D'
+const ANNO_COLORS = ['#111827', '#DC2626', '#2563EB', '#16A34A', '#EA580C', '#7C3AED']
 
 // No-WebGL map for old computers, built on Leaflet — image tiles + DOM/SVG
 // rendering, the architecture that ran on 2005 hardware. Full feature parity
@@ -57,7 +58,7 @@ export default function LiteMap({
     kind: 'line' | 'text',
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
-    style?: { size?: number; rotation?: number; width?: number },
+    style?: { size?: number; rotation?: number; width?: number; color?: string },
   ) => Promise<void>
   onUpdateAnnotation?: (
     id: string,
@@ -67,6 +68,7 @@ export default function LiteMap({
       size?: number
       rotation?: number
       width?: number | null
+      color?: string
     },
   ) => Promise<void>
   onDeleteAnnotation?: (id: string) => Promise<void>
@@ -95,16 +97,20 @@ export default function LiteMap({
   const [lineWidth, setLineWidth] = useState(3)
   const lineWidthRef = useRef(3)
   lineWidthRef.current = lineWidth
+  const [lineColor, setLineColor] = useState('#111827')
+  const lineColorRef = useRef('#111827')
+  lineColorRef.current = lineColor
   const [textDraft, setTextDraft] = useState<{
     lng: number
     lat: number
     value: string
     size: number
     rotation: number
+    color: string
     /** set when editing an existing label instead of creating one */
     editingId?: string
   } | null>(null)
-  const [lineEdit, setLineEdit] = useState<{ id: string; width: number } | null>(null)
+  const [lineEdit, setLineEdit] = useState<{ id: string; width: number; color: string } | null>(null)
   const lineEditLayerRef = useRef<L.Polyline | null>(null)
   const [locating, setLocating] = useState(false)
   const [locateAccuracy, setLocateAccuracy] = useState<number | null>(null)
@@ -186,6 +192,7 @@ export default function LiteMap({
       } else if (t === 'line' && gj.geometry.type === 'LineString' && live.current.onCreateAnnotation) {
         void live.current.onCreateAnnotation('line', gj.geometry as GeoJSON.LineString, undefined, {
           width: lineWidthRef.current,
+          color: lineColorRef.current,
         })
       }
       setTool('none')
@@ -311,7 +318,7 @@ export default function LiteMap({
                   onEdit: onUpdateAnnotation
                     ? () => {
                         map.closePopup(p)
-                        setLineEdit({ id: a.id, width: a.width ?? 3 })
+                        setLineEdit({ id: a.id, width: a.width ?? 3, color: a.color ?? '#111827' })
                       }
                     : undefined,
                   editLabel: 'Move / reshape',
@@ -365,6 +372,7 @@ export default function LiteMap({
                           value: a.text ?? '',
                           size: a.size ?? 16,
                           rotation: a.rotation ?? 0,
+                          color: a.color ?? '#111827',
                           editingId: a.id,
                         })
                       }
@@ -412,7 +420,7 @@ export default function LiteMap({
             'line',
             { type: 'LineString', coordinates: pts },
             undefined,
-            { width: lineWidthRef.current },
+            { width: lineWidthRef.current, color: lineColorRef.current },
           )
         }
         down = false
@@ -432,7 +440,7 @@ export default function LiteMap({
     // text label: click to place, then type in the draft panel
     if (tool === 'text') {
       const onClick = (e: L.LeafletMouseEvent) => {
-        setTextDraft({ lng: e.latlng.lng, lat: e.latlng.lat, value: '', size: 16, rotation: 0 })
+        setTextDraft({ lng: e.latlng.lng, lat: e.latlng.lat, value: '', size: 16, rotation: 0, color: '#111827' })
         setTool('none')
       }
       map.on('click', onClick)
@@ -629,6 +637,11 @@ export default function LiteMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineEdit?.id])
+
+  // Live preview while editing a line: width/color changes apply instantly.
+  useEffect(() => {
+    if (lineEdit) lineEditLayerRef.current?.setStyle({ weight: lineEdit.width, color: lineEdit.color })
+  }, [lineEdit])
 
   // Esc cancels any in-progress tool — same as the full map.
   useEffect(() => {
@@ -895,28 +908,21 @@ export default function LiteMap({
                 {label}
               </button>
             ))}
-            <span className="basis-full h-0" />
-            <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
-            {(
-              [
-                [1.5, 'Thin'],
-                [3, 'Medium'],
-                [5, 'Thick'],
-              ] as const
-            ).map(([w, label]) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => setLineWidth(w)}
-                className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
-                  lineWidth === w
-                    ? 'bg-primary text-white border-primary'
-                    : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            <div className="basis-full flex items-center gap-2 pt-1">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Thickness</span>
+              <input type="range" min={0.5} max={8} step={0.5} value={lineWidth}
+                onChange={(e) => setLineWidth(Number(e.target.value))} className="flex-1" aria-label="Line thickness" />
+              <span className="text-xs text-gray-500 w-7 text-right">{lineWidth}</span>
+            </div>
+            <div className="basis-full rounded-full" style={{ height: Math.max(2, lineWidth), backgroundColor: lineColor }} />
+            <div className="basis-full flex items-center gap-1.5 pt-1">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Color</span>
+              {ANNO_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setLineColor(c)} aria-label={`Line color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${lineColor === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -958,13 +964,14 @@ export default function LiteMap({
                   text: value,
                   size: textDraft.size,
                   rotation: textDraft.rotation,
+                  color: textDraft.color,
                 })
               } else if (onCreateAnnotation) {
                 void onCreateAnnotation(
                   'text',
                   { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
                   value,
-                  { size: textDraft.size, rotation: textDraft.rotation },
+                  { size: textDraft.size, rotation: textDraft.rotation, color: textDraft.color },
                 )
               }
               setTextDraft(null)
@@ -1020,8 +1027,8 @@ export default function LiteMap({
             {textDraft.value.trim() && (
               <div className="h-16 flex items-center justify-center overflow-hidden">
                 <span
-                  className="font-bold text-gray-800"
-                  style={{ fontSize: Math.min(textDraft.size, 28), transform: `rotate(${textDraft.rotation}deg)` }}
+                  className="font-bold"
+                  style={{ fontSize: Math.min(textDraft.size, 28), transform: `rotate(${textDraft.rotation}deg)`, color: textDraft.color }}
                 >
                   {textDraft.value}
                 </span>
@@ -1062,21 +1069,19 @@ export default function LiteMap({
             <p className="text-xs text-gray-500 leading-snug">
               Drag the line to move it. Drag the corner dots to reshape.
             </p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
-              {([[1.5, 'Thin'], [3, 'Medium'], [5, 'Thick']] as const).map(([w, label]) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => setLineEdit({ ...lineEdit, width: w })}
-                  className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
-                    lineEdit.width === w
-                      ? 'bg-primary text-white border-primary'
-                      : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  {label}
-                </button>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Thickness</span>
+              <input type="range" min={0.5} max={8} step={0.5} value={lineEdit.width}
+                onChange={(e) => setLineEdit({ ...lineEdit, width: Number(e.target.value) })} className="flex-1" aria-label="Line thickness" />
+              <span className="text-xs text-gray-500 w-7 text-right">{lineEdit.width}</span>
+            </div>
+            <div className="rounded-full" style={{ height: Math.max(2, lineEdit.width), backgroundColor: lineEdit.color }} />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-gray-500 shrink-0">Color</span>
+              {ANNO_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setLineEdit({ ...lineEdit, color: c })} aria-label={`Line color ${c}`}
+                  className={`w-5 h-5 rounded-full border-2 ${lineEdit.color === c ? 'border-primary scale-110' : 'border-white shadow'}`}
+                  style={{ backgroundColor: c }} />
               ))}
             </div>
             <div className="flex gap-2">
@@ -1091,6 +1096,7 @@ export default function LiteMap({
                   void onUpdateAnnotation(lineEdit.id, {
                     ...(geometry ? { geometry } : {}),
                     width: lineEdit.width,
+                    color: lineEdit.color,
                   })
                   setLineEdit(null)
                 }}

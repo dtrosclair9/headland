@@ -16,7 +16,8 @@ const PatchSchema = z
     text: z.string().trim().min(1).max(120),
     size: z.number().int().min(8).max(64),
     rotation: z.number().int().min(-180).max(180),
-    width: z.number().min(1).max(8).nullable(),
+    width: z.number().min(0.5).max(8).nullable(),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: 'empty patch' })

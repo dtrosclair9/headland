@@ -20,7 +20,8 @@ const CreateSchema = z.discriminatedUnion('kind', [
       coordinates: z.array(Position).min(2).max(500),
     }),
     /** stroke thickness (screen px; carries to prints) */
-    width: z.number().min(1).max(8).optional(),
+    width: z.number().min(0.5).max(8).optional(),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   }),
   z.object({
     kind: z.literal('text'),
@@ -28,6 +29,7 @@ const CreateSchema = z.discriminatedUnion('kind', [
     text: z.string().trim().min(1).max(120),
     size: z.number().int().min(8).max(64).optional(),
     rotation: z.number().int().min(-180).max(180).optional(),
+    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   }),
 ])
 
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       size: parsed.data.kind === 'text' ? (parsed.data.size ?? 16) : 16,
       rotation: parsed.data.kind === 'text' ? (parsed.data.rotation ?? 0) : 0,
       width: parsed.data.kind === 'line' ? (parsed.data.width ?? null) : null,
+      color: parsed.data.color ?? '#111827',
       created_by: user.id,
     })
     .select('id, kind, geometry, text, color, size, rotation, width')
