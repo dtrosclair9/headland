@@ -286,7 +286,11 @@ export default function MapShell({
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Could not update that.')
       }
-      startTransition(() => router.refresh())
+      // Merge locally — creates/deletes already do. A label drag shouldn't
+      // refetch the whole farm (600+ blocks) just to move one note.
+      setAnnotations((prev) =>
+        prev.map((a) => (a.id === id ? ({ ...a, ...patch } as AnnotationRow) : a)),
+      )
     } catch (e) {
       setError(friendlyError(e))
     }

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-// @ts-expect-error tokml ships untyped
-import tokml from 'tokml'
+import { toKML } from '@placemarkio/tokml'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { rateLimit } from '@/lib/rate-limit'
 import { listFields } from '@/lib/fields'
@@ -33,12 +32,17 @@ export async function GET() {
     })),
   }
 
-  const kml = tokml(featureCollection, {
-    documentName: `${org.name} — Fields`,
-    documentDescription: `Field boundaries exported from Headland on ${new Date().toLocaleDateString()}.`,
-    name: 'name',
-    description: 'description',
-  })
+  // @placemarkio/tokml reads each feature's name/description properties
+  // automatically but dropped the old document-level options — re-insert the
+  // document name/description so Google Earth shows a proper title.
+  const esc = (t: string) =>
+    t.replace(/[<>&"']/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[ch] as string)
+  const kml = toKML(featureCollection).replace(
+    /<Document>/,
+    `<Document><name>${esc(`${org.name} — Fields`)}</name><description>${esc(
+      `Field boundaries exported from Headland on ${new Date().toLocaleDateString()}.`,
+    )}</description>`,
+  )
 
   const safeOrg = org.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()
   return new NextResponse(kml, {

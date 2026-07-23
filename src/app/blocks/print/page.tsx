@@ -10,6 +10,7 @@ import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
 import { groupByPlantation } from '@/lib/print-groups'
 import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 import PlatSheet, { type SheetData } from '@/components/print/PlatSheet'
+import { fieldMatchesFilter, type LayerFilter } from '@/components/map/layer-filter'
 
 export const metadata: Metadata = { title: 'Print selected blocks' }
 
@@ -18,6 +19,9 @@ export default async function SelectedBlocksPrintPage({
 }: {
   searchParams: Promise<{
     ids?: string
+    stages?: string | string[]
+    varieties?: string | string[]
+    plantations?: string | string[]
     style?: string
     highlight?: string
     scope?: string
@@ -29,6 +33,9 @@ export default async function SelectedBlocksPrintPage({
 }) {
   const {
     ids: idsRaw,
+    stages: stagesRaw,
+    varieties: varietiesRaw,
+    plantations: plantationsRaw,
     style: styleRaw,
     highlight: highlightRaw,
     scope: scopeRaw,
@@ -51,18 +58,32 @@ export default async function SelectedBlocksPrintPage({
   // instead of year cane.
   const byVariety = colorbyRaw === 'variety'
 
+  const many = (raw: string | string[] | undefined): string[] =>
+    (Array.isArray(raw) ? raw : raw ? [raw] : []).map((s) => s.trim()).filter(Boolean)
+  // Filter-mode (the layers print link): the URL carries the FILTER, not the
+  // expanded block-id list — 400+ ids overflowed the request-URL ceiling.
+  const layerFilter: LayerFilter | null =
+    many(stagesRaw).length || many(varietiesRaw).length || many(plantationsRaw).length
+      ? {
+          stages: many(stagesRaw),
+          varieties: many(varietiesRaw),
+          plantations: many(plantationsRaw).map((p) => (p === '__none' ? null : p)),
+        }
+      : null
+
   const ids = (idsRaw ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const idSet = new Set(ids)
   // Context for a highlight sheet: the whole operation, or — when the layer
   // selection included plantations — just those plantations ('__none' =
   // unassigned blocks).
-  const scope = (scopeRaw ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const scope = layerFilter
+    ? layerFilter.plantations.map((p) => p ?? '__none')
+    : (scopeRaw ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
   const scopeSet = scope.length > 0 ? new Set(scope) : null
   // ?snapshot=: print from an archived month instead of the live farm. The
   // snapshot map's ids are the archive's deterministic snap-N ids, so the
@@ -89,6 +110,11 @@ export default async function SelectedBlocksPrintPage({
     : isHighlight
       ? await listFields(org.id)
       : await listFieldsByIds(ids, org.id)
+  // The highlight set: filter-derived (URL-size-safe at any farm size) when
+  // filter params are present, else the legacy explicit id list.
+  const idSet = layerFilter
+    ? new Set(allBlocks.filter((b) => fieldMatchesFilter(b, layerFilter)).map((b) => b.id))
+    : idSet2
   const blocks =
     isHighlight && scopeSet
       ? allBlocks.filter((b) => scopeSet.has(b.plantation_id ?? '__none'))

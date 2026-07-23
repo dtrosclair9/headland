@@ -167,11 +167,16 @@ export default function LayersPanel({
             // colored, the rest white with black outlines. When plantations
             // are part of the filter, context = those plantations only;
             // otherwise the whole operation.
-            href={`/blocks/print?ids=${matched.map((f) => f.id).join(',')}&highlight=1${
-              filter.plantations.length > 0
-                ? `&scope=${filter.plantations.map((pid) => pid ?? '__none').join(',')}`
-                : ''
-            }${colorBy === 'variety' ? '&colorby=variety' : ''}${snapshotId ? `&snapshot=${snapshotId}` : ''}`}
+            // The FILTER travels in the URL (a few stage/variety/plantation
+            // tokens), never the expanded id list — 400+ ids overflowed the
+            // request-URL ceiling and 414'd the print page on big layers.
+            href={`/blocks/print?highlight=1${filter.stages
+              .map((st) => `&stages=${encodeURIComponent(st)}`)
+              .join('')}${filter.varieties
+              .map((v) => `&varieties=${encodeURIComponent(v)}`)
+              .join('')}${filter.plantations
+              .map((pid) => `&plantations=${encodeURIComponent(pid ?? '__none')}`)
+              .join('')}${colorBy === 'variety' ? '&colorby=variety' : ''}${snapshotId ? `&snapshot=${snapshotId}` : ''}`}
             target="_blank"
             rel="noreferrer"
             className="mt-2 block text-center text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5"
