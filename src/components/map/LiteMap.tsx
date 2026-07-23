@@ -43,6 +43,7 @@ export default function LiteMap({
   colorBy = 'stage',
   varietyColors = {},
   highlightColor = null,
+  blockColors = null,
   filterIds = null,
   visibleIds = null,
   whiteMap = false,
@@ -85,6 +86,8 @@ export default function LiteMap({
   colorBy?: 'stage' | 'variety'
   varietyColors?: Record<string, string>
   highlightColor?: string | null
+  // Per-block colors for plan-set viewing/drafting — wins over highlightColor.
+  blockColors?: Record<string, string> | null
   filterIds?: Set<string> | null
   visibleIds?: Set<string> | null
   whiteMap?: boolean
@@ -327,15 +330,20 @@ export default function LiteMap({
       }
       const sel = id === selectedFieldId
       const bulkSel = selectMode && !!selectedIds?.has(id)
+      // Member = this block is part of the active selection (plan/step/layer
+      // pick). Non-members go white on the white map; members keep their
+      // colors — per-block plan colors first, then the single highlight,
+      // then the palette. Mirrors FieldMap's fill expression exactly.
+      const member = filterIds ? filterIds.has(id) : !whiteMap
       const fill = sel
         ? SELECTED_COLOR
-        : whiteMap || (filterIds && !filterIds.has(id))
+        : !member
           ? '#FFFFFF'
-          : highlightColor
-            ? highlightColor
-            : colorBy === 'variety'
-              ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
-              : ((f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')
+          : (blockColors?.[id] ??
+            (highlightColor ??
+              (colorBy === 'variety'
+                ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
+                : (f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')))
       poly.setStyle({
         color: bulkSel ? SELECTED_COLOR : sel ? '#111827' : sat ? '#facc15' : '#374151',
         weight: bulkSel ? 4 : sel ? 3 : sat ? 1.5 : 1,
@@ -343,7 +351,7 @@ export default function LiteMap({
         fillOpacity: repositioning ? 0.25 : sat ? (sel ? 0.35 : 0.08) : 0.9,
       })
     }
-  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, repositionIds, selectMode, selectedIds])
+  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, blockColors, filterIds, visibleIds, whiteMap, stageColorMap, repositionIds, selectMode, selectedIds])
 
   // ── blocks: LABELS (viewport-culled — only on-screen blocks carry tooltip
   // DOM, typically 20–80 instead of the whole farm; re-culled after each

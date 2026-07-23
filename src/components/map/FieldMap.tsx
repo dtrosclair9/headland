@@ -80,19 +80,25 @@ function fillColorExpression(
   stageColors: StageColor[],
   varietyColors: Record<string, string>,
   highlightColor: string | null,
+  blockColors: Record<string, string> | null,
 ): mapboxgl.ExpressionSpecification {
   const varietyPairs = Object.entries(varietyColors).flatMap(([k, c]) => [k, c])
-  // Fly-plan viewing paints every matching block ONE color (the plan's).
-  const paletteExpr = highlightColor
-    ? highlightColor
-    : colorBy === 'variety' && varietyPairs.length > 0
-      ? ['match', ['coalesce', ['get', 'variety'], ''], ...varietyPairs, UNSET_COLOR]
-      : [
-          'match',
-          ['coalesce', ['get', 'ratoon'], 'unset'],
-          ...stageColors.flatMap((r) => [r.key, r.color]),
-          UNSET_COLOR,
-        ]
+  const blockPairs = blockColors ? Object.entries(blockColors).flatMap(([k, c]) => [k, c]) : []
+  // Plan viewing paints per-block colors (each step of the plan its own
+  // color); single-color highlight covers a lone step or draft.
+  const paletteExpr =
+    blockPairs.length > 0
+      ? ['match', ['get', 'id'], ...blockPairs, highlightColor ?? '#FFFFFF']
+      : highlightColor
+        ? highlightColor
+        : colorBy === 'variety' && varietyPairs.length > 0
+          ? ['match', ['coalesce', ['get', 'variety'], ''], ...varietyPairs, UNSET_COLOR]
+          : [
+              'match',
+              ['coalesce', ['get', 'ratoon'], 'unset'],
+              ...stageColors.flatMap((r) => [r.key, r.color]),
+              UNSET_COLOR,
+            ]
   return [
     'case',
     ['==', ['get', 'id'], ['literal', selectedFieldId ?? '']],
@@ -226,6 +232,9 @@ export interface FieldMapProps {
   // Fly-plan viewing: paint the matching blocks this single color instead of
   // the stage/variety palette.
   highlightColor: string | null
+  // Plan-set viewing/drafting: per-block colors (each step of a plan its own
+  // color). Wins over highlightColor for the listed blocks.
+  blockColors: Record<string, string> | null
   // Palette that paints the blocks (stage = year cane colors, variety = variety
   // colors), with the farm's custom colors already resolved in.
   colorBy: ColorBy
@@ -278,6 +287,7 @@ export default function FieldMap({
   selectionKey,
   whiteMap,
   highlightColor,
+  blockColors,
   colorBy,
   stageColors,
   varietyColors,
@@ -451,6 +461,10 @@ export default function FieldMap({
 
     // Surface ANY Mapbox runtime error visibly. Errors during dev are rare
     // enough that even noisy tile-fetch failures are worth showing.
+    // Debug handle, same convention as LiteMap's __liteMap — lets dev tooling
+    // project coordinates for scripted UI checks.
+    ;(window as unknown as { __map?: mapboxgl.Map }).__map = map
+
     map.on('error', (e: { error?: { message?: string; status?: number; url?: string } }) => {
       const msg = e?.error?.message ?? 'Unknown Mapbox error'
       const status = e?.error?.status
@@ -542,7 +556,7 @@ export default function FieldMap({
         source: 'fields',
         paint: {
           // Initial paint; the view-mode effect re-applies the live palette.
-          'fill-color': fillColorExpression(selectedFieldId, 'stage', stageColors, {}, null),
+          'fill-color': fillColorExpression(selectedFieldId, 'stage', stageColors, {}, null, null),
           'fill-opacity': 0.4,
         },
       })
@@ -1630,7 +1644,7 @@ export default function FieldMap({
     map.setPaintProperty(
       'fields-fill',
       'fill-color',
-      fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors, highlightColor),
+      fillColorExpression(selectedFieldId, colorBy, stageColors, varietyColors, highlightColor, blockColors),
     )
     // Plain (white) blocks render more opaque on satellite so they read as
     // solid white "off" blocks rather than a ghost tint.
@@ -1710,7 +1724,7 @@ export default function FieldMap({
         /* layer may not support the property — ignore */
       }
     }
-  }, [selectedFieldId, ready, viewMode, whiteMap, highlightColor, colorBy, stageColors, varietyColors])
+  }, [selectedFieldId, ready, viewMode, whiteMap, highlightColor, blockColors, colorBy, stageColors, varietyColors])
 
   // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
   // correct base-layer opacity without taking viewMode as a dependency (which
@@ -2136,6 +2150,7 @@ export default function FieldMap({
         colorBy={colorBy}
         varietyColors={varietyColors}
         highlightColor={highlightColor}
+        blockColors={blockColors}
         filterIds={filterIds}
         visibleIds={visibleIds}
         whiteMap={whiteMap}
@@ -2713,7 +2728,7 @@ export default function FieldMap({
       {/* Legend — bottom-right. Collapsible. Follows the active palette:
           year-cane colors or variety colors. Always shown in crop mode since
           the colors are the entire point there. */}
-      {(anyRatoonSet || viewMode === 'crop' || colorBy === 'variety') && (
+      {!blockColors && (anyRatoonSet || viewMode === 'crop' || colorBy === 'variety') && (
         <div className="absolute bottom-8 right-3 z-10 pointer-events-auto">
           {legendOpen ? (
             <div className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 p-3 w-44 max-h-72 overflow-y-auto">

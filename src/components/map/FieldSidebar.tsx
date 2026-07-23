@@ -7,7 +7,7 @@ import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { friendlyError } from '@/lib/errors'
 import type { ViewMode, ColorBy } from './FieldMap'
-import type { FlyPlanRow } from '@/lib/fly-plans'
+import type { PlanGroupRow } from '@/lib/fly-plans'
 import LayersPanel from './LayersPanel'
 import PlansPanel from './PlansPanel'
 import BulkLogPanel from './BulkLogPanel'
@@ -24,17 +24,19 @@ interface FieldSidebarProps {
   deselected: boolean
   onSelectAll: () => void
   onDeselectAll: () => void
-  // Fly plans: saved pilot selections.
-  flyPlans: FlyPlanRow[]
-  activePlanId: string | null
-  onViewPlan: (id: string) => void
-  onClosePlan: () => void
-  onDeletePlan: (id: string) => Promise<void>
-  onCompletePlan: (id: string) => Promise<void>
-  planDraft: { name: string; color: string } | null
-  onStartPlanDraft: (draft: { name: string; color: string }) => void
+  // Plans: each a set of colored steps that communicate.
+  planGroups: PlanGroupRow[]
+  activeGroupId: string | null
+  onViewGroup: (id: string) => void
+  onCloseGroup: () => void
+  onCreateGroup: (name: string) => Promise<string | null>
+  onDeleteGroup: (id: string) => Promise<void>
+  onDeleteStep: (id: string) => Promise<void>
+  onCompleteStep: (id: string) => Promise<void>
+  planDraft: { groupId: string; name: string; color: string } | null
+  onStartStepDraft: (draft: { groupId: string; name: string; color: string }) => void
   onCancelPlanDraft: () => void
-  onSavePlanDraft: () => Promise<boolean>
+  onSaveStepDraft: () => Promise<boolean>
   // Palette that paints the blocks + the resolved per-farm colors.
   colorBy: ColorBy
   onColorByChange: (c: ColorBy) => void
@@ -75,16 +77,18 @@ export default function FieldSidebar({
   deselected,
   onSelectAll,
   onDeselectAll,
-  flyPlans,
-  activePlanId,
-  onViewPlan,
-  onClosePlan,
-  onDeletePlan,
-  onCompletePlan,
+  planGroups,
+  activeGroupId,
+  onViewGroup,
+  onCloseGroup,
+  onCreateGroup,
+  onDeleteGroup,
+  onDeleteStep,
+  onCompleteStep,
   planDraft,
-  onStartPlanDraft,
+  onStartStepDraft,
   onCancelPlanDraft,
-  onSavePlanDraft,
+  onSaveStepDraft,
   colorBy,
   onColorByChange,
   stageColors,
@@ -107,7 +111,7 @@ export default function FieldSidebar({
 }: FieldSidebarProps) {
   // In the white-map state (deselect-all) the print links output the B&W
   // spray-style sheet (and say so).
-  const isSpray = deselected && !activePlanId
+  const isSpray = deselected && !activeGroupId
   // Combined acreage of the bulk-selected blocks (live as you tap blocks).
   const selectedArea = useMemo(
     () =>
@@ -189,7 +193,7 @@ export default function FieldSidebar({
               {key === 'layers' && filterOn && (
                 <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
               )}
-              {key === 'plans' && (activePlanId || planDraft) && (
+              {key === 'plans' && (activeGroupId || planDraft) && (
                 <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
               )}
             </button>
@@ -218,7 +222,9 @@ export default function FieldSidebar({
           deselected={deselected}
           onSelectAll={onSelectAll}
           onDeselectAll={onDeselectAll}
-          activePlanId={activePlanId}
+          activeGroupId={activeGroupId}
+          planGroups={planGroups}
+          onToggleGroup={(id) => (activeGroupId === id ? onCloseGroup() : onViewGroup(id))}
           colorBy={colorBy}
           onColorByChange={onColorByChange}
           stageColors={stageColors}
@@ -230,16 +236,18 @@ export default function FieldSidebar({
         <PlansPanel
           fields={fields}
           units={units}
-          flyPlans={flyPlans}
-          activePlanId={activePlanId}
-          onViewPlan={onViewPlan}
-          onClosePlan={onClosePlan}
-          onDeletePlan={onDeletePlan}
-          onCompletePlan={onCompletePlan}
+          planGroups={planGroups}
+          activeGroupId={activeGroupId}
+          onViewGroup={onViewGroup}
+          onCloseGroup={onCloseGroup}
+          onCreateGroup={onCreateGroup}
+          onDeleteGroup={onDeleteGroup}
+          onDeleteStep={onDeleteStep}
+          onCompleteStep={onCompleteStep}
           planDraft={planDraft}
-          onStartPlanDraft={onStartPlanDraft}
+          onStartStepDraft={onStartStepDraft}
           onCancelPlanDraft={onCancelPlanDraft}
-          onSavePlanDraft={onSavePlanDraft}
+          onSaveStepDraft={onSaveStepDraft}
           selectedIds={selectedIds}
         />
       ) : (

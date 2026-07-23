@@ -482,7 +482,9 @@ interface BuildOpts {
    * layer selection. Everything else is white with black outlines and just
    * its id + acreage, so the colored blocks read against the whole farm.
    */
-  highlight?: { ids: Set<string>; color?: string }
+  // color paints every member the same; colors (per-block, wins over color)
+  // lets a plan print each step in its own color on one sheet.
+  highlight?: { ids: Set<string>; color?: string; colors?: Map<string, string> }
   /**
    * Which block facts to print (farm preset, per-print override). Defaults
    * to all four: name, variety, cut, acres.
@@ -645,8 +647,8 @@ function buildSvg(blocks: FieldRow[], style: SvgStyle, opts: BuildOpts = {}): Pl
     const member = hl ? hl.ids.has(b.id) : true
     const fill = !member
       ? '#FFFFFF'
-      : hl?.color
-        ? hl.color
+      : (hl?.colors?.get(b.id) ?? hl?.color)
+        ? (hl?.colors?.get(b.id) ?? hl!.color!)
         : style === 'spray'
           ? '#FFFFFF'
           : opts.paletteBy === 'variety'

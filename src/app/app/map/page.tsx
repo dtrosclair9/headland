@@ -3,7 +3,7 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { listFields } from '@/lib/fields'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
-import { listFlyPlans } from '@/lib/fly-plans'
+import { listPlanGroups } from '@/lib/fly-plans'
 import MapShell from '@/components/map/MapShell'
 
 export const metadata: Metadata = { title: 'Block map' }
@@ -15,11 +15,11 @@ export default async function MapPage({
 }) {
   const { org } = await requireUserAndOrg()
   const { focus } = await searchParams
-  const [fields, colorOverrides, annotations, flyPlans] = await Promise.all([
+  const [fields, colorOverrides, annotations, planGroups] = await Promise.all([
     listFields(org.id),
     getOrgColors(org.id),
     listAnnotations(org.id),
-    listFlyPlans(org.id),
+    listPlanGroups(org.id),
   ])
 
   return (
@@ -29,7 +29,7 @@ export default async function MapPage({
       state={org.state}
       colorOverrides={colorOverrides}
       initialAnnotations={annotations}
-      initialFlyPlans={flyPlans}
+      initialPlanGroups={planGroups}
       focusFieldId={focus ?? null}
     />
   )

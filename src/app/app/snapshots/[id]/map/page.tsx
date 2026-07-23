@@ -48,7 +48,7 @@ export default async function SnapshotMapPage({
       state={org.state}
       colorOverrides={colorOverrides}
       initialAnnotations={annotations}
-      initialFlyPlans={[]}
+      initialPlanGroups={[]}
       focusFieldId={null}
       snapshot={{ id: snap.id, label: `${periodLabel(snap.period)} snapshot` }}
     />

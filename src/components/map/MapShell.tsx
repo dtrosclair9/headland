@@ -18,7 +18,8 @@ import {
 import { resolveStageColors, resolveVarietyColors } from '@/lib/resolve-colors'
 import type { OrgColorOverrides } from '@/lib/org-colors'
 import type { AnnotationRow } from '@/lib/annotations'
-import type { FlyPlanRow } from '@/lib/fly-plans'
+import type { PlanGroupRow } from '@/lib/fly-plans'
+import { formatArea } from '@/lib/units'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -37,8 +38,8 @@ interface MapShellProps {
   colorOverrides: OrgColorOverrides
   // Hand-drawn reference lines + text labels, loaded server-side.
   initialAnnotations: AnnotationRow[]
-  // Saved fly plans, loaded server-side.
-  initialFlyPlans: FlyPlanRow[]
+  // Saved plans (each a set of colored steps), loaded server-side.
+  initialPlanGroups: PlanGroupRow[]
   // Deep link (?focus=blockId): select this block and zoom the map to it —
   // how Operations to-dos land you on the right block.
   focusFieldId: string | null
@@ -53,7 +54,7 @@ export default function MapShell({
   state,
   colorOverrides,
   initialAnnotations,
-  initialFlyPlans,
+  initialPlanGroups,
   focusFieldId,
   snapshot = null,
 }: MapShellProps) {
@@ -62,6 +63,7 @@ export default function MapShell({
   // Use server data directly. router.refresh() flows new initialFields in.
   // No local mirror — that pattern was infinite-looping with new array refs.
   const fields = initialFields
+  const fieldById = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields])
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(focusFieldId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,40 +87,70 @@ export default function MapShell({
   // Deselect-all: everything white with all labels visible in black — the
   // pilot map, live. "Select all" (the login default) shows the full colors.
   const [deselected, setDeselected] = useState(false)
-  // Fly plans: saved pilot selections; viewing one paints its blocks the plan
-  // color on the white map. Drafting one reuses bulk-select to pick blocks.
-  const [flyPlans, setFlyPlans] = useState<FlyPlanRow[]>(initialFlyPlans)
-  const [activePlanId, setActivePlanId] = useState<string | null>(null)
-  const [planDraft, setPlanDraft] = useState<{ name: string; color: string } | null>(null)
-  const activePlan = activePlanId ? (flyPlans.find((p) => p.id === activePlanId) ?? null) : null
+  // Plans: each a SET of colored steps that communicate. Viewing a plan
+  // paints every step's blocks in that step's color on the white map.
+  // Drafting a STEP reuses bulk-select to pick blocks — blocks already in the
+  // plan's other steps render locked in their colors and can't be re-picked.
+  const [planGroups, setPlanGroups] = useState<PlanGroupRow[]>(initialPlanGroups)
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [planDraft, setPlanDraft] = useState<{
+    groupId: string
+    name: string
+    color: string
+  } | null>(null)
+  const activeGroup = activeGroupId
+    ? (planGroups.find((g) => g.id === activeGroupId) ?? null)
+    : null
+  const draftGroup = planDraft
+    ? (planGroups.find((g) => g.id === planDraft.groupId) ?? null)
+    : null
+  // id -> color of the step it already belongs to (locked while drafting).
+  const lockedColors = useMemo(() => {
+    if (!draftGroup) return null
+    const m: Record<string, string> = {}
+    for (const step of draftGroup.steps) for (const id of step.block_ids) m[id] = step.color
+    return m
+  }, [draftGroup])
+  // id -> step color across the whole plan being viewed.
+  const groupColors = useMemo(() => {
+    if (!activeGroup) return null
+    const m: Record<string, string> = {}
+    for (const step of activeGroup.steps) for (const id of step.block_ids) m[id] = step.color
+    return m
+  }, [activeGroup])
+  const blockColors = planDraft ? lockedColors : groupColors
 
   const filterIds = useMemo(() => {
-    // Drafting a fly plan: ONLY the blocks picked so far fill with the plan
-    // color — layer picks (a plantation, a stage) still isolate/zoom the map
-    // for navigation but must stay white until tapped.
-    if (planDraft) return new Set(selectedIds)
-    if (activePlan) return new Set(activePlan.block_ids)
+    // Drafting a step: the blocks picked so far fill with the step color AND
+    // the plan's other steps stay visible in their colors (locked) — that's
+    // how the steps communicate while picking. Everything else stays white.
+    if (planDraft) {
+      const ids = new Set(selectedIds)
+      if (lockedColors) for (const id of Object.keys(lockedColors)) ids.add(id)
+      return ids
+    }
+    if (activeGroup) return new Set(activeGroup.steps.flatMap((s) => s.block_ids))
     if (isLayerFilterActive(layerFilter))
       return new Set(fields.filter((f) => fieldMatchesFilter(f, layerFilter)).map((f) => f.id))
     if (deselected) return new Set<string>()
     return null
-  }, [fields, layerFilter, deselected, activePlan, planDraft, selectedIds])
+  }, [fields, layerFilter, deselected, activeGroup, planDraft, selectedIds, lockedColors])
   // White-map look: deselect-all, a fly plan view, or a plan draft in progress
   // (labels stay, blocks whiten).
-  const whiteMap = deselected || activePlan !== null || planDraft !== null
+  const whiteMap = deselected || activeGroup !== null || planDraft !== null
   // Plantation isolation: when plantations are picked, only their blocks are
   // on the map (others omitted entirely) and the camera zooms to them.
   // Viewing a plan isolates the same way — just the plantation(s) the plan's
   // blocks live on, not the whole farm.
   const isolatedPlantations = useMemo(() => {
-    if (activePlan) {
-      const planIds = new Set(activePlan.block_ids)
+    if (activeGroup) {
+      const planIds = new Set(activeGroup.steps.flatMap((s) => s.block_ids))
       return Array.from(
         new Set(fields.filter((f) => planIds.has(f.id)).map((f) => f.plantation_id ?? null)),
       )
     }
     return layerFilter.plantations
-  }, [activePlan, fields, layerFilter.plantations])
+  }, [activeGroup, fields, layerFilter.plantations])
   const visibleIds = useMemo(
     () =>
       isolatedPlantations.length > 0
@@ -145,18 +177,21 @@ export default function MapShell({
         [...layerFilter.stages].sort().join(','),
         [...layerFilter.varieties].sort().join(','),
         [...layerFilter.plantations].map((p) => p ?? '__none').sort().join(','),
-        activePlanId ?? '',
+        activeGroupId ?? '',
         deselected ? 'D' : '',
         planDraft ? 'draft' : '',
       ].join('|'),
-    [layerFilter, activePlanId, deselected, planDraft],
+    [layerFilter, activeGroupId, deselected, planDraft],
   )
 
-  async function handleCreatePlan(): Promise<boolean> {
+  // Save the step being drafted into its plan.
+  async function handleSaveStepDraft(): Promise<boolean> {
     if (!planDraft || selectedIds.size === 0) return false
     setBusy(true)
     setError(null)
     try {
+      const group = planGroups.find((g) => g.id === planDraft.groupId)
+      const position = (group?.steps.reduce((m, s) => Math.max(m, s.position), 0) ?? 0) + 1
       const res = await fetch('/api/fly-plans', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -164,18 +199,26 @@ export default function MapShell({
           name: planDraft.name,
           color: planDraft.color,
           block_ids: Array.from(selectedIds),
+          group_id: planDraft.groupId,
+          position,
         }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Failed to save fly plan')
+        throw new Error(err.error || err.message || 'Failed to save the step')
       }
       const { plan } = await res.json()
-      setFlyPlans((prev) => [...prev, plan as FlyPlanRow])
+      setPlanGroups((prev) =>
+        prev.map((g) =>
+          g.id === planDraft.groupId
+            ? { ...g, completed_at: null, steps: [...g.steps, plan] }
+            : g,
+        ),
+      )
       setPlanDraft(null)
       setSelectMode(false)
       setSelectedIds(new Set())
-      setActivePlanId((plan as FlyPlanRow).id)
+      setActiveGroupId(planDraft.groupId)
       setDeselected(false)
       return true
     } catch (e) {
@@ -186,9 +229,47 @@ export default function MapShell({
     }
   }
 
-  // Logging work from a plan completes it: the record lives in Operations,
-  // the plan drops off the Plans tab.
-  async function handleCompletePlan(id: string) {
+  async function handleCreateGroup(name: string): Promise<string | null> {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/plan-groups', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create the plan')
+      }
+      const { group } = await res.json()
+      setPlanGroups((prev) => [...prev, group as PlanGroupRow])
+      return (group as PlanGroupRow).id
+    } catch (e) {
+      setError(friendlyError(e))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Re-pull plans from the server — step completion cascades into the
+  // group's completed state server-side, so refetching keeps both exact.
+  async function refetchPlanGroups() {
+    try {
+      const res = await fetch('/api/plan-groups')
+      if (res.ok) {
+        const { groups } = await res.json()
+        setPlanGroups(groups as PlanGroupRow[])
+      }
+    } catch {
+      /* next router.refresh()/reload picks it up */
+    }
+  }
+
+  // Logging work from a step completes it; when the last step completes the
+  // whole plan reads complete (and stays viewable as a layer).
+  async function handleCompleteStep(id: string) {
     try {
       await fetch(`/api/fly-plans/${id}`, {
         method: 'PATCH',
@@ -196,28 +277,50 @@ export default function MapShell({
         body: JSON.stringify({ completed: true }),
       })
     } finally {
-      setFlyPlans((prev) => prev.filter((p) => p.id !== id))
-      if (activePlanId === id) setActivePlanId(null)
+      await refetchPlanGroups()
     }
   }
 
-  async function handleDeletePlan(id: string) {
+  async function handleDeleteStep(id: string) {
     setBusy(true)
     setError(null)
     try {
       const res = await fetch(`/api/fly-plans/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || 'Failed to delete fly plan')
+        throw new Error(err.error || 'Failed to delete the step')
       }
-      setFlyPlans((prev) => prev.filter((p) => p.id !== id))
-      if (activePlanId === id) setActivePlanId(null)
+      await refetchPlanGroups()
     } catch (e) {
       setError(friendlyError(e))
     } finally {
       setBusy(false)
     }
   }
+
+  async function handleDeleteGroup(id: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/plan-groups/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to delete the plan')
+      }
+      setPlanGroups((prev) => prev.filter((g) => g.id !== id))
+      if (activeGroupId === id) setActiveGroupId(null)
+      if (planDraft?.groupId === id) {
+        setPlanDraft(null)
+        setSelectMode(false)
+        setSelectedIds(new Set())
+      }
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // Which palette paints the blocks (filters pick WHICH blocks highlight;
   // colorBy picks the palette, so stage + variety filters never fight).
   const [colorBy, setColorBy] = useState<ColorBy>('stage')
@@ -526,33 +629,36 @@ export default function MapShell({
           layerFilter={layerFilter}
           onLayerFilterChange={(f) => {
             setLayerFilter(f)
-            // Picking a layer takes over from deselect-all / a fly plan view.
-            setActivePlanId(null)
+            // Picking a layer takes over from deselect-all / a plan view.
+            setActiveGroupId(null)
           }}
           deselected={deselected}
           onSelectAll={() => {
             setLayerFilter(EMPTY_LAYER_FILTER)
             setDeselected(false)
-            setActivePlanId(null)
+            setActiveGroupId(null)
           }}
           onDeselectAll={() => {
             setLayerFilter(EMPTY_LAYER_FILTER)
             setDeselected(true)
-            setActivePlanId(null)
+            setActiveGroupId(null)
           }}
-          flyPlans={flyPlans}
-          activePlanId={activePlanId}
-          onViewPlan={(id) => {
-            setActivePlanId(id)
+          planGroups={planGroups}
+          activeGroupId={activeGroupId}
+          onViewGroup={(id) => {
+            setActiveGroupId(id)
             setLayerFilter(EMPTY_LAYER_FILTER)
+            setDeselected(false)
           }}
-          onClosePlan={() => setActivePlanId(null)}
-          onDeletePlan={handleDeletePlan}
-          onCompletePlan={handleCompletePlan}
+          onCloseGroup={() => setActiveGroupId(null)}
+          onCreateGroup={handleCreateGroup}
+          onDeleteGroup={handleDeleteGroup}
+          onDeleteStep={handleDeleteStep}
+          onCompleteStep={handleCompleteStep}
           planDraft={planDraft}
-          onStartPlanDraft={(draft) => {
+          onStartStepDraft={(draft) => {
             setPlanDraft(draft)
-            setActivePlanId(null)
+            setActiveGroupId(null)
             setDeselected(true)
             setLayerFilter(EMPTY_LAYER_FILTER)
             setSelectMode(true)
@@ -563,7 +669,7 @@ export default function MapShell({
             setSelectMode(false)
             setSelectedIds(new Set())
           }}
-          onSavePlanDraft={handleCreatePlan}
+          onSaveStepDraft={handleSaveStepDraft}
           colorBy={colorBy}
           onColorByChange={setColorBy}
           stageColors={stageColors}
@@ -587,6 +693,9 @@ export default function MapShell({
             })
           }}
           onToggleFieldSelected={(id) => {
+            // Blocks already in another step of the plan being drafted are
+            // locked — a block belongs to exactly one step per plan.
+            if (planDraft && lockedColors && lockedColors[id]) return
             setSelectedIds((prev) => {
               const next = new Set(prev)
               if (next.has(id)) next.delete(id)
@@ -636,14 +745,15 @@ export default function MapShell({
         onShowFields={!sidebarOpen ? () => setSidebarOpen(true) : undefined}
         selectMode={selectMode}
         selectedIds={selectedIds}
-        onToggleFieldSelected={(id) =>
+        onToggleFieldSelected={(id) => {
+          if (planDraft && lockedColors && lockedColors[id]) return
           setSelectedIds((prev) => {
             const next = new Set(prev)
             if (next.has(id)) next.delete(id)
             else next.add(id)
             return next
           })
-        }
+        }}
         repositionIds={repositionIds}
         onSaveReposition={handleSaveReposition}
         onCancelReposition={() => setRepositionIds(null)}
@@ -655,7 +765,8 @@ export default function MapShell({
         visibleKey={visibleKey}
         selectionKey={selectionKey}
         whiteMap={whiteMap}
-        highlightColor={activePlan?.color ?? (planDraft ? planDraft.color : null)}
+        highlightColor={planDraft ? planDraft.color : null}
+        blockColors={blockColors}
         colorBy={colorBy}
         stageColors={stageColors}
         varietyColors={varietyColors}
@@ -664,6 +775,59 @@ export default function MapShell({
         onUpdateAnnotation={handleUpdateAnnotation}
         onDeleteAnnotation={handleDeleteAnnotation}
       />
+
+      {/* Plan legend — bottom-right while a plan is on the map: every step
+          with its color, block count, and acreage (what the pilot bills by),
+          plus the plan total. Replaces the cycle/variety legend, which is
+          suppressed while per-block plan colors paint. */}
+      {activeGroup && (
+        <div className="absolute bottom-8 right-3 z-10">
+          <div className="rounded-md bg-white/95 backdrop-blur shadow-md border border-gray-100 p-3 w-52 max-h-72 overflow-y-auto">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-2 truncate">
+              {activeGroup.name}
+            </p>
+            <ul className="space-y-1.5">
+              {activeGroup.steps.map((step) => {
+                const live = step.block_ids.filter((id) => fieldById.has(id))
+                const acres = live.reduce(
+                  (sum, id) => sum + Number(fieldById.get(id)?.acreage_cached || 0),
+                  0,
+                )
+                return (
+                  <li key={step.id} className="flex items-center gap-2 text-xs text-gray-700">
+                    <span
+                      className="inline-block w-3.5 h-3.5 rounded border border-gray-300 shadow-sm shrink-0"
+                      style={{ backgroundColor: step.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="flex-1 truncate">
+                      {step.name}
+                      {step.completed_at && <span className="ml-1 text-green-700 font-bold">✓</span>}
+                    </span>
+                    <span className="text-gray-500 shrink-0">
+                      {formatArea(acres, units).primary}
+                    </span>
+                  </li>
+                )
+              })}
+              <li className="flex items-center justify-between gap-2 text-xs font-semibold text-gray-800 pt-1.5 mt-0.5 border-t border-gray-100">
+                <span>Total</span>
+                <span>
+                  {
+                    formatArea(
+                      activeGroup.steps
+                        .flatMap((step) => step.block_ids)
+                        .filter((id) => fieldById.has(id))
+                        .reduce((sum, id) => sum + Number(fieldById.get(id)?.acreage_cached || 0), 0),
+                      units,
+                    ).primary
+                  }
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {snapshot && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
