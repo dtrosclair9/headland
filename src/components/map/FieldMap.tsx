@@ -11,7 +11,11 @@ import type { CaneState } from '@/lib/types'
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import type { StageColor } from '@/lib/resolve-colors'
 import * as Sentry from '@sentry/nextjs'
-import LiteMap from './LiteMap'
+import dynamic from 'next/dynamic'
+
+// Leaflet (the lite-mode engine) touches `window` at import time — load it
+// only in the browser, and only when lite mode actually engages.
+const LiteMap = dynamic(() => import('./LiteMap'), { ssr: false })
 import type { AnnotationRow } from '@/lib/annotations'
 import { cornerLabelAnchors } from './cornerLabels'
 
@@ -1695,7 +1699,12 @@ export default function FieldMap({
         filterIds={filterIds}
         visibleIds={visibleIds}
         whiteMap={whiteMap}
+        readOnly={readOnly}
         onCreateField={readOnly ? undefined : onCreateField}
+        onUpdateField={readOnly ? undefined : onUpdateField}
+        annotations={annotations}
+        onCreateAnnotation={readOnly ? undefined : onCreateAnnotation}
+        onDeleteAnnotation={readOnly ? undefined : onDeleteAnnotation}
       />
     )
   }

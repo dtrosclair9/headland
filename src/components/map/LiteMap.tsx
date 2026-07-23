@@ -1,330 +1,410 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import L from 'leaflet'
+import '@geoman-io/leaflet-geoman-free'
+import 'leaflet/dist/leaflet.css'
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import type { FieldRow } from '@/lib/fields'
+import type { AnnotationRow } from '@/lib/annotations'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
+const SAT_TILES = `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${MAPBOX_TOKEN}`
+const SELECTED_COLOR = '#E8A33D'
 
-// ── Web Mercator world space ────────────────────────────────────────────
-// Everything (polygons AND raster tiles) lives in mercator "world units"
-// (0..1 across the globe), so satellite tiles align with block geometry by
-// construction — the same trick Leaflet/FarmMind use, which is why their
-// maps run on ancient computers: image tiles need no GPU.
-const mx = (lng: number) => (lng + 180) / 360
-const my = (lat: number) => {
-  const s = Math.sin((lat * Math.PI) / 180)
-  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)
-}
-const invMx = (x: number) => x * 360 - 180
-const invMy = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI
-
-// No-WebGL fallback map. Old farm-office computers (out-of-date Chrome,
-// blocked GPU drivers, acceleration off) can't create the WebGL2 context
-// Mapbox GL v3 requires. This renders the same farm as plain SVG + raster
-// satellite tiles: pan, zoom, tap to select — no GPU anywhere.
+// No-WebGL map for old computers, built on Leaflet — image tiles + DOM/SVG
+// rendering, the architecture that ran on 2005 hardware. Full feature parity
+// is the contract: view (both styles), select, DRAW blocks, reshape a block,
+// reference lines (point-to-point AND freehand), text labels, delete
+// annotations, GPS. Same lat/lng in, same lat/lng out as the Mapbox map —
+// only the renderer differs.
 export default function LiteMap({
   fields,
   selectedFieldId,
   onSelectField,
   stageColorMap,
   onCreateField,
+  onUpdateField,
+  annotations = [],
+  onCreateAnnotation,
+  onDeleteAnnotation,
   colorBy = 'stage',
   varietyColors = {},
   highlightColor = null,
   filterIds = null,
   visibleIds = null,
   whiteMap = false,
+  readOnly = false,
 }: {
   fields: FieldRow[]
   selectedFieldId: string | null
-  onSelectField: (id: string) => void
+  onSelectField: (id: string | null) => void
   stageColorMap: Record<string, string>
-  /** stage = year-cane colors, variety = variety palette (mirrors the full map) */
+  onCreateField?: (geometry: GeoJSON.Polygon) => Promise<void>
+  onUpdateField?: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
+  annotations?: AnnotationRow[]
+  onCreateAnnotation?: (
+    kind: 'line' | 'text',
+    geometry: GeoJSON.LineString | GeoJSON.Point,
+    text?: string,
+    style?: { size?: number; rotation?: number; width?: number },
+  ) => Promise<void>
+  onDeleteAnnotation?: (id: string) => Promise<void>
   colorBy?: 'stage' | 'variety'
   varietyColors?: Record<string, string>
-  /** fly-plan viewing: paint matching blocks this one color */
   highlightColor?: string | null
-  /** layer highlight: blocks outside the set render white, labels kept */
   filterIds?: Set<string> | null
-  /** plantation scoping: blocks outside are omitted entirely */
   visibleIds?: Set<string> | null
-  /** pilot map: everything white */
   whiteMap?: boolean
-  /** block drawing — same pipeline as the full map; omit to hide the tool */
-  onCreateField?: (geometry: GeoJSON.Polygon) => Promise<void>
+  readOnly?: boolean
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null)
+  const holderRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const blocksRef = useRef<L.LayerGroup | null>(null)
+  const annosRef = useRef<L.LayerGroup | null>(null)
+  const satLayerRef = useRef<L.TileLayer | null>(null)
+  const gpsRef = useRef<{ marker: L.CircleMarker; ring: L.Circle } | null>(null)
+  const editTargetRef = useRef<L.Polygon | null>(null)
   const [mode, setMode] = useState<'crop' | 'satellite'>('crop')
-  // In-progress block sketch: mercator vertices, in click order.
-  const [sketch, setSketch] = useState<[number, number][] | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [tool, setTool] = useState<'none' | 'block' | 'line' | 'freehand' | 'text'>('none')
+  const [editingShape, setEditingShape] = useState(false)
+  const [textDraft, setTextDraft] = useState<{ lng: number; lat: number; value: string } | null>(null)
+  const [gpsOn, setGpsOn] = useState(false)
+  const [zoomTick, setZoomTick] = useState(0)
 
-  const base = useMemo(() => {
-    let x1 = Infinity,
-      y1 = Infinity,
-      x2 = -Infinity,
-      y2 = -Infinity
-    for (const f of fields) {
-      for (const ring of f.geometry?.coordinates ?? []) {
-        for (const [lng, lat] of ring) {
-          x1 = Math.min(x1, mx(lng))
-          x2 = Math.max(x2, mx(lng))
-          y1 = Math.min(y1, my(lat))
-          y2 = Math.max(y2, my(lat))
-        }
+  // Refs mirror the props/state the imperative Leaflet handlers need — the
+  // map is created once; handlers must read current values.
+  const live = useRef({ tool, onSelectField, onCreateField, onCreateAnnotation })
+  live.current = { tool, onSelectField, onCreateField, onCreateAnnotation }
+
+  // ── map lifecycle ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!holderRef.current || mapRef.current) return
+    const map = L.map(holderRef.current, {
+      zoomControl: true,
+      attributionControl: false,
+      // canvas renderer: fastest non-GPU path for hundreds of polygons
+      preferCanvas: true,
+    })
+    mapRef.current = map
+    blocksRef.current = L.layerGroup().addTo(map)
+    annosRef.current = L.layerGroup().addTo(map)
+
+    // fit the farm (or south Louisiana for an empty one)
+    const pts: [number, number][] = []
+    for (const f of fields)
+      for (const ring of f.geometry?.coordinates ?? [])
+        for (const [lng, lat] of ring) pts.push([lat, lng])
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.06))
+    else map.setView([29.9, -90.8], 12)
+
+    map.pm.setGlobalOptions({ allowSelfIntersection: false })
+
+    // geoman draw finishes → same pipelines as the full map
+    map.on('pm:create', (e: { layer: L.Layer }) => {
+      const t = live.current.tool
+      const layer = e.layer as L.Polygon | L.Polyline
+      const gj = layer.toGeoJSON() as GeoJSON.Feature
+      map.removeLayer(layer) // the authoritative copy comes back via refresh
+      if (t === 'block' && gj.geometry.type === 'Polygon' && live.current.onCreateField) {
+        void live.current.onCreateField(gj.geometry as GeoJSON.Polygon)
+      } else if (t === 'line' && gj.geometry.type === 'LineString' && live.current.onCreateAnnotation) {
+        void live.current.onCreateAnnotation('line', gj.geometry as GeoJSON.LineString)
+      }
+      setTool('none')
+    })
+
+    const onZoomEnd = () => setZoomTick((n) => n + 1)
+    map.on('zoomend', onZoomEnd)
+
+    return () => {
+      map.off('zoomend', onZoomEnd)
+      map.remove()
+      mapRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── basemap mode ───────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (mode === 'satellite' && MAPBOX_TOKEN) {
+      if (!satLayerRef.current)
+        satLayerRef.current = L.tileLayer(SAT_TILES, { maxZoom: 20, tileSize: 512, zoomOffset: -1 })
+      satLayerRef.current.addTo(map)
+      map.getContainer().style.background = '#0b1220'
+    } else {
+      satLayerRef.current?.remove()
+      map.getContainer().style.background = '#FFFFFF'
+    }
+  }, [mode])
+
+  // ── blocks layer (rebuilt on input change — cheap without a GPU) ───
+  useEffect(() => {
+    const map = mapRef.current
+    const group = blocksRef.current
+    if (!map || !group) return
+    group.clearLayers()
+    editTargetRef.current = null
+    const sat = mode === 'satellite'
+    const shown = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
+    const showLabels = map.getZoom() >= 14
+    for (const f of shown) {
+      const sel = f.id === selectedFieldId
+      // Mirrors the full map's fillColorExpression: selected > plain/white >
+      // fly-plan color > variety palette > stage palette.
+      const fill = sel
+        ? SELECTED_COLOR
+        : whiteMap || (filterIds && !filterIds.has(f.id))
+          ? '#FFFFFF'
+          : highlightColor
+            ? highlightColor
+            : colorBy === 'variety'
+              ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
+              : ((f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')
+      const latlngs = (f.geometry?.coordinates ?? []).map((ring) =>
+        ring.map(([lng, lat]) => [lat, lng] as [number, number]),
+      )
+      const poly = L.polygon(latlngs, {
+        color: sel ? '#111827' : sat ? '#facc15' : '#374151',
+        weight: sel ? 3 : sat ? 1.5 : 1,
+        fillColor: fill,
+        fillOpacity: sat ? (sel ? 0.35 : 0.08) : 0.9,
+      })
+      poly.on('click', (ev) => {
+        if (live.current.tool !== 'none') return
+        L.DomEvent.stopPropagation(ev)
+        live.current.onSelectField(f.id)
+      })
+      if (showLabels) {
+        poly.bindTooltip(f.name, {
+          permanent: true,
+          direction: 'center',
+          className: sat ? 'lite-label lite-label-sat' : 'lite-label',
+        })
+      }
+      poly.addTo(group)
+      // reshape mode for the selected block — geoman vertex editing
+      if (sel && editingShape && onUpdateField && !readOnly) {
+        poly.pm.enable({ allowSelfIntersection: false })
+        editTargetRef.current = poly
       }
     }
-    if (!Number.isFinite(x1)) {
-      // Empty farm: frame south Louisiana rather than a zero-size box.
-      const cx = mx(-90.8)
-      const cy = my(29.9)
-      return { x: cx - 0.001, y: cy - 0.0007, w: 0.002, h: 0.0014 }
-    }
-    const pad = Math.max(x2 - x1, y2 - y1) * 0.06 || 0.0005
-    return { x: x1 - pad, y: y1 - pad, w: x2 - x1 + pad * 2, h: y2 - y1 + pad * 2 }
-  }, [fields])
-  const [view, setView] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
-  const v = view ?? base
-  const drag = useRef<{ px: number; py: number; vx: number; vy: number } | null>(null)
+  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick])
 
-  const pathFor = (f: FieldRow) =>
-    (f.geometry?.coordinates ?? [])
-      .map(
-        (ring) =>
-          'M' + ring.map(([lng, lat]) => `${mx(lng).toFixed(8)},${my(lat).toFixed(8)}`).join('L') + 'Z',
-      )
-      .join(' ')
-  // Path data is zoom-independent — cache it per block.
-  const blockPaths = useMemo(
-    () => new Map(fields.map((f) => [f.id, pathFor(f)])),
-    [fields],
+  // ── annotations layer ──────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    const group = annosRef.current
+    if (!map || !group) return
+    group.clearLayers()
+    for (const a of annotations) {
+      if (a.kind === 'line' && a.geometry.type === 'LineString') {
+        const line = L.polyline(
+          a.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
+          { color: a.color, weight: a.width ?? 3 },
+        )
+        if (!readOnly && onDeleteAnnotation) {
+          line.on('click', (ev) => {
+            if (live.current.tool !== 'none') return
+            L.DomEvent.stopPropagation(ev)
+            const p = L.popup()
+              .setLatLng(ev.latlng)
+              .setContent(
+                deleteButton(() => {
+                  void onDeleteAnnotation(a.id)
+                  map.closePopup(p)
+                }),
+              )
+              .openOn(map)
+          })
+        }
+        line.addTo(group)
+      } else if (a.kind === 'text' && a.geometry.type === 'Point') {
+        const [lng, lat] = a.geometry.coordinates
+        const marker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'lite-text-anno',
+            html: `<span style="color:${a.color};font-size:${a.size}px;font-weight:700;transform:rotate(${a.rotation}deg);display:inline-block;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff">${escapeHtml(a.text ?? '')}</span>`,
+          }),
+          interactive: !readOnly && !!onDeleteAnnotation,
+        })
+        if (!readOnly && onDeleteAnnotation) {
+          marker.on('click', () => {
+            const p = L.popup()
+              .setLatLng([lat, lng])
+              .setContent(
+                deleteButton(() => {
+                  void onDeleteAnnotation(a.id)
+                  map.closePopup(p)
+                }),
+              )
+              .openOn(map)
+          })
+        }
+        marker.addTo(group)
+      }
+    }
+  }, [annotations, readOnly, onDeleteAnnotation])
+
+  // ── drawing tools ──────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.pm.disableDraw()
+    if (tool === 'block') map.pm.enableDraw('Polygon', { snappable: true })
+    else if (tool === 'line') map.pm.enableDraw('Line', { snappable: false })
+
+    // freehand line: press-and-drag capture
+    if (tool === 'freehand') {
+      map.dragging.disable()
+      let pts: [number, number][] = []
+      let down = false
+      const onDown = (e: L.LeafletMouseEvent) => {
+        down = true
+        pts = [[e.latlng.lng, e.latlng.lat]]
+      }
+      const onMove = (e: L.LeafletMouseEvent) => {
+        if (down) pts.push([e.latlng.lng, e.latlng.lat])
+      }
+      const onUp = () => {
+        if (down && pts.length > 2 && live.current.onCreateAnnotation) {
+          void live.current.onCreateAnnotation('line', { type: 'LineString', coordinates: pts })
+        }
+        down = false
+        setTool('none')
+      }
+      map.on('mousedown', onDown)
+      map.on('mousemove', onMove)
+      map.on('mouseup', onUp)
+      return () => {
+        map.off('mousedown', onDown)
+        map.off('mousemove', onMove)
+        map.off('mouseup', onUp)
+        map.dragging.enable()
+      }
+    }
+
+    // text label: click to place, then type in the draft panel
+    if (tool === 'text') {
+      const onClick = (e: L.LeafletMouseEvent) => {
+        setTextDraft({ lng: e.latlng.lng, lat: e.latlng.lat, value: '' })
+        setTool('none')
+      }
+      map.on('click', onClick)
+      return () => {
+        map.off('click', onClick)
+      }
+    }
+  }, [tool])
+
+  // ── GPS ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!gpsOn) {
+      gpsRef.current?.marker.remove()
+      gpsRef.current?.ring.remove()
+      gpsRef.current = null
+      return
+    }
+    const watch = navigator.geolocation?.watchPosition(
+      (pos) => {
+        const ll: [number, number] = [pos.coords.latitude, pos.coords.longitude]
+        if (!gpsRef.current) {
+          gpsRef.current = {
+            marker: L.circleMarker(ll, {
+              radius: 7,
+              color: '#fff',
+              weight: 2,
+              fillColor: '#2563eb',
+              fillOpacity: 1,
+            }).addTo(map),
+            ring: L.circle(ll, {
+              radius: pos.coords.accuracy,
+              color: '#2563eb',
+              weight: 1,
+              fillOpacity: 0.08,
+            }).addTo(map),
+          }
+          map.setView(ll, Math.max(map.getZoom(), 15))
+        } else {
+          gpsRef.current.marker.setLatLng(ll)
+          gpsRef.current.ring.setLatLng(ll).setRadius(pos.coords.accuracy)
+        }
+      },
+      () => setGpsOn(false),
+      { enableHighAccuracy: true },
+    )
+    return () => {
+      if (watch !== undefined) navigator.geolocation?.clearWatch(watch)
+    }
+  }, [gpsOn])
+
+  const finishReshape = async () => {
+    const target = editTargetRef.current
+    if (target && selectedFieldId && onUpdateField) {
+      const gj = target.toGeoJSON() as GeoJSON.Feature
+      if (gj.geometry.type === 'Polygon') await onUpdateField(selectedFieldId, gj.geometry)
+    }
+    setEditingShape(false)
+  }
+
+  const toolButton = (t: typeof tool, label: string) => (
+    <button
+      key={t}
+      type="button"
+      onClick={() => setTool(tool === t ? 'none' : t)}
+      className={`rounded-md shadow-md border px-3 py-2 text-sm font-semibold text-left ${
+        tool === t
+          ? 'bg-primary text-white border-primary'
+          : 'bg-white text-primary border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      {label}
+    </button>
   )
 
-  const containerWidthPx = () => svgRef.current?.getBoundingClientRect().width ?? 800
-
-  // Visible satellite tiles for the current view. Tile z chosen so one 256px
-  // (logical) tile ≈ 256 screen px; capped to Mapbox's max and a sane count.
-  const tiles = useMemo(() => {
-    if (mode !== 'satellite' || !MAPBOX_TOKEN) return []
-    const width = typeof window !== 'undefined' ? containerWidthPx() : 800
-    let z = Math.round(Math.log2(width / (256 * v.w)))
-    z = Math.max(1, Math.min(19, z))
-    let n = 2 ** z
-    // widen z down if the viewport would need too many tiles
-    while (z > 1 && (v.w * n + 2) * (v.h * n + 2) > 80) {
-      z--
-      n = 2 ** z
-    }
-    const x0 = Math.max(0, Math.floor(v.x * n))
-    const x1 = Math.min(n - 1, Math.floor((v.x + v.w) * n))
-    const y0 = Math.max(0, Math.floor(v.y * n))
-    const y1 = Math.min(n - 1, Math.floor((v.y + v.h) * n))
-    const out: { key: string; url: string; x: number; y: number; s: number }[] = []
-    for (let tx = x0; tx <= x1; tx++)
-      for (let ty = y0; ty <= y1; ty++)
-        out.push({
-          key: `${z}/${tx}/${ty}`,
-          url: `https://api.mapbox.com/v4/mapbox.satellite/${z}/${tx}/${ty}@2x.jpg90?access_token=${MAPBOX_TOKEN}`,
-          x: tx / n,
-          y: ty / n,
-          s: 1 / n,
-        })
-    return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, v.x, v.y, v.w, v.h])
-
-  const unitsPerPx = () => v.w / containerWidthPx()
-
-  const toWorld = (clientX: number, clientY: number): [number, number] => {
-    const r = svgRef.current!.getBoundingClientRect()
-    return [v.x + ((clientX - r.left) / r.width) * v.w, v.y + ((clientY - r.top) / r.height) * v.h]
-  }
-
-  const finishSketch = async () => {
-    if (!sketch || sketch.length < 3 || !onCreateField) return
-    setSaving(true)
-    try {
-      const ring = [...sketch, sketch[0]].map(([x, y]) => [invMx(x), invMy(y)])
-      await onCreateField({ type: 'Polygon', coordinates: [ring] })
-      setSketch(null)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const zoomAt = (clientX: number, clientY: number, factor: number) => {
-    const el = svgRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    const fx = (clientX - r.left) / r.width
-    const fy = (clientY - r.top) / r.height
-    const w = Math.min(Math.max(v.w * factor, base.w / 400), base.w * 6)
-    const h = (w / v.w) * v.h
-    setView({ x: v.x + (v.w - w) * fx, y: v.y + (v.h - h) * fy, w, h })
-  }
-
-  const zoomLevel = base.w / v.w
-  const showLabels = zoomLevel > 3
-  const sat = mode === 'satellite'
-  const shown = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
-  // Mirrors the full map's fillColorExpression: selected > plain/white >
-  // fly-plan color > variety palette > stage palette.
-  const fillFor = (f: FieldRow): string => {
-    if (f.id === selectedFieldId) return '#E8A33D'
-    if (whiteMap || (filterIds && !filterIds.has(f.id))) return '#FFFFFF'
-    if (highlightColor) return highlightColor
-    if (colorBy === 'variety') return varietyColors[f.variety ?? ''] ?? '#e5e7eb'
-    return (f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb'
-  }
-
   return (
-    <div className="relative flex-1 h-full bg-white">
-      <svg
-        ref={svgRef}
-        viewBox={`${v.x} ${v.y} ${v.w} ${v.h}`}
-        preserveAspectRatio="xMidYMid slice"
-        className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing select-none"
-        style={{ backgroundColor: sat ? '#0b1220' : '#FFFFFF' }}
-        onWheel={(e) => zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1.15 : 0.87)}
-        onPointerDown={(e) => {
-          try {
-            ;(e.target as Element).setPointerCapture?.(e.pointerId)
-          } catch {
-            /* synthetic events have no active pointer — capture is optional */
-          }
-          drag.current = { px: e.clientX, py: e.clientY, vx: v.x, vy: v.y }
-        }}
-        onPointerMove={(e) => {
-          if (!drag.current) return
-          const u = unitsPerPx()
-          setView({
-            ...v,
-            x: drag.current.vx - (e.clientX - drag.current.px) * u,
-            y: drag.current.vy - (e.clientY - drag.current.py) * u,
-          })
-        }}
-        onPointerUp={(e) => {
-          const d = drag.current
-          drag.current = null
-          // A click (no real drag) while sketching places a corner.
-          if (sketch && d && Math.hypot(e.clientX - d.px, e.clientY - d.py) < 5) {
-            setSketch([...sketch, toWorld(e.clientX, e.clientY)])
-          }
-        }}
-        onPointerCancel={() => (drag.current = null)}
-      >
-        {sat &&
-          tiles.map((t) => (
-            <image
-              key={t.key}
-              href={t.url}
-              x={t.x}
-              y={t.y}
-              width={t.s}
-              height={t.s}
-              preserveAspectRatio="none"
-            />
-          ))}
-        {shown.map((f) => {
-          const sel = f.id === selectedFieldId
-          return (
-            <path
-              key={f.id}
-              d={blockPaths.get(f.id) ?? ''}
-              fill={sat ? 'transparent' : fillFor(f)}
-              fillOpacity={sat ? 0 : 0.9}
-              stroke={sel ? (sat ? '#38bdf8' : '#111827') : sat ? '#facc15' : '#374151'}
-              strokeWidth={(sel ? 2.5 : sat ? 1.2 : 0.8) * (v.w / 800)}
-              className="cursor-pointer"
-              onClick={(e) => {
-                if (sketch) return
-                e.stopPropagation()
-                onSelectField(f.id)
-              }}
-            />
-          )
-        })}
-        {sketch && sketch.length > 0 && (
-          <>
-            <path
-              d={'M' + sketch.map(([x, y]) => `${x},${y}`).join('L') + (sketch.length > 2 ? 'Z' : '')}
-              fill={sketch.length > 2 ? 'rgba(232,163,61,0.25)' : 'none'}
-              stroke="#E8A33D"
-              strokeWidth={2 * (v.w / 800)}
-              strokeDasharray={`${6 * (v.w / 800)} ${4 * (v.w / 800)}`}
-              pointerEvents="none"
-            />
-            {sketch.map(([x, y], i) => (
-              <circle
-                key={i}
-                cx={x}
-                cy={y}
-                r={(i === 0 ? 6 : 4) * (v.w / 800)}
-                fill={i === 0 ? '#E8A33D' : '#ffffff'}
-                stroke="#92400e"
-                strokeWidth={1.5 * (v.w / 800)}
-                style={{ cursor: i === 0 && sketch.length > 2 ? 'pointer' : undefined }}
-                onClick={(e) => {
-                  if (i === 0 && sketch.length > 2) {
-                    e.stopPropagation()
-                    void finishSketch()
-                  }
-                }}
-              />
-            ))}
-          </>
-        )}
-        {showLabels &&
-          shown.map((f) => (
-            <text
-              key={`t-${f.id}`}
-              x={mx(f.centroid_lng)}
-              y={my(f.centroid_lat)}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={v.w / 60}
-              fill={sat ? '#ffffff' : '#111827'}
-              stroke={sat ? 'rgba(0,0,0,0.6)' : 'none'}
-              strokeWidth={sat ? v.w / 1200 : 0}
-              paintOrder="stroke"
-              fontFamily="system-ui, sans-serif"
-              pointerEvents="none"
-            >
-              {f.name}
-            </text>
-          ))}
-      </svg>
+    <div className="relative flex-1 h-full">
+      <div ref={holderRef} className="absolute inset-0 z-0" />
+      <style>{`
+        .lite-label { background: transparent; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #111827; }
+        .lite-label-sat { color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+        .lite-label::before { display: none; }
+      `}</style>
 
-      {onCreateField && (
-        <div className="absolute left-3 top-3 z-10 flex flex-col gap-2">
-          {!sketch ? (
+      {/* tools — hidden in read-only history views */}
+      {!readOnly && (
+        <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-1.5">
+          {onCreateField && toolButton('block', '✏️ Draw block')}
+          {onCreateAnnotation && toolButton('line', '📏 Line (points)')}
+          {onCreateAnnotation && toolButton('freehand', '〰️ Line (freehand)')}
+          {onCreateAnnotation && toolButton('text', '🔤 Text label')}
+          {selectedFieldId && onUpdateField && !editingShape && (
             <button
               type="button"
-              onClick={() => setSketch([])}
-              className="rounded-md bg-white shadow-md border border-gray-200 px-3 py-2 text-sm font-semibold text-primary hover:bg-gray-50"
+              onClick={() => setEditingShape(true)}
+              className="rounded-md shadow-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-primary text-left hover:bg-gray-50"
             >
-              ✏️ Draw block
+              🔧 Edit shape
             </button>
-          ) : (
+          )}
+          {editingShape && (
             <div className="rounded-md bg-white shadow-md border border-gray-200 p-2 space-y-1.5 max-w-[190px]">
-              <p className="text-xs text-gray-600">
-                {sketch.length < 3
-                  ? `Tap the field's corners (${sketch.length} placed)`
-                  : 'Tap the first corner — or Finish — to close it.'}
-              </p>
+              <p className="text-xs text-gray-600">Drag the corners into place.</p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  disabled={sketch.length < 3 || saving}
-                  onClick={() => void finishSketch()}
-                  className="btn-primary text-xs px-2.5 py-1.5 disabled:opacity-50"
+                  onClick={() => void finishReshape()}
+                  className="btn-primary text-xs px-2.5 py-1.5"
                 >
-                  {saving ? 'Saving…' : 'Finish'}
+                  Save shape
                 </button>
                 <button
                   type="button"
-                  disabled={saving}
-                  onClick={() => setSketch(null)}
+                  onClick={() => setEditingShape(false)}
                   className="text-xs text-gray-600 hover:text-primary"
                 >
                   Cancel
@@ -332,54 +412,96 @@ export default function LiteMap({
               </div>
             </div>
           )}
+          {tool !== 'none' && (
+            <p className="rounded-md bg-white/95 shadow border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 max-w-[190px]">
+              {tool === 'block' && 'Tap the field corners, then tap the first corner to close it.'}
+              {tool === 'line' && 'Tap points along the road or ditch; tap the last point again to finish.'}
+              {tool === 'freehand' && 'Press and drag to draw the line.'}
+              {tool === 'text' && 'Tap the map where the label goes.'}
+            </p>
+          )}
         </div>
       )}
 
-      {/* view toggle — same two modes as the full map */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 lg:bottom-auto lg:top-3">
+      {/* text-label draft */}
+      {textDraft && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-16 z-[1000] rounded-md bg-white shadow-lg border border-gray-200 p-2 flex gap-2">
+          <input
+            autoFocus
+            type="text"
+            value={textDraft.value}
+            maxLength={60}
+            placeholder="Label (e.g. Hwy 308)"
+            className="input text-sm py-1.5 w-48"
+            onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
+          />
+          <button
+            type="button"
+            disabled={!textDraft.value.trim()}
+            className="btn-primary text-xs px-3 disabled:opacity-50"
+            onClick={() => {
+              if (onCreateAnnotation && textDraft.value.trim()) {
+                void onCreateAnnotation(
+                  'text',
+                  { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
+                  textDraft.value.trim(),
+                  { size: 16, rotation: 0 },
+                )
+              }
+              setTextDraft(null)
+            }}
+          >
+            Save
+          </button>
+          <button type="button" className="text-xs text-gray-500" onClick={() => setTextDraft(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* view toggle */}
+      <div className="absolute left-1/2 -translate-x-1/2 z-[1000] bottom-8 lg:bottom-auto lg:top-3">
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
-          <button
-            type="button"
-            onClick={() => setMode('crop')}
-            className={`px-3 py-2 transition ${mode === 'crop' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            Crop map
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('satellite')}
-            className={`px-3 py-2 transition border-l border-gray-200 ${sat ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            Satellite
-          </button>
+          {(['crop', 'satellite'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`px-3 py-2 transition ${mode === m ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'} ${m === 'satellite' ? 'border-l border-gray-200' : ''}`}
+            >
+              {m === 'crop' ? 'Crop map' : 'Satellite'}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="absolute right-3 top-3 z-10 flex flex-col rounded-md bg-white shadow-md border border-gray-200 overflow-hidden">
-        {[
-          ['+', 0.7],
-          ['−', 1.45],
-        ].map(([label, factor]) => (
-          <button
-            key={label as string}
-            type="button"
-            className="w-9 h-9 text-lg font-bold text-gray-700 hover:bg-gray-50 border-b last:border-b-0 border-gray-200"
-            onClick={() => {
-              const el = svgRef.current
-              if (!el) return
-              const r = el.getBoundingClientRect()
-              zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor as number)
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* GPS */}
+      <button
+        type="button"
+        onClick={() => setGpsOn(!gpsOn)}
+        className={`absolute right-3 top-24 z-[1000] w-9 h-9 rounded-md shadow-md border text-base ${gpsOn ? 'bg-primary text-white border-primary' : 'bg-white border-gray-200'}`}
+        title="Find me"
+      >
+        📍
+      </button>
 
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-20 lg:bottom-3 lg:left-auto lg:right-3 lg:translate-x-0 z-10 max-w-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900 shadow-sm text-center">
-        Compatibility mode — this computer&apos;s graphics can&apos;t run the full map, so
-        you&apos;re on the lightweight version. Everything still works.
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-20 lg:bottom-3 lg:left-auto lg:right-3 lg:translate-x-0 z-[1000] max-w-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900 shadow-sm text-center">
+        Compatibility mode — full features, lightweight graphics for this computer.
       </div>
     </div>
   )
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string)
+}
+
+function deleteButton(onDelete: () => void): HTMLElement {
+  const div = document.createElement('div')
+  const btn = document.createElement('button')
+  btn.textContent = 'Delete'
+  btn.style.cssText = 'color:#dc2626;font-weight:600;font-size:13px'
+  btn.onclick = onDelete
+  div.appendChild(btn)
+  return div
 }

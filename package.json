@@ -12,12 +12,14 @@
     "ui:check": "node --env-file=.env.local scripts/ui-check.mjs"
   },
   "dependencies": {
+    "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@mapbox/mapbox-gl-draw": "^1.5.0",
     "@react-pdf/renderer": "^3.4.5",
     "@sentry/nextjs": "^10.65.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "@turf/turf": "^7.2.0",
+    "leaflet": "^1.9.4",
     "mapbox-gl": "^3.9.2",
     "next": "^15.2.4",
     "proj4": "^2.20.9",
@@ -31,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/mapbox__mapbox-gl-draw": "^1.4.8",
     "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^20",
