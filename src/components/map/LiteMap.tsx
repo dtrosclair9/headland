@@ -15,6 +15,8 @@ const my = (lat: number) => {
   const s = Math.sin((lat * Math.PI) / 180)
   return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)
 }
+const invMx = (x: number) => x * 360 - 180
+const invMy = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI
 
 // No-WebGL fallback map. Old farm-office computers (out-of-date Chrome,
 // blocked GPU drivers, acceleration off) can't create the WebGL2 context
@@ -25,6 +27,7 @@ export default function LiteMap({
   selectedFieldId,
   onSelectField,
   stageColorMap,
+  onCreateField,
   colorBy = 'stage',
   varietyColors = {},
   highlightColor = null,
@@ -47,9 +50,14 @@ export default function LiteMap({
   visibleIds?: Set<string> | null
   /** pilot map: everything white */
   whiteMap?: boolean
+  /** block drawing — same pipeline as the full map; omit to hide the tool */
+  onCreateField?: (geometry: GeoJSON.Polygon) => Promise<void>
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [mode, setMode] = useState<'crop' | 'satellite'>('crop')
+  // In-progress block sketch: mercator vertices, in click order.
+  const [sketch, setSketch] = useState<[number, number][] | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const base = useMemo(() => {
     let x1 = Infinity,
@@ -127,6 +135,23 @@ export default function LiteMap({
 
   const unitsPerPx = () => v.w / containerWidthPx()
 
+  const toWorld = (clientX: number, clientY: number): [number, number] => {
+    const r = svgRef.current!.getBoundingClientRect()
+    return [v.x + ((clientX - r.left) / r.width) * v.w, v.y + ((clientY - r.top) / r.height) * v.h]
+  }
+
+  const finishSketch = async () => {
+    if (!sketch || sketch.length < 3 || !onCreateField) return
+    setSaving(true)
+    try {
+      const ring = [...sketch, sketch[0]].map(([x, y]) => [invMx(x), invMy(y)])
+      await onCreateField({ type: 'Polygon', coordinates: [ring] })
+      setSketch(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const zoomAt = (clientX: number, clientY: number, factor: number) => {
     const el = svgRef.current
     if (!el) return
@@ -162,7 +187,11 @@ export default function LiteMap({
         style={{ backgroundColor: sat ? '#0b1220' : '#FFFFFF' }}
         onWheel={(e) => zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1.15 : 0.87)}
         onPointerDown={(e) => {
-          ;(e.target as Element).setPointerCapture?.(e.pointerId)
+          try {
+            ;(e.target as Element).setPointerCapture?.(e.pointerId)
+          } catch {
+            /* synthetic events have no active pointer — capture is optional */
+          }
           drag.current = { px: e.clientX, py: e.clientY, vx: v.x, vy: v.y }
         }}
         onPointerMove={(e) => {
@@ -174,7 +203,14 @@ export default function LiteMap({
             y: drag.current.vy - (e.clientY - drag.current.py) * u,
           })
         }}
-        onPointerUp={() => (drag.current = null)}
+        onPointerUp={(e) => {
+          const d = drag.current
+          drag.current = null
+          // A click (no real drag) while sketching places a corner.
+          if (sketch && d && Math.hypot(e.clientX - d.px, e.clientY - d.py) < 5) {
+            setSketch([...sketch, toWorld(e.clientX, e.clientY)])
+          }
+        }}
         onPointerCancel={() => (drag.current = null)}
       >
         {sat &&
@@ -201,12 +237,43 @@ export default function LiteMap({
               strokeWidth={(sel ? 2.5 : sat ? 1.2 : 0.8) * (v.w / 800)}
               className="cursor-pointer"
               onClick={(e) => {
+                if (sketch) return
                 e.stopPropagation()
                 onSelectField(f.id)
               }}
             />
           )
         })}
+        {sketch && sketch.length > 0 && (
+          <>
+            <path
+              d={'M' + sketch.map(([x, y]) => `${x},${y}`).join('L') + (sketch.length > 2 ? 'Z' : '')}
+              fill={sketch.length > 2 ? 'rgba(232,163,61,0.25)' : 'none'}
+              stroke="#E8A33D"
+              strokeWidth={2 * (v.w / 800)}
+              strokeDasharray={`${6 * (v.w / 800)} ${4 * (v.w / 800)}`}
+              pointerEvents="none"
+            />
+            {sketch.map(([x, y], i) => (
+              <circle
+                key={i}
+                cx={x}
+                cy={y}
+                r={(i === 0 ? 6 : 4) * (v.w / 800)}
+                fill={i === 0 ? '#E8A33D' : '#ffffff'}
+                stroke="#92400e"
+                strokeWidth={1.5 * (v.w / 800)}
+                style={{ cursor: i === 0 && sketch.length > 2 ? 'pointer' : undefined }}
+                onClick={(e) => {
+                  if (i === 0 && sketch.length > 2) {
+                    e.stopPropagation()
+                    void finishSketch()
+                  }
+                }}
+              />
+            ))}
+          </>
+        )}
         {showLabels &&
           shown.map((f) => (
             <text
@@ -227,6 +294,46 @@ export default function LiteMap({
             </text>
           ))}
       </svg>
+
+      {onCreateField && (
+        <div className="absolute left-3 top-3 z-10 flex flex-col gap-2">
+          {!sketch ? (
+            <button
+              type="button"
+              onClick={() => setSketch([])}
+              className="rounded-md bg-white shadow-md border border-gray-200 px-3 py-2 text-sm font-semibold text-primary hover:bg-gray-50"
+            >
+              ✏️ Draw block
+            </button>
+          ) : (
+            <div className="rounded-md bg-white shadow-md border border-gray-200 p-2 space-y-1.5 max-w-[190px]">
+              <p className="text-xs text-gray-600">
+                {sketch.length < 3
+                  ? `Tap the field's corners (${sketch.length} placed)`
+                  : 'Tap the first corner — or Finish — to close it.'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={sketch.length < 3 || saving}
+                  onClick={() => void finishSketch()}
+                  className="btn-primary text-xs px-2.5 py-1.5 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Finish'}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setSketch(null)}
+                  className="text-xs text-gray-600 hover:text-primary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* view toggle — same two modes as the full map */}
       <div className="absolute left-1/2 -translate-x-1/2 z-10 bottom-8 lg:bottom-auto lg:top-3">

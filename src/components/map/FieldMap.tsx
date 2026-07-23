@@ -1695,6 +1695,7 @@ export default function FieldMap({
         filterIds={filterIds}
         visibleIds={visibleIds}
         whiteMap={whiteMap}
+        onCreateField={readOnly ? undefined : onCreateField}
       />
     )
   }
