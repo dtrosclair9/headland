@@ -264,6 +264,33 @@ export default function MapShell({
     }
   }
 
+  async function handleUpdateAnnotation(
+    id: string,
+    patch: {
+      geometry?: GeoJSON.LineString | GeoJSON.Point
+      text?: string
+      size?: number
+      rotation?: number
+      width?: number | null
+    },
+  ): Promise<void> {
+    setError(null)
+    try {
+      const res = await fetch(`/api/annotations/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Could not update that.')
+      }
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(friendlyError(e))
+    }
+  }
+
   async function handleDeleteAnnotation(id: string) {
     setBusy(true)
     setError(null)

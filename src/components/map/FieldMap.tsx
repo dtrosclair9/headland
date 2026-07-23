@@ -21,6 +21,14 @@ import { cornerLabelAnchors } from './cornerLabels'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const SELECTED_COLOR = '#E8A33D'
+
+// Pencil cursor while a draw tool is armed — hotspot at the pencil tip.
+export const PENCIL_CURSOR =
+  'url("data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'><path fill=\'%231A3D2E\' stroke=\'white\' stroke-width=\'1.2\' d=\'M3 21l1.2-4.2L15.4 5.6a2.1 2.1 0 013 0l0 0a2.1 2.1 0 010 3L7.2 19.8 3 21z\'/></svg>',
+  ) +
+  '") 2 21, crosshair'
 const UNSET_COLOR = UNSET_RATOON_COLOR
 
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
@@ -207,6 +215,16 @@ export interface FieldMapProps {
     text?: string,
     style?: { size?: number; rotation?: number; width?: number },
   ) => Promise<void>
+  onUpdateAnnotation?: (
+    id: string,
+    patch: {
+      geometry?: GeoJSON.LineString | GeoJSON.Point
+      text?: string
+      size?: number
+      rotation?: number
+      width?: number | null
+    },
+  ) => Promise<void>
   onDeleteAnnotation: (id: string) => Promise<void>
 }
 
@@ -240,6 +258,7 @@ export default function FieldMap({
   varietyColors,
   annotations,
   onCreateAnnotation,
+  onUpdateAnnotation,
   onDeleteAnnotation,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -270,10 +289,12 @@ export default function FieldMap({
   // handler swallows it.
   const cancelingDrawRef = useRef(false)
   const onCreateAnnotationRef = useRef(onCreateAnnotation)
+  const onUpdateAnnotationRef = useRef(onUpdateAnnotation)
   const onDeleteAnnotationRef = useRef(onDeleteAnnotation)
   const readOnlyRef = useRef(readOnly)
   readOnlyRef.current = readOnly
   onCreateAnnotationRef.current = onCreateAnnotation
+  onUpdateAnnotationRef.current = onUpdateAnnotation
   onDeleteAnnotationRef.current = onDeleteAnnotation
   const [savingReposition, setSavingReposition] = useState(false)
   const [ready, setReady] = useState(false)
@@ -286,6 +307,21 @@ export default function FieldMap({
   // Line tool: ONE toolbar button opens a chooser — freehand stroke or
   // point-to-point — plus a thickness pick that applies to both.
   const [lineChooser, setLineChooser] = useState(false)
+  // Editing an EXISTING annotation (move/resize after drawing).
+  const [textEdit, setTextEdit] = useState<{
+    id: string
+    lng: number
+    lat: number
+    value: string
+    size: number
+    rotation: number
+  } | null>(null)
+  const [lineEdit, setLineEdit] = useState<{ id: string; width: number } | null>(null)
+  const annotEditRef = useRef(false)
+  annotEditRef.current = !!textEdit || !!lineEdit
+  const textEditMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  // In-progress draw clicks — visible dots so the start point is unmistakable.
+  const progressPtsRef = useRef<[number, number][]>([])
   const [lineWidth, setLineWidth] = useState(3)
   const lineWidthRef = useRef(3)
   lineWidthRef.current = lineWidth
@@ -669,6 +705,39 @@ export default function FieldMap({
         },
       })
 
+      // Visible dots at each clicked vertex while drawing — the START point
+      // especially, so the grower can see exactly where the line/block began
+      // (and where to double-click/close).
+      map.addSource('draw-progress', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: 'draw-progress-dots',
+        type: 'circle',
+        source: 'draw-progress',
+        paint: {
+          'circle-radius': ['case', ['==', ['get', 'first'], true], 7, 5],
+          'circle-color': ['case', ['==', ['get', 'first'], true], '#E8A33D', '#FFFFFF'],
+          'circle-stroke-color': ['case', ['==', ['get', 'first'], true], '#FFFFFF', '#1A3D2E'],
+          'circle-stroke-width': 2,
+        },
+      })
+      map.on('click', (e) => {
+        const kind = drawKindRef.current
+        if (kind !== 'block' && kind !== 'line') return
+        progressPtsRef.current.push([e.lngLat.lng, e.lngLat.lat])
+        const src = map.getSource('draw-progress') as mapboxgl.GeoJSONSource | undefined
+        src?.setData({
+          type: 'FeatureCollection',
+          features: progressPtsRef.current.map(([lng, lat], i) => ({
+            type: 'Feature',
+            properties: { first: i === 0 },
+            geometry: { type: 'Point', coordinates: [lng, lat] },
+          })),
+        })
+      })
+
       // Click a line/label (outside any draw mode) → offer to remove it.
       const openAnnotationDelete = (
         props: Record<string, unknown> | null | undefined,
@@ -691,7 +760,33 @@ export default function FieldMap({
           await onDeleteAnnotationRef.current(annId)
           popupRef.current?.remove()
         }
+        const edit = document.createElement('button')
+        edit.type = 'button'
+        edit.style.cssText =
+          'margin-top:8px;margin-right:14px;font-weight:600;font-size:13px;color:#1A3D2E;background:none;border:none;padding:0;cursor:pointer'
+        edit.textContent = props?.kind === 'text' ? 'Move / edit' : 'Move / reshape'
+        edit.onclick = () => {
+          popupRef.current?.remove()
+          if (props?.kind === 'text') {
+            const [lng, lat] = (
+              JSON.parse(String(props?.geomJson ?? '{"coordinates":[0,0]}')) as {
+                coordinates: [number, number]
+              }
+            ).coordinates
+            setTextEdit({
+              id: annId,
+              lng,
+              lat,
+              value: String(props?.text ?? ''),
+              size: Number(props?.size ?? 16),
+              rotation: Number(props?.rotation ?? 0),
+            })
+          } else {
+            setLineEdit({ id: annId, width: Number(props?.width ?? 3) })
+          }
+        }
         node.append(label)
+        if (!readOnlyRef.current && onUpdateAnnotationRef.current) node.append(edit)
         if (!readOnlyRef.current) node.append(btn)
         popupRef.current = new mapboxgl.Popup({ closeButton: true, offset: 8, maxWidth: '220px' })
           .setLngLat(lngLat)
@@ -701,6 +796,7 @@ export default function FieldMap({
       for (const layerId of ['annotations-line', 'annotations-text']) {
         map.on('click', layerId, (e) => {
           if (drawKindRef.current || selectModeRef.current || repositioningRef.current) return
+          if (annotEditRef.current) return
           openAnnotationDelete(e.features?.[0]?.properties, e.lngLat)
         })
         map.on('mouseenter', layerId, () => {
@@ -1074,23 +1170,100 @@ export default function FieldMap({
     if (!map || !ready) return
     const src = map.getSource('annotations') as mapboxgl.GeoJSONSource | undefined
     if (!src) return
+    const hiddenId = textEdit?.id ?? lineEdit?.id ?? null
     src.setData({
       type: 'FeatureCollection',
-      features: annotations.map((a) => ({
-        type: 'Feature' as const,
-        geometry: a.geometry,
-        properties: {
-          id: a.id,
-          kind: a.kind,
-          text: a.text ?? '',
-          color: a.color,
-          size: a.size ?? 16,
-          rotation: a.rotation ?? 0,
-          width: a.width ?? 3,
-        },
-      })),
+      features: annotations
+        .filter((a) => a.id !== hiddenId)
+        .map((a) => ({
+          type: 'Feature' as const,
+          geometry: a.geometry,
+          properties: {
+            id: a.id,
+            kind: a.kind,
+            text: a.text ?? '',
+            color: a.color,
+            size: a.size ?? 16,
+            rotation: a.rotation ?? 0,
+            width: a.width ?? 3,
+            geomJson: JSON.stringify(a.geometry),
+          },
+        })),
     })
-  }, [annotations, ready])
+  }, [annotations, ready, textEdit, lineEdit])
+
+  // ── Move/edit an existing TEXT label: a draggable marker shows the live
+  // position; the panel (below) edits value/size/rotation; Save PATCHes all.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !textEdit) return
+    const el = document.createElement('div')
+    el.style.cssText =
+      'font-weight:700;color:#1A3D2E;font-size:' +
+      Math.min(textEdit.size, 28) +
+      'px;transform:rotate(' +
+      textEdit.rotation +
+      'deg);text-shadow:0 0 3px #fff,0 0 3px #fff;cursor:grab;white-space:nowrap;'
+    el.textContent = textEdit.value || 'label'
+    const marker = new mapboxgl.Marker({ element: el, draggable: true })
+      .setLngLat([textEdit.lng, textEdit.lat])
+      .addTo(map)
+    textEditMarkerRef.current = marker
+    marker.on('dragend', () => {
+      const ll = marker.getLngLat()
+      setTextEdit((prev) => (prev ? { ...prev, lng: ll.lng, lat: ll.lat } : prev))
+    })
+    return () => {
+      marker.remove()
+      textEditMarkerRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textEdit?.id, ready])
+
+  // keep the preview marker matching the panel's live size/rotation/text
+  useEffect(() => {
+    const el = textEditMarkerRef.current?.getElement()
+    if (!el || !textEdit) return
+    el.style.fontSize = Math.min(textEdit.size, 28) + 'px'
+    el.style.transform = 'rotate(' + textEdit.rotation + 'deg)'
+    el.textContent = textEdit.value || 'label'
+  }, [textEdit])
+
+  // ── Move/reshape an existing LINE: load it into the draw plugin
+  // (simple_select drags the whole line; click it again to drag corners).
+  useEffect(() => {
+    const map = mapRef.current
+    const draw = drawRef.current
+    if (!map || !ready || !draw || !lineEdit) return
+    const ann = annotations.find((a) => a.id === lineEdit.id)
+    if (!ann || ann.geometry.type !== 'LineString') return
+    const fid = 'ann-' + lineEdit.id
+    draw.add({ type: 'Feature', id: fid, properties: {}, geometry: ann.geometry })
+    draw.changeMode('simple_select', { featureIds: [fid] })
+    return () => {
+      try {
+        draw.delete(fid)
+        draw.changeMode('simple_select')
+      } catch {
+        /* map may be tearing down */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineEdit?.id, ready])
+
+  // Pencil cursor while any draw tool is armed; clear the progress dots when
+  // the tool changes (finish, cancel, Esc).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    map.getCanvas().style.cursor = drawKind ? PENCIL_CURSOR : ''
+    progressPtsRef.current = []
+    const src = map.getSource('draw-progress') as mapboxgl.GeoJSONSource | undefined
+    src?.setData({ type: 'FeatureCollection', features: [] })
+    return () => {
+      map.getCanvas().style.cursor = ''
+    }
+  }, [drawKind, ready])
 
   // Freehand line drawing: drag paints the stroke (dragPan pauses while the
   // tool is active), release saves it as a line annotation at the chosen
@@ -1731,6 +1904,7 @@ export default function FieldMap({
         onUpdateField={readOnly ? undefined : onUpdateField}
         annotations={annotations}
         onCreateAnnotation={readOnly ? undefined : onCreateAnnotation}
+        onUpdateAnnotation={readOnly ? undefined : onUpdateAnnotation}
         onDeleteAnnotation={readOnly ? undefined : onDeleteAnnotation}
       />
     )
@@ -1982,6 +2156,129 @@ export default function FieldMap({
         )}
 
       </div>
+      )}
+
+      {/* Edit an existing TEXT label — same panel as creation, prefilled;
+          drag the live label on the map to move it. */}
+      {textEdit && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <form
+            className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const value = textEdit.value.trim()
+              if (!value || !onUpdateAnnotation) return
+              await onUpdateAnnotation(textEdit.id, {
+                geometry: { type: 'Point', coordinates: [textEdit.lng, textEdit.lat] },
+                text: value,
+                size: textEdit.size,
+                rotation: textEdit.rotation,
+              })
+              setTextEdit(null)
+            }}
+          >
+            <p className="text-xs text-gray-500 leading-snug">
+              Drag the label on the map to move it. Adjust below, then save.
+            </p>
+            <input
+              type="text"
+              value={textEdit.value}
+              maxLength={120}
+              onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
+              className="input text-sm w-full"
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Size</span>
+              {([['S', 12], ['M', 16], ['L', 24], ['XL', 36]] as const).map(([label, px]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setTextEdit({ ...textEdit, size: px })}
+                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
+                    textEdit.size === px
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Turn</span>
+              <input
+                type="range"
+                min={-90}
+                max={90}
+                step={5}
+                value={textEdit.rotation}
+                onChange={(e) => setTextEdit({ ...textEdit, rotation: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Rotate label"
+              />
+              <span className="text-xs text-gray-500 w-9 text-right">{textEdit.rotation}°</span>
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" disabled={!textEdit.value.trim()} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
+                Save
+              </button>
+              <button type="button" className="text-xs text-gray-500" onClick={() => setTextEdit(null)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit an existing LINE — drag to move it whole; click it, then drag
+          corners to reshape. Thickness adjustable. */}
+      {lineEdit && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <div className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72">
+            <p className="text-xs text-gray-500 leading-snug">
+              Drag the line to move it. Click it, then drag the corners to reshape.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
+              {([[1.5, 'Thin'], [3, 'Medium'], [5, 'Thick']] as const).map(([w, label]) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setLineEdit({ ...lineEdit, width: w })}
+                  className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
+                    lineEdit.width === w
+                      ? 'bg-primary text-white border-primary'
+                      : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-primary text-xs px-3 py-1.5"
+                onClick={async () => {
+                  if (!onUpdateAnnotation) return
+                  const f = drawRef.current?.get('ann-' + lineEdit.id)
+                  const geometry =
+                    f?.geometry?.type === 'LineString' ? (f.geometry as GeoJSON.LineString) : undefined
+                  await onUpdateAnnotation(lineEdit.id, {
+                    ...(geometry ? { geometry } : {}),
+                    width: lineEdit.width,
+                  })
+                  setLineEdit(null)
+                }}
+              >
+                Save
+              </button>
+              <button type="button" className="text-xs text-gray-500" onClick={() => setLineEdit(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Reposition bar — drag the highlighted group to slide it, use the corner

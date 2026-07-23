@@ -32,6 +32,7 @@ export default function LiteMap({
   onUpdateField,
   annotations = [],
   onCreateAnnotation,
+  onUpdateAnnotation,
   onDeleteAnnotation,
   colorBy = 'stage',
   varietyColors = {},
@@ -57,6 +58,16 @@ export default function LiteMap({
     geometry: GeoJSON.LineString | GeoJSON.Point,
     text?: string,
     style?: { size?: number; rotation?: number; width?: number },
+  ) => Promise<void>
+  onUpdateAnnotation?: (
+    id: string,
+    patch: {
+      geometry?: GeoJSON.LineString | GeoJSON.Point
+      text?: string
+      size?: number
+      rotation?: number
+      width?: number | null
+    },
   ) => Promise<void>
   onDeleteAnnotation?: (id: string) => Promise<void>
   colorBy?: 'stage' | 'variety'
@@ -90,7 +101,11 @@ export default function LiteMap({
     value: string
     size: number
     rotation: number
+    /** set when editing an existing label instead of creating one */
+    editingId?: string
   } | null>(null)
+  const [lineEdit, setLineEdit] = useState<{ id: string; width: number } | null>(null)
+  const lineEditLayerRef = useRef<L.Polyline | null>(null)
   const [locating, setLocating] = useState(false)
   const [locateAccuracy, setLocateAccuracy] = useState<number | null>(null)
   const [locateError, setLocateError] = useState<string | null>(null)
@@ -253,22 +268,37 @@ export default function LiteMap({
           a.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
           { color: a.color, weight: Math.max(0.5, (a.width ?? 3) * groundScale) },
         )
-        if (!readOnly && onDeleteAnnotation) {
+        if (!readOnly && (onDeleteAnnotation || onUpdateAnnotation)) {
           line.on('click', (ev) => {
-            if (live.current.tool !== 'none') return
+            if (live.current.tool !== 'none' || lineEdit) return
             L.DomEvent.stopPropagation(ev)
             const p = L.popup()
               .setLatLng(ev.latlng)
               .setContent(
-                deleteButton(() => {
-                  void onDeleteAnnotation(a.id)
-                  map.closePopup(p)
+                annotationMenu({
+                  onEdit: onUpdateAnnotation
+                    ? () => {
+                        map.closePopup(p)
+                        setLineEdit({ id: a.id, width: a.width ?? 3 })
+                      }
+                    : undefined,
+                  editLabel: 'Move / reshape',
+                  onDelete: onDeleteAnnotation
+                    ? () => {
+                        void onDeleteAnnotation(a.id)
+                        map.closePopup(p)
+                      }
+                    : undefined,
                 }),
               )
               .openOn(map)
           })
         }
-        line.addTo(group)
+        if (lineEdit?.id === a.id) {
+          // hidden while its editable clone is on the map
+        } else {
+          line.addTo(group)
+        }
       } else if (a.kind === 'text' && a.geometry.type === 'Point') {
         const [lng, lat] = a.geometry.coordinates
         const marker = L.marker([lat, lng], {
@@ -276,16 +306,44 @@ export default function LiteMap({
             className: 'lite-text-anno',
             html: `<span style="color:${a.color};font-size:${Math.max(2, a.size * groundScale)}px;font-weight:700;transform:rotate(${a.rotation}deg);display:inline-block;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff">${escapeHtml(a.text ?? '')}</span>`,
           }),
-          interactive: !readOnly && !!onDeleteAnnotation,
+          interactive: !readOnly && (!!onDeleteAnnotation || !!onUpdateAnnotation),
+          draggable: !readOnly && !!onUpdateAnnotation,
         })
-        if (!readOnly && onDeleteAnnotation) {
+        if (!readOnly && onUpdateAnnotation) {
+          // drag the label to a new spot — saves on release
+          marker.on('dragend', () => {
+            const ll = marker.getLatLng()
+            void onUpdateAnnotation(a.id, {
+              geometry: { type: 'Point', coordinates: [ll.lng, ll.lat] },
+            })
+          })
+        }
+        if (!readOnly && (onDeleteAnnotation || onUpdateAnnotation)) {
           marker.on('click', () => {
             const p = L.popup()
               .setLatLng([lat, lng])
               .setContent(
-                deleteButton(() => {
-                  void onDeleteAnnotation(a.id)
-                  map.closePopup(p)
+                annotationMenu({
+                  onEdit: onUpdateAnnotation
+                    ? () => {
+                        map.closePopup(p)
+                        setTextDraft({
+                          lng,
+                          lat,
+                          value: a.text ?? '',
+                          size: a.size ?? 16,
+                          rotation: a.rotation ?? 0,
+                          editingId: a.id,
+                        })
+                      }
+                    : undefined,
+                  editLabel: 'Edit',
+                  onDelete: onDeleteAnnotation
+                    ? () => {
+                        void onDeleteAnnotation(a.id)
+                        map.closePopup(p)
+                      }
+                    : undefined,
                 }),
               )
               .openOn(map)
@@ -294,7 +352,7 @@ export default function LiteMap({
         marker.addTo(group)
       }
     }
-  }, [annotations, readOnly, onDeleteAnnotation, zoomTick])
+  }, [annotations, readOnly, onDeleteAnnotation, onUpdateAnnotation, zoomTick, lineEdit])
 
   // ── drawing tools ──────────────────────────────────────────────────
   useEffect(() => {
@@ -509,6 +567,29 @@ export default function LiteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repositionIds, fields])
 
+  // ── Move/reshape an existing LINE (lite): an editable clone gets geoman
+  // vertex handles + whole-line dragging; Save PATCHes geometry + width.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !lineEdit) return
+    const ann = annotations.find((x) => x.id === lineEdit.id)
+    if (!ann || ann.geometry.type !== 'LineString') return
+    const layer = L.polyline(
+      ann.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
+      { color: ann.color, weight: ann.width ?? 3, dashArray: '6 4' },
+    ).addTo(map)
+    lineEditLayerRef.current = layer
+    layer.pm.enable({ allowSelfIntersection: true })
+    layer.pm.enableLayerDrag()
+    return () => {
+      layer.pm.disableLayerDrag()
+      layer.pm.disable()
+      layer.remove()
+      lineEditLayerRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineEdit?.id])
+
   // Esc cancels any in-progress tool — same as the full map.
   useEffect(() => {
     if (tool === 'none' && !lineChooser) return
@@ -597,6 +678,7 @@ export default function LiteMap({
         .lite-label { background: transparent; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #111827; }
         .lite-label-sat { color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
         .lite-label::before { display: none; }
+        .lite-pencil, .lite-pencil * { cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%231A3D2E' stroke='white' stroke-width='1.2' d='M3 21l1.2-4.2L15.4 5.6a2.1 2.1 0 013 0l0 0a2.1 2.1 0 010 3L7.2 19.8 3 21z'/%3E%3C/svg%3E") 2 21, crosshair !important; }
       `}</style>
 
       {/* Labeled action buttons — overlay the map at top-left. EXACT clone of
@@ -830,13 +912,21 @@ export default function LiteMap({
             onSubmit={(e) => {
               e.preventDefault()
               const value = textDraft.value.trim()
-              if (!value || !onCreateAnnotation) return
-              void onCreateAnnotation(
-                'text',
-                { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
-                value,
-                { size: textDraft.size, rotation: textDraft.rotation },
-              )
+              if (!value) return
+              if (textDraft.editingId && onUpdateAnnotation) {
+                void onUpdateAnnotation(textDraft.editingId, {
+                  text: value,
+                  size: textDraft.size,
+                  rotation: textDraft.rotation,
+                })
+              } else if (onCreateAnnotation) {
+                void onCreateAnnotation(
+                  'text',
+                  { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
+                  value,
+                  { size: textDraft.size, rotation: textDraft.rotation },
+                )
+              }
               setTextDraft(null)
             }}
           >
@@ -925,6 +1015,56 @@ export default function LiteMap({
         </div>
       </div>
 
+      {/* Edit-line bar (lite) — same controls as the full map's */}
+      {lineEdit && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto">
+          <div className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72">
+            <p className="text-xs text-gray-500 leading-snug">
+              Drag the line to move it. Drag the corner dots to reshape.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
+              {([[1.5, 'Thin'], [3, 'Medium'], [5, 'Thick']] as const).map(([w, label]) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setLineEdit({ ...lineEdit, width: w })}
+                  className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
+                    lineEdit.width === w
+                      ? 'bg-primary text-white border-primary'
+                      : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-primary text-xs px-3 py-1.5"
+                onClick={() => {
+                  if (!onUpdateAnnotation) return
+                  const gj = lineEditLayerRef.current?.toGeoJSON() as GeoJSON.Feature | undefined
+                  const geometry =
+                    gj?.geometry?.type === 'LineString' ? (gj.geometry as GeoJSON.LineString) : undefined
+                  void onUpdateAnnotation(lineEdit.id, {
+                    ...(geometry ? { geometry } : {}),
+                    width: lineEdit.width,
+                  })
+                  setLineEdit(null)
+                }}
+              >
+                Save
+              </button>
+              <button type="button" className="text-xs text-gray-500" onClick={() => setLineEdit(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reposition bar — exact clone of the full map's */}
       {repositionIds && repositionIds.size > 0 && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1100] w-[calc(100%-1.5rem)] max-w-md">
@@ -980,12 +1120,26 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string)
 }
 
-function deleteButton(onDelete: () => void): HTMLElement {
+function annotationMenu(opts: {
+  onEdit?: () => void
+  editLabel: string
+  onDelete?: () => void
+}): HTMLElement {
   const div = document.createElement('div')
-  const btn = document.createElement('button')
-  btn.textContent = 'Delete'
-  btn.style.cssText = 'color:#dc2626;font-weight:600;font-size:13px'
-  btn.onclick = onDelete
-  div.appendChild(btn)
+  div.style.cssText = 'display:flex;gap:14px;font-family:system-ui,sans-serif'
+  if (opts.onEdit) {
+    const edit = document.createElement('button')
+    edit.textContent = opts.editLabel
+    edit.style.cssText = 'color:#1A3D2E;font-weight:600;font-size:13px;background:none;border:none;padding:0;cursor:pointer'
+    edit.onclick = opts.onEdit
+    div.appendChild(edit)
+  }
+  if (opts.onDelete) {
+    const btn = document.createElement('button')
+    btn.textContent = 'Delete'
+    btn.style.cssText = 'color:#dc2626;font-weight:600;font-size:13px;background:none;border:none;padding:0;cursor:pointer'
+    btn.onclick = opts.onDelete
+    div.appendChild(btn)
+  }
   return div
 }
