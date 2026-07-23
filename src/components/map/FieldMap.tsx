@@ -22,6 +22,31 @@ import { cornerLabelAnchors } from './cornerLabels'
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const SELECTED_COLOR = '#E8A33D'
 
+// Where-you-were camera memory (Lance: "no matter what they're working on,
+// when done they want to go back to where they were on the map"). Saved per
+// org on every moveend; restored on the next map mount instead of the
+// whole-farm fit. Layer changes still reframe (that's an explicit action).
+function cameraStorageKey(orgId: string | undefined): string {
+  return 'hl-cam:' + (orgId ?? 'org')
+}
+function loadSavedCamera(orgId: string | undefined): {
+  lng: number
+  lat: number
+  zoom: number
+  bearing: number
+  pitch: number
+} | null {
+  try {
+    const raw = localStorage.getItem(cameraStorageKey(orgId))
+    if (!raw) return null
+    const c = JSON.parse(raw) as { lng: number; lat: number; zoom: number; bearing: number; pitch: number }
+    if (!Number.isFinite(c.lng) || !Number.isFinite(c.lat) || !Number.isFinite(c.zoom)) return null
+    return c
+  } catch {
+    return null
+  }
+}
+
 // Pencil cursor while a draw tool is armed — hotspot at the pencil tip.
 export const PENCIL_CURSOR =
   'url("data:image/svg+xml;charset=utf-8,' +
@@ -264,6 +289,8 @@ export default function FieldMap({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const drawRef = useRef<MapboxDraw | null>(null)
+  const fieldsRef = useRef<FieldRow[]>([])
+  fieldsRef.current = fields
   const popupRef = useRef<mapboxgl.Popup | null>(null)
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null)
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
@@ -441,6 +468,26 @@ export default function FieldMap({
         'Map is taking unusually long to load. Likely a slow connection or ad-blocker. The map may still appear in a moment.',
       )
     }, 25_000)
+
+    // Persist the camera on every settle so returning to the map restores it.
+    map.on('moveend', () => {
+      if (readOnlyRef.current) return
+      try {
+        const c = map.getCenter()
+        localStorage.setItem(
+          cameraStorageKey(fieldsRef.current?.[0]?.org_id),
+          JSON.stringify({
+            lng: c.lng,
+            lat: c.lat,
+            zoom: map.getZoom(),
+            bearing: map.getBearing(),
+            pitch: map.getPitch(),
+          }),
+        )
+      } catch {
+        /* storage full/blocked — position memory is best-effort */
+      }
+    })
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     const geolocate = new mapboxgl.GeolocateControl({
@@ -1096,6 +1143,24 @@ export default function FieldMap({
     const firstFit = !didInitialFitRef.current
     const selectionChanged = prevSelKeyRef.current !== selectionKey
     if (!firstFit && !selectionChanged) return // data refresh only → keep view
+
+    // First mount with a remembered position → go straight back there
+    // instead of framing the whole farm. (Live map only; a layer selection
+    // or Layers change still reframes as an explicit action.)
+    if (firstFit && !readOnly) {
+      const saved = loadSavedCamera(fields[0]?.org_id)
+      if (saved) {
+        didInitialFitRef.current = true
+        prevSelKeyRef.current = selectionKey
+        map.jumpTo({
+          center: [saved.lng, saved.lat],
+          zoom: saved.zoom,
+          bearing: saved.bearing ?? 0,
+          pitch: saved.pitch ?? 0,
+        })
+        return
+      }
+    }
 
     // With a layer active, frame the highlighted blocks (e.g. all plant cane).
     // On first load or a cleared selection, frame the whole farm (or the

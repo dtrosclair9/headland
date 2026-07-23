@@ -133,13 +133,45 @@ export default function LiteMap({
     blocksRef.current = L.layerGroup().addTo(map)
     annosRef.current = L.layerGroup().addTo(map)
 
-    // fit the farm (or south Louisiana for an empty one)
-    const pts: [number, number][] = []
-    for (const f of fields)
-      for (const ring of f.geometry?.coordinates ?? [])
-        for (const [lng, lat] of ring) pts.push([lat, lng])
-    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.06))
-    else map.setView([29.9, -90.8], 12)
+    // Where-you-were memory (parity with the full map): restore the saved
+    // camera if one exists; otherwise fit the farm (or south Louisiana).
+    const camKey = 'hl-cam:' + (fields[0]?.org_id || 'org')
+    let restored = false
+    if (!readOnly) {
+      try {
+        const raw = localStorage.getItem(camKey)
+        if (raw) {
+          const c = JSON.parse(raw) as { lng: number; lat: number; zoom: number }
+          if (Number.isFinite(c.lng) && Number.isFinite(c.lat) && Number.isFinite(c.zoom)) {
+            map.setView([c.lat, c.lng], Math.round(c.zoom) + 1)
+            restored = true
+          }
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    if (!restored) {
+      const pts: [number, number][] = []
+      for (const f of fields)
+        for (const ring of f.geometry?.coordinates ?? [])
+          for (const [lng, lat] of ring) pts.push([lat, lng])
+      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.06))
+      else map.setView([29.9, -90.8], 12)
+    }
+    if (!readOnly) {
+      map.on('moveend', () => {
+        try {
+          const c = map.getCenter()
+          localStorage.setItem(
+            camKey,
+            JSON.stringify({ lng: c.lng, lat: c.lat, zoom: map.getZoom() - 1, bearing: 0, pitch: 0 }),
+          )
+        } catch {
+          /* best-effort */
+        }
+      })
+    }
 
     map.pm.setGlobalOptions({ allowSelfIntersection: false })
 
