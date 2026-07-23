@@ -4,6 +4,9 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { rateLimit } from '@/lib/rate-limit'
 import { bulkArchiveFields } from '@/lib/bulk-edit'
 
+// A 10k-id bulk archive can run ~20s at 50k-acre scale.
+export const maxDuration = 300
+
 const Body = z.object({ field_ids: z.array(z.string().uuid()).min(1).max(10000) })
 
 export async function POST(request: NextRequest) {

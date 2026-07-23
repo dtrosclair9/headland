@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Field, RatoonStage } from '@/lib/types'
 import { openTaskCountsByOrg } from '@/lib/block-tasks'
 import { chunkIds } from '@/lib/chunk-ids'
-import { paginateAll } from '@/lib/paginate'
+import { paginateAll, paginateAllParallel } from '@/lib/paginate'
 
 export async function countActiveFields(orgId: string): Promise<number> {
   const supabase = await createClient()
@@ -30,17 +30,21 @@ export interface FieldRow extends Omit<Field, 'geometry'> {
 export async function listFields(orgId: string): Promise<FieldRow[]> {
   const supabase = await createClient()
   // Paginate — a farm can exceed the 1000-row PostgREST cap (Boudreaux is at
-  // 681 and climbing); without this the map would silently drop blocks.
-  const rows = await paginateAll<FieldRow>((from, to) =>
-    supabase
-      .from('fields_view')
-      .select('*')
-      .eq('org_id', orgId)
-      .is('archived_at', null)
-      .order('created_at', { ascending: true })
-      .range(from, to),
-  )
-  const counts = await openTaskCountsByOrg(orgId)
+  // 681 and climbing); without this the map would silently drop blocks. Pages
+  // fetch in parallel and the task counts ride alongside: at 15k blocks the
+  // sequential version spent seconds in serial round-trips.
+  const [rows, counts] = await Promise.all([
+    paginateAllParallel<FieldRow>((from, to, withCount) =>
+      supabase
+        .from('fields_view')
+        .select('*', withCount ? { count: 'exact' } : undefined)
+        .eq('org_id', orgId)
+        .is('archived_at', null)
+        .order('created_at', { ascending: true })
+        .range(from, to),
+    ),
+    openTaskCountsByOrg(orgId),
+  ])
   return rows.map((r) => ({ ...r, open_todo_count: counts[r.id] ?? 0 }))
 }
 

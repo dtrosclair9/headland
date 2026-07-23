@@ -4,6 +4,9 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { rateLimit } from '@/lib/rate-limit'
 import { bulkEditFields } from '@/lib/bulk-edit'
 
+// A 10k-id bulk edit extrapolates to ~30s at 50k-acre scale.
+export const maxDuration = 300
+
 const RatoonEnum = z.enum([
   'plant_cane',
   'first_stubble',

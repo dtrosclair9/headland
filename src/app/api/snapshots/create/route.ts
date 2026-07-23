@@ -4,6 +4,9 @@ import { getBillableAcres } from '@/lib/acreage'
 import { generateFarmSnapshot } from '@/lib/snapshots'
 import { rateLimit } from '@/lib/rate-limit'
 
+// Archiving a 15k-block farm measured 21s; give big farms full headroom.
+export const maxDuration = 300
+
 export const runtime = 'nodejs'
 
 export async function POST() {

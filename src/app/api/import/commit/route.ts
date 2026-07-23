@@ -9,6 +9,9 @@ import { extractImportSource, parseImportSource } from '@/lib/shapefile-import'
 import { syncSubscriptionAcreage } from '@/lib/stripe-sync'
 
 export const runtime = 'nodejs'
+// A 20k-feature single-file import (parse + chunked RPC inserts + billing
+// sync) legitimately runs past the platform default.
+export const maxDuration = 300
 
 const RATOON = new Set([
   'plant_cane',
@@ -204,16 +207,26 @@ export async function POST(request: NextRequest) {
   })
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('bulk_import_fields', {
-    p_org_id: org.id,
-    p_features: features,
-  })
-  if (error) {
-    console.error('[import/commit] bulk_import_fields failed', error)
-    return NextResponse.json(
-      { error: 'Something went wrong saving your fields. Please try again.' },
-      { status: 500 },
-    )
+  // Chunk the RPC so a 20k-feature one-shot upload never ships one mega JSON
+  // body to PostgREST. Plantation get-or-create in the RPC is idempotent
+  // (on conflict do nothing), so chunks compose safely.
+  const RPC_CHUNK = 2500
+  let imported = 0
+  for (let off = 0; off < features.length; off += RPC_CHUNK) {
+    const { data, error } = await supabase.rpc('bulk_import_fields', {
+      p_org_id: org.id,
+      p_features: features.slice(off, off + RPC_CHUNK),
+    })
+    if (error) {
+      console.error('[import/commit] bulk_import_fields failed', { off, error })
+      return NextResponse.json(
+        imported > 0
+          ? { error: `Import stopped partway — ${imported} of ${features.length} blocks were saved. Check your map before re-uploading so you don't create duplicates.` }
+          : { error: 'Something went wrong saving your fields. Please try again.' },
+        { status: 500 },
+      )
+    }
+    imported += typeof data === 'number' ? data : Math.min(RPC_CHUNK, features.length - off)
   }
 
   // A plantation (usually grouped by FSA farm) can span multiple tracts — in
@@ -248,5 +261,5 @@ export async function POST(request: NextRequest) {
     console.error('[import/commit] acreage billing sync failed', e)
   }
 
-  return NextResponse.json({ imported: typeof data === 'number' ? data : features.length })
+  return NextResponse.json({ imported })
 }

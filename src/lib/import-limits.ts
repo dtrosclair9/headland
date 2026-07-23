@@ -4,7 +4,9 @@
 // real cane farm is a few hundred blocks in a few MB; these caps sit far above
 // that and well below "fills the function's memory."
 export const MAX_IMPORT_BYTES = 40 * 1024 * 1024 // 40 MB across all files
-export const MAX_IMPORT_FEATURES = 5000 // blocks per import
+// High enough that even a 50k-acre operation's full CLU file goes in as ONE
+// upload (15k-block farm measured 2026-07-23; commit RPC is chunked server-side).
+export const MAX_IMPORT_FEATURES = 20000 // blocks per import
 
 export function totalBytes(files: { data: Buffer }[]): number {
   return files.reduce((n, f) => n + f.data.length, 0)

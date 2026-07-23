@@ -4,6 +4,9 @@ import { extractImportSource, parseImportSource } from '@/lib/shapefile-import'
 import { rateLimit } from '@/lib/rate-limit'
 import { MAX_IMPORT_BYTES, MAX_IMPORT_FEATURES, totalBytes } from '@/lib/import-limits'
 
+// Parsing a 20k-feature upload can run past the platform default.
+export const maxDuration = 300
+
 export const runtime = 'nodejs'
 
 async function filesFromForm(request: NextRequest) {

@@ -7,6 +7,9 @@ import { listFields } from '@/lib/fields'
 import { listPlantations } from '@/lib/plantations'
 import { buildFieldsShapefileSet } from '@/lib/farm-export'
 
+// A 15k-block export measured 14.5s; give big farms full headroom.
+export const maxDuration = 300
+
 export async function GET() {
   const { org } = await requireUserAndOrg()
   // Full-farm re-encode per call — cheap CPU-amplification lever without a cap.

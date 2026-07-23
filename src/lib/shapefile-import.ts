@@ -253,7 +253,9 @@ export function parseGeoJSONBuffer(buf: Buffer): ParsedShapefile {
   // these caps is hostile or corrupt, and one mega-polygon would grind the
   // DB geometry ops and every later map/print render for the org.
   const MAX_RING_VERTICES = 10_000
-  const MAX_TOTAL_VERTICES = 500_000
+  // Sized for a 20k-feature single upload of real FSA polygons (~60-100
+  // vertices each) with headroom; the per-ring cap is the hostile-shape guard.
+  const MAX_TOTAL_VERTICES = 2_000_000
   let totalVertices = 0
   const validRing = (ring: unknown): ring is [number, number][] =>
     Array.isArray(ring) &&

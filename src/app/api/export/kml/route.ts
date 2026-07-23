@@ -4,6 +4,9 @@ import { requireUserAndOrg } from '@/lib/orgs'
 import { rateLimit } from '@/lib/rate-limit'
 import { listFields } from '@/lib/fields'
 
+// A 15k-block export measured 9.8s; give big farms full headroom.
+export const maxDuration = 300
+
 export async function GET() {
   const { org } = await requireUserAndOrg()
   // Full-farm re-encode per call — cheap CPU-amplification lever without a cap.
