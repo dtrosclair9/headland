@@ -615,7 +615,21 @@ export default function FieldMap({
         filter: ['==', ['geometry-type'], 'LineString'],
         paint: {
           'line-color': ['get', 'color'] as unknown as mapboxgl.ExpressionSpecification,
-          'line-width': ['coalesce', ['get', 'width'], 3] as unknown as mapboxgl.ExpressionSpecification,
+          // Ground-true width: annotations are painted ON the farm, so they
+          // scale with it (double per zoom level, anchored at z15 — the
+          // typical zoom when drawing). A constant screen width made lines
+          // grow huge relative to blocks when zooming out.
+          'line-width': [
+            'interpolate',
+            ['exponential', 2],
+            ['zoom'],
+            10,
+            ['/', ['coalesce', ['get', 'width'], 3], 32],
+            15,
+            ['coalesce', ['get', 'width'], 3],
+            20,
+            ['*', ['coalesce', ['get', 'width'], 3], 32],
+          ] as unknown as mapboxgl.ExpressionSpecification,
         },
       })
       map.addLayer({
@@ -625,17 +639,26 @@ export default function FieldMap({
         filter: ['==', ['geometry-type'], 'Point'],
         layout: {
           'text-field': ['get', 'text'],
-          // Per-label size, gently zoom-scaled around the chosen value.
+          // Ground-true size: a note is painted ON the field (like the blocks),
+          // so it scales with the ground — doubling per zoom level, anchored
+          // at z15 where labels are typically placed. Constant screen size
+          // made notes dwarf the whole farm once zoomed out.
           'text-size': [
             'interpolate',
-            ['linear'],
+            ['exponential', 2],
             ['zoom'],
-            12,
-            ['*', ['get', 'size'], 0.8],
-            17,
-            ['*', ['get', 'size'], 1.5],
+            10,
+            ['/', ['get', 'size'], 32],
+            15,
+            ['get', 'size'],
+            20,
+            ['*', ['get', 'size'], 32],
           ],
           'text-rotate': ['get', 'rotation'],
+          // Rotate/tilt with the map, not the screen — a label aligned along
+          // the rows STAYS along the rows when the map turns.
+          'text-rotation-alignment': 'map',
+          'text-pitch-alignment': 'map',
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
           'text-allow-overlap': true,
         },

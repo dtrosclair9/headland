@@ -199,11 +199,14 @@ export default function LiteMap({
     const group = annosRef.current
     if (!map || !group) return
     group.clearLayers()
+    // Ground-true scaling, matching the full map: annotations double per zoom
+    // level, anchored at z15.
+    const groundScale = Math.pow(2, map.getZoom() - 15)
     for (const a of annotations) {
       if (a.kind === 'line' && a.geometry.type === 'LineString') {
         const line = L.polyline(
           a.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
-          { color: a.color, weight: a.width ?? 3 },
+          { color: a.color, weight: Math.max(0.5, (a.width ?? 3) * groundScale) },
         )
         if (!readOnly && onDeleteAnnotation) {
           line.on('click', (ev) => {
@@ -226,7 +229,7 @@ export default function LiteMap({
         const marker = L.marker([lat, lng], {
           icon: L.divIcon({
             className: 'lite-text-anno',
-            html: `<span style="color:${a.color};font-size:${a.size}px;font-weight:700;transform:rotate(${a.rotation}deg);display:inline-block;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff">${escapeHtml(a.text ?? '')}</span>`,
+            html: `<span style="color:${a.color};font-size:${Math.max(2, a.size * groundScale)}px;font-weight:700;transform:rotate(${a.rotation}deg);display:inline-block;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff">${escapeHtml(a.text ?? '')}</span>`,
           }),
           interactive: !readOnly && !!onDeleteAnnotation,
         })
@@ -246,7 +249,7 @@ export default function LiteMap({
         marker.addTo(group)
       }
     }
-  }, [annotations, readOnly, onDeleteAnnotation])
+  }, [annotations, readOnly, onDeleteAnnotation, zoomTick])
 
   // ── drawing tools ──────────────────────────────────────────────────
   useEffect(() => {
