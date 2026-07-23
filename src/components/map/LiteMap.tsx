@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import L from 'leaflet'
 import '@geoman-io/leaflet-geoman-free'
 import 'leaflet/dist/leaflet.css'
@@ -137,6 +137,7 @@ export default function LiteMap({
 
   // Refs mirror the props/state the imperative Leaflet handlers need — the
   // map is created once; handlers must read current values.
+  const fieldById = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields])
   const live = useRef({
     tool,
     onSelectField,
@@ -145,6 +146,8 @@ export default function LiteMap({
     selectMode,
     onToggleFieldSelected,
     repositioning: false,
+    fieldById,
+    readOnly,
   })
   live.current = {
     tool,
@@ -154,6 +157,8 @@ export default function LiteMap({
     selectMode,
     onToggleFieldSelected,
     repositioning: !!repositionIds && repositionIds.size > 0,
+    fieldById,
+    readOnly,
   }
 
   // ── map lifecycle ──────────────────────────────────────────────────
@@ -306,6 +311,35 @@ export default function LiteMap({
           return
         }
         live.current.onSelectField(f.id)
+        // Same info card the full map pops on click — selection alone gives
+        // no feedback when the sidebar is closed. Read CURRENT field data
+        // from the live lookup (the closure's `f` goes stale after edits).
+        const cur = live.current.fieldById.get(f.id)
+        if (!cur) return
+        const esc = (t: string) =>
+          t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string)
+        const cutLabels: Record<string, string> = {
+          plant_cane: 'Plant cane', first_stubble: '1st stubble', second_stubble: '2nd stubble',
+          third_stubble: '3rd stubble', fourth_stubble: '4th stubble', fifth_stubble_plus: '5th stubble',
+          sixth_stubble_plus: '6th+ stubble', fallow: 'Fallow',
+        }
+        const meta = [
+          `${Number(cur.acreage_cached || 0).toFixed(2)} ac`,
+          cutLabels[String(cur.current_ratoon ?? '')] ?? '',
+          cur.variety ? esc(cur.variety) : '',
+        ].filter(Boolean).join(' · ')
+        L.popup({ closeButton: true, offset: [0, -4], maxWidth: 260 })
+          .setLatLng(ev.latlng)
+          .setContent(
+            `<div style="font-family:system-ui,sans-serif;min-width:150px">` +
+              `<div style="font-weight:700;color:#1A3D2E;font-size:15px">${esc(cur.name ?? 'Block')}</div>` +
+              `<div style="color:#4b5563;font-size:12px;margin-top:2px">${meta}</div>` +
+              (live.current.readOnly
+                ? ''
+                : `<a href="/app/fields/${f.id}" style="display:inline-block;margin-top:10px;font-weight:600;font-size:14px;color:#1A3D2E">Open block &rarr;</a>`) +
+              `</div>`,
+          )
+          .openOn(map)
       })
       poly.addTo(group)
       polys.set(f.id, poly)
