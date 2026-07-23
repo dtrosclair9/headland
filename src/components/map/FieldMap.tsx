@@ -1275,14 +1275,22 @@ export default function FieldMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready || !textEdit) return
+    // Mapbox owns the marker ELEMENT's transform (it positions with
+    // translate every frame) — rotation must live on an inner span we own,
+    // or the slider looks dead.
     const el = document.createElement('div')
-    el.style.cssText =
-      'font-weight:700;color:#1A3D2E;font-size:' +
+    el.style.cssText = 'cursor:grab;'
+    const inner = document.createElement('span')
+    inner.style.cssText =
+      'display:inline-block;font-weight:700;color:' +
+      textEdit.color +
+      ';font-size:' +
       Math.min(textEdit.size, 28) +
       'px;transform:rotate(' +
       textEdit.rotation +
-      'deg);text-shadow:0 0 3px #fff,0 0 3px #fff;cursor:grab;white-space:nowrap;'
-    el.textContent = textEdit.value || 'label'
+      'deg);text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;'
+    inner.textContent = textEdit.value || 'label'
+    el.appendChild(inner)
     const marker = new mapboxgl.Marker({ element: el, draggable: true })
       .setLngLat([textEdit.lng, textEdit.lat])
       .addTo(map)
@@ -1298,14 +1306,16 @@ export default function FieldMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textEdit?.id, ready])
 
-  // keep the preview marker matching the panel's live size/rotation/text
+  // keep the preview marker matching the panel's live size/rotation/text —
+  // styling targets the INNER span (Mapbox owns the outer's transform).
   useEffect(() => {
     const el = textEditMarkerRef.current?.getElement()
-    if (!el || !textEdit) return
-    el.style.fontSize = Math.min(textEdit.size, 28) + 'px'
-    el.style.transform = 'rotate(' + textEdit.rotation + 'deg)'
-    el.style.color = textEdit.color
-    el.textContent = textEdit.value || 'label'
+    const inner = el?.firstElementChild as HTMLElement | null
+    if (!inner || !textEdit) return
+    inner.style.fontSize = Math.min(textEdit.size, 28) + 'px'
+    inner.style.transform = 'rotate(' + textEdit.rotation + 'deg)'
+    inner.style.color = textEdit.color
+    inner.textContent = textEdit.value || 'label'
   }, [textEdit])
 
   // ── Move/reshape an existing LINE — WYSIWYG: the line stays visible on a
