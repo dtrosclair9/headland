@@ -431,6 +431,30 @@ export default function MapShell({
     }
   }
 
+  async function handleBulkDelete(): Promise<void> {
+    if (selectedIds.size === 0) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/fields/bulk-archive', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ field_ids: Array.from(selectedIds) }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Delete failed')
+      }
+      setSelectedIds(new Set())
+      setSelectMode(false)
+      startTransition(() => router.refresh())
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleBulkRotate(): Promise<{ advanced: number; skipped: number } | null> {
     if (selectedIds.size === 0) return null
     setBusy(true)
@@ -568,6 +592,7 @@ export default function MapShell({
           onBulkAssignPlantation={handleBulkAssignPlantation}
           onBulkEdit={handleBulkEdit}
           onBulkRotate={handleBulkRotate}
+          onBulkDelete={handleBulkDelete}
           onStartReposition={() => {
             if (selectedIds.size) {
               setRepositionIds(new Set(selectedIds))

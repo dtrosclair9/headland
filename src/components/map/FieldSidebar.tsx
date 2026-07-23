@@ -53,6 +53,8 @@ interface FieldSidebarProps {
   onBulkAssignPlantation: (plantationId: string | null) => Promise<void>
   // Bulk-set the same variety or cycle on every selected block.
   onBulkEdit: (set: { variety: string | null } | { cycle: string | null }) => Promise<void>
+  // Bulk delete (archives — records stay in history).
+  onBulkDelete: () => Promise<void>
   onBulkRotate: () => Promise<{ advanced: number; skipped: number } | null>
   // Reposition (move/rotate) the currently-selected blocks on the map.
   onStartReposition: () => void
@@ -97,6 +99,7 @@ export default function FieldSidebar({
   onToggleFieldSelected,
   onBulkAssignPlantation,
   onBulkEdit,
+  onBulkDelete,
   onBulkRotate,
   onStartReposition,
   onRepositionPlantation,
@@ -117,6 +120,8 @@ export default function FieldSidebar({
   // "Assign to…" tree: menu -> plantation | cycle (year cane) | variety.
   const [assignView, setAssignView] = useState<null | 'menu' | 'plantation' | 'cycle' | 'variety'>(null)
   const [rotateOpen, setRotateOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   const [logSuccess, setLogSuccess] = useState<string | null>(null)
   const [rotating, setRotating] = useState(false)
@@ -500,6 +505,43 @@ export default function FieldSidebar({
                 setAssignView(null)
               }}
             />
+          ) : deleteOpen ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 space-y-2">
+              <p className="text-sm font-semibold text-red-800">
+                Are you sure you want to DELETE the {selectedIds.size} selected block
+                {selectedIds.size === 1 ? '' : 's'}?
+              </p>
+              <p className="text-xs text-red-700 leading-relaxed">
+                They come off the map and out of every list. Past records (harvests,
+                sprays, history) stay in your operations log. No bulk undo.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true)
+                    try {
+                      await onBulkDelete()
+                    } finally {
+                      setDeleting(false)
+                      setDeleteOpen(false)
+                    }
+                  }}
+                  className="text-xs font-semibold rounded-md bg-red-600 text-white px-3 py-1.5 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting…' : 'Yes, delete'}
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => setDeleteOpen(false)}
+                  className="text-xs text-gray-600 hover:text-primary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : rotateOpen ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
               <p className="text-sm font-semibold text-amber-900">
@@ -571,6 +613,13 @@ export default function FieldSidebar({
                     className="w-full text-sm font-semibold rounded-md border-2 border-primary text-primary px-3 py-2 hover:bg-primary/5"
                   >
                     Move / rotate {selectedIds.size} on map →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteOpen(true)}
+                    className="w-full text-sm font-semibold rounded-md border-2 border-red-200 text-red-700 px-3 py-2 hover:bg-red-50"
+                  >
+                    Delete {selectedIds.size} block{selectedIds.size === 1 ? '' : 's'}…
                   </button>
                 </>
               )}

@@ -66,3 +66,36 @@ export async function bulkEditFields(input: {
 
   return updated
 }
+
+// Bulk "delete" from select mode — archives, the same way single-block delete
+// works (archived_at). Blocks leave the map/lists; their history rows stay
+// attached for the operations record. Same org-scoped safety pattern.
+export async function bulkArchiveFields(input: {
+  orgId: string
+  fieldIds: string[]
+}): Promise<number> {
+  if (input.fieldIds.length === 0) return 0
+  const supabase = await createClient()
+  const rows = await paginateAll<{ id: string }>((from, to) =>
+    supabase
+      .from('fields')
+      .select('id')
+      .eq('org_id', input.orgId)
+      .is('archived_at', null)
+      .range(from, to),
+  )
+  const want = new Set(input.fieldIds)
+  const ids = rows.filter((r) => want.has(r.id)).map((r) => r.id)
+  let archived = 0
+  const now = new Date().toISOString()
+  for (const slice of chunkIds(ids)) {
+    const { error, count } = await supabase
+      .from('fields')
+      .update({ archived_at: now }, { count: 'exact' })
+      .eq('org_id', input.orgId)
+      .in('id', slice)
+    if (error) throw error
+    archived += count ?? slice.length
+  }
+  return archived
+}
