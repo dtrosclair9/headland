@@ -722,6 +722,12 @@ export default function LiteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFieldId])
 
+  // Pencil cursor while a tool is armed — toggled imperatively so React
+  // never rewrites the holder's className (see render comment).
+  useEffect(() => {
+    holderRef.current?.classList.toggle('lite-pencil', tool !== 'none')
+  }, [tool])
+
   // Esc cancels any in-progress tool — same as the full map.
   useEffect(() => {
     if (tool === 'none' && !lineChooser) return
@@ -807,7 +813,10 @@ export default function LiteMap({
 
   return (
     <div className="relative flex-1 h-full">
-      <div ref={holderRef} className={`absolute inset-0 z-0 ${tool !== 'none' ? 'lite-pencil' : ''}`} />
+      {/* className must stay STATIC: React rewriting it would wipe the
+          classes Leaflet adds imperatively (leaflet-container etc.) and
+          visually kill the map. The pencil class toggles via classList. */}
+      <div ref={holderRef} className="absolute inset-0 z-0" />
       <style>{`
         .lite-label { background: transparent; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #111827; }
         .lite-label-sat { color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
