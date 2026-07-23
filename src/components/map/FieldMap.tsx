@@ -1723,6 +1723,10 @@ export default function FieldMap({
         visibleIds={visibleIds}
         whiteMap={whiteMap}
         readOnly={readOnly}
+        onShowFields={onShowFields}
+        repositionIds={repositionIds}
+        onSaveReposition={onSaveReposition}
+        onCancelReposition={onCancelReposition}
         onCreateField={readOnly ? undefined : onCreateField}
         onUpdateField={readOnly ? undefined : onUpdateField}
         annotations={annotations}

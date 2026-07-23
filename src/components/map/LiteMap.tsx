@@ -5,6 +5,7 @@ import L from 'leaflet'
 import '@geoman-io/leaflet-geoman-free'
 import 'leaflet/dist/leaflet.css'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
+import * as turf from '@turf/turf'
 import type { FieldRow } from '@/lib/fields'
 import type { AnnotationRow } from '@/lib/annotations'
 
@@ -23,6 +24,10 @@ export default function LiteMap({
   selectedFieldId,
   onSelectField,
   stageColorMap,
+  onShowFields,
+  repositionIds = null,
+  onSaveReposition,
+  onCancelReposition,
   onCreateField,
   onUpdateField,
   annotations = [],
@@ -40,6 +45,10 @@ export default function LiteMap({
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
   stageColorMap: Record<string, string>
+  onShowFields?: () => void
+  repositionIds?: Set<string> | null
+  onSaveReposition?: (features: { id: string; geometry: GeoJSON.Polygon }[]) => Promise<void>
+  onCancelReposition?: () => void
   onCreateField?: (geometry: GeoJSON.Polygon) => Promise<void>
   onUpdateField?: (id: string, geometry: GeoJSON.Polygon) => Promise<void>
   annotations?: AnnotationRow[]
@@ -65,10 +74,26 @@ export default function LiteMap({
   const satLayerRef = useRef<L.TileLayer | null>(null)
   const gpsRef = useRef<{ marker: L.CircleMarker; ring: L.Circle } | null>(null)
   const editTargetRef = useRef<L.Polygon | null>(null)
+  const repoGroupRef = useRef<L.LayerGroup | null>(null)
+  const repoWorkingRef = useRef<Map<string, GeoJSON.Polygon>>(new Map())
+  const [savingReposition, setSavingReposition] = useState(false)
   const [mode, setMode] = useState<'crop' | 'satellite'>('crop')
   const [tool, setTool] = useState<'none' | 'block' | 'line' | 'freehand' | 'text'>('none')
   const [editingShape, setEditingShape] = useState(false)
-  const [textDraft, setTextDraft] = useState<{ lng: number; lat: number; value: string } | null>(null)
+  const [lineChooser, setLineChooser] = useState(false)
+  const [lineWidth, setLineWidth] = useState(3)
+  const lineWidthRef = useRef(3)
+  lineWidthRef.current = lineWidth
+  const [textDraft, setTextDraft] = useState<{
+    lng: number
+    lat: number
+    value: string
+    size: number
+    rotation: number
+  } | null>(null)
+  const [locating, setLocating] = useState(false)
+  const [locateAccuracy, setLocateAccuracy] = useState<number | null>(null)
+  const [locateError, setLocateError] = useState<string | null>(null)
   const [gpsOn, setGpsOn] = useState(false)
   const [zoomTick, setZoomTick] = useState(0)
 
@@ -112,7 +137,9 @@ export default function LiteMap({
       if (t === 'block' && gj.geometry.type === 'Polygon' && live.current.onCreateField) {
         void live.current.onCreateField(gj.geometry as GeoJSON.Polygon)
       } else if (t === 'line' && gj.geometry.type === 'LineString' && live.current.onCreateAnnotation) {
-        void live.current.onCreateAnnotation('line', gj.geometry as GeoJSON.LineString)
+        void live.current.onCreateAnnotation('line', gj.geometry as GeoJSON.LineString, undefined, {
+          width: lineWidthRef.current,
+        })
       }
       setTool('none')
     })
@@ -151,7 +178,10 @@ export default function LiteMap({
     group.clearLayers()
     editTargetRef.current = null
     const sat = mode === 'satellite'
-    const shown = visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields
+    const repositioning = !!repositionIds && repositionIds.size > 0
+    const shown = (visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields).filter(
+      (f) => !repositioning || !repositionIds!.has(f.id),
+    )
     const showLabels = map.getZoom() >= 14
     for (const f of shown) {
       const sel = f.id === selectedFieldId
@@ -173,7 +203,7 @@ export default function LiteMap({
         color: sel ? '#111827' : sat ? '#facc15' : '#374151',
         weight: sel ? 3 : sat ? 1.5 : 1,
         fillColor: fill,
-        fillOpacity: sat ? (sel ? 0.35 : 0.08) : 0.9,
+        fillOpacity: repositioning ? 0.25 : sat ? (sel ? 0.35 : 0.08) : 0.9,
       })
       poly.on('click', (ev) => {
         if (live.current.tool !== 'none') return
@@ -206,7 +236,7 @@ export default function LiteMap({
         editTargetRef.current = poly
       }
     }
-  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick])
+  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick, repositionIds])
 
   // ── annotations layer ──────────────────────────────────────────────
   useEffect(() => {
@@ -288,7 +318,12 @@ export default function LiteMap({
       }
       const onUp = () => {
         if (down && pts.length > 2 && live.current.onCreateAnnotation) {
-          void live.current.onCreateAnnotation('line', { type: 'LineString', coordinates: pts })
+          void live.current.onCreateAnnotation(
+            'line',
+            { type: 'LineString', coordinates: pts },
+            undefined,
+            { width: lineWidthRef.current },
+          )
         }
         down = false
         setTool('none')
@@ -307,7 +342,7 @@ export default function LiteMap({
     // text label: click to place, then type in the draft panel
     if (tool === 'text') {
       const onClick = (e: L.LeafletMouseEvent) => {
-        setTextDraft({ lng: e.latlng.lng, lat: e.latlng.lat, value: '' })
+        setTextDraft({ lng: e.latlng.lng, lat: e.latlng.lat, value: '', size: 16, rotation: 0 })
         setTool('none')
       }
       map.on('click', onClick)
@@ -316,6 +351,177 @@ export default function LiteMap({
       }
     }
   }, [tool])
+
+  // ── Reposition mode — EXACT capability parity with the full map: the
+  // chosen blocks lift into a bright working copy; drag slides the group,
+  // the round handle above rotates it (same turf.transformRotate math, so
+  // shapes/acreage never change). Save → same bulk-geometry pipeline.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !repositionIds || repositionIds.size === 0) return
+
+    const working = new Map<string, GeoJSON.Polygon>()
+    for (const f of fields)
+      if (repositionIds.has(f.id))
+        working.set(f.id, JSON.parse(JSON.stringify(f.geometry)) as GeoJSON.Polygon)
+    if (working.size === 0) return
+    repoWorkingRef.current = working
+
+    const group = L.layerGroup().addTo(map)
+    repoGroupRef.current = group
+
+    const fc = (): GeoJSON.FeatureCollection => ({
+      type: 'FeatureCollection',
+      features: Array.from(working.entries()).map(([id, geometry]) => ({
+        type: 'Feature',
+        properties: { id },
+        geometry,
+      })),
+    })
+    const cloneWorking = () => {
+      const m = new Map<string, GeoJSON.Polygon>()
+      for (const [id, g] of working) m.set(id, JSON.parse(JSON.stringify(g)) as GeoJSON.Polygon)
+      return m
+    }
+
+    let polys: L.Polygon[] = []
+    const render = () => {
+      group.clearLayers()
+      polys = []
+      for (const [, g] of working) {
+        const poly = L.polygon(
+          g.coordinates.map((ring) => ring.map(([lng, lat]) => [lat, lng] as [number, number])),
+          { color: SELECTED_COLOR, weight: 3, fillColor: SELECTED_COLOR, fillOpacity: 0.55 },
+        )
+        poly.addTo(group)
+        polys.push(poly)
+      }
+    }
+    render()
+
+    // frame the group if off-screen (parity with the full map's behavior)
+    const b = turf.bbox(fc())
+    const groupBounds = L.latLngBounds([b[1], b[0]], [b[3], b[2]])
+    if (!map.getBounds().contains(groupBounds)) map.fitBounds(groupBounds.pad(0.3))
+
+    // rotate handle — same styled round marker above the group
+    const handleEl = document.createElement('div')
+    handleEl.style.cssText =
+      'width:36px;height:36px;border-radius:9999px;background:#fff;border:2px solid ' +
+      SELECTED_COLOR +
+      ';box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;'
+    handleEl.innerHTML =
+      '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1A3D2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>'
+    const handleAnchor = (): [number, number] => {
+      const bb = turf.bbox(fc())
+      const pad = (bb[3] - bb[1]) * 0.18 || 0.0005
+      return [(bb[0] + bb[2]) / 2, bb[3] + pad]
+    }
+    const anchor0 = handleAnchor()
+    const handle = L.marker([anchor0[1], anchor0[0]], {
+      icon: L.divIcon({ className: '', html: handleEl.outerHTML, iconSize: [36, 36], iconAnchor: [18, 18] }),
+      draggable: true,
+    }).addTo(map)
+    const placeHandle = () => {
+      const a = handleAnchor()
+      handle.setLatLng([a[1], a[0]])
+    }
+
+    let rotateBase: Map<string, GeoJSON.Polygon> | null = null
+    let rotatePivot: [number, number] | null = null
+    let startBearing = 0
+    handle.on('dragstart', () => {
+      rotateBase = cloneWorking()
+      rotatePivot = turf.centroid(fc()).geometry.coordinates as [number, number]
+      const ll = handle.getLatLng()
+      startBearing = turf.bearing(rotatePivot, [ll.lng, ll.lat])
+    })
+    handle.on('drag', () => {
+      if (!rotateBase || !rotatePivot) return
+      const ll = handle.getLatLng()
+      const delta = turf.bearing(rotatePivot, [ll.lng, ll.lat]) - startBearing
+      const baseFC: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: Array.from(rotateBase.entries()).map(([id, geometry]) => ({
+          type: 'Feature',
+          properties: { id },
+          geometry,
+        })),
+      }
+      const rotated = turf.transformRotate(baseFC, delta, { pivot: rotatePivot })
+      working.clear()
+      for (const feat of rotated.features)
+        working.set(feat.properties!.id as string, feat.geometry as GeoJSON.Polygon)
+      render()
+    })
+    handle.on('dragend', () => {
+      rotateBase = null
+      rotatePivot = null
+      placeHandle()
+    })
+
+    // drag that STARTS on the group slides it; empty map still pans
+    let moveBase: Map<string, GeoJSON.Polygon> | null = null
+    let moveStart: L.LatLng | null = null
+    const onDown = (e: L.LeafletMouseEvent) => {
+      const pt = turf.point([e.latlng.lng, e.latlng.lat])
+      const hit = Array.from(working.values()).some((g) =>
+        turf.booleanPointInPolygon(pt, { type: 'Feature', properties: {}, geometry: g }),
+      )
+      if (!hit) return
+      map.dragging.disable()
+      moveBase = cloneWorking()
+      moveStart = e.latlng
+    }
+    const onMove = (e: L.LeafletMouseEvent) => {
+      if (!moveBase || !moveStart) return
+      const dLng = e.latlng.lng - moveStart.lng
+      const dLat = e.latlng.lat - moveStart.lat
+      working.clear()
+      for (const [id, g] of moveBase) {
+        working.set(id, {
+          type: 'Polygon',
+          coordinates: g.coordinates.map((ring) => ring.map(([lng, lat]) => [lng + dLng, lat + dLat])),
+        })
+      }
+      render()
+    }
+    const onUp = () => {
+      if (!moveBase) return
+      moveBase = null
+      moveStart = null
+      map.dragging.enable()
+      placeHandle()
+    }
+    map.on('mousedown', onDown)
+    map.on('mousemove', onMove)
+    map.on('mouseup', onUp)
+
+    return () => {
+      map.off('mousedown', onDown)
+      map.off('mousemove', onMove)
+      map.off('mouseup', onUp)
+      handle.remove()
+      group.remove()
+      repoGroupRef.current = null
+      map.dragging.enable()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositionIds, fields])
+
+  // Esc cancels any in-progress tool — same as the full map.
+  useEffect(() => {
+    if (tool === 'none' && !lineChooser) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        mapRef.current?.pm.disableDraw()
+        setTool('none')
+        setLineChooser(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tool, lineChooser])
 
   // ── GPS ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -393,91 +599,317 @@ export default function LiteMap({
         .lite-label::before { display: none; }
       `}</style>
 
-      {/* tools — hidden in read-only history views */}
-      {!readOnly && (
-        <div className="absolute left-3 top-3 z-[1000] flex flex-col gap-1.5">
-          {onCreateField && toolButton('block', '✏️ Draw block')}
-          {onCreateAnnotation && toolButton('line', '📏 Line (points)')}
-          {onCreateAnnotation && toolButton('freehand', '〰️ Line (freehand)')}
-          {onCreateAnnotation && toolButton('text', '🔤 Text label')}
-          {selectedFieldId && onUpdateField && !editingShape && (
+      {/* Labeled action buttons — overlay the map at top-left. EXACT clone of
+          the full map's toolbar: same buttons, classes, copy, and positions.
+          Only the engine under the buttons differs. */}
+      <div className="absolute top-3 left-3 right-14 md:right-auto z-[1000] flex flex-col gap-2 pointer-events-none items-start">
+        <div className="flex flex-wrap gap-2 pointer-events-none max-w-[21rem] lg:max-w-[27rem]">
+          {onShowFields && (
             <button
               type="button"
-              onClick={() => setEditingShape(true)}
-              className="rounded-md shadow-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-primary text-left hover:bg-gray-50"
+              onClick={onShowFields}
+              className="pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition bg-white text-primary border-2 border-primary hover:bg-primary/5"
             >
-              🔧 Edit shape
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
+              Blocks ({fields.length})
             </button>
           )}
-          {editingShape && (
-            <div className="rounded-md bg-white shadow-md border border-gray-200 p-2 space-y-1.5 max-w-[190px]">
-              <p className="text-xs text-gray-600">Drag the corners into place.</p>
-              <div className="flex gap-2">
+          {!readOnly && (
+            <>
+              {onCreateField && (
                 <button
                   type="button"
-                  onClick={() => void finishReshape()}
-                  className="btn-primary text-xs px-2.5 py-1.5"
+                  onClick={() => {
+                    setLineChooser(false)
+                    setTool(tool === 'block' ? 'none' : 'block')
+                  }}
+                  className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold shadow-md transition ${
+                    tool === 'block'
+                      ? 'bg-white text-primary border-2 border-primary hover:bg-gray-50'
+                      : 'bg-accent text-primary-dark hover:bg-accent-dark'
+                  }`}
                 >
-                  Save shape
+                  {tool === 'block' ? (
+                    <>
+                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path d="M10 2a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H3a1 1 0 110-2h6V3a1 1 0 011-1z" />
+                      </svg>
+                      Draw a block
+                    </>
+                  )}
                 </button>
+              )}
+              {onCreateAnnotation && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (tool === 'line' || tool === 'freehand') {
+                        mapRef.current?.pm.disableDraw()
+                        setTool('none')
+                      } else {
+                        setTool('none')
+                        setLineChooser(!lineChooser)
+                      }
+                    }}
+                    title="Draw a reference line (road, ditch)"
+                    className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition border-2 ${
+                      tool === 'line' || tool === 'freehand' || lineChooser
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-primary border-primary hover:bg-primary/5'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M3.5 14.5a2 2 0 102.83 2.83l9.5-9.5A2 2 0 1013 5l-9.5 9.5z" />
+                      <circle cx="4.75" cy="15.75" r="1.75" />
+                      <circle cx="15.25" cy="4.75" r="1.75" />
+                    </svg>
+                    {tool === 'line' || tool === 'freehand' ? 'Cancel line' : 'Line'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLineChooser(false)
+                      setTool(tool === 'text' ? 'none' : 'text')
+                    }}
+                    title="Add a text label (Hwy 308, Shop, N)"
+                    className={`pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition border-2 ${
+                      tool === 'text'
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-primary border-primary hover:bg-primary/5'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M4 4a1 1 0 011-1h10a1 1 0 011 1v2a1 1 0 11-2 0V5h-3v10h1a1 1 0 110 2H8a1 1 0 110-2h1V5H6v1a1 1 0 01-2 0V4z" />
+                    </svg>
+                    {tool === 'text' ? 'Cancel text' : 'Text'}
+                  </button>
+                </>
+              )}
+              {selectedFieldId && onUpdateField && !editingShape && (
                 <button
                   type="button"
-                  onClick={() => setEditingShape(false)}
-                  className="text-xs text-gray-600 hover:text-primary"
+                  onClick={() => setEditingShape(true)}
+                  className="pointer-events-auto inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold shadow-md transition bg-white text-primary border-2 border-primary hover:bg-primary/5"
                 >
-                  Cancel
+                  Edit shape
                 </button>
-              </div>
-            </div>
+              )}
+            </>
           )}
-          {tool !== 'none' && (
-            <p className="rounded-md bg-white/95 shadow border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 max-w-[190px]">
-              {tool === 'block' && 'Tap the field corners, then tap the first corner to close it.'}
-              {tool === 'line' && 'Tap points along the road or ditch; tap the last point again to finish.'}
-              {tool === 'freehand' && 'Press and drag to draw the line.'}
-              {tool === 'text' && 'Tap the map where the label goes.'}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* text-label draft */}
-      {textDraft && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-16 z-[1000] rounded-md bg-white shadow-lg border border-gray-200 p-2 flex gap-2">
-          <input
-            autoFocus
-            type="text"
-            value={textDraft.value}
-            maxLength={60}
-            placeholder="Label (e.g. Hwy 308)"
-            className="input text-sm py-1.5 w-48"
-            onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
-          />
           <button
             type="button"
-            disabled={!textDraft.value.trim()}
-            className="btn-primary text-xs px-3 disabled:opacity-50"
             onClick={() => {
-              if (onCreateAnnotation && textDraft.value.trim()) {
-                void onCreateAnnotation(
-                  'text',
-                  { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
-                  textDraft.value.trim(),
-                  { size: 16, rotation: 0 },
-                )
-              }
+              setLocating(true)
+              setLocateError(null)
+              navigator.geolocation?.getCurrentPosition(
+                (pos) => {
+                  setLocating(false)
+                  setLocateAccuracy(pos.coords.accuracy)
+                  setGpsOn(true)
+                  mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], Math.max(mapRef.current.getZoom(), 15))
+                },
+                () => {
+                  setLocating(false)
+                  setLocateError("Couldn't get a location fix. Check that location access is allowed for this site.")
+                },
+                { enableHighAccuracy: true, timeout: 10000 },
+              )
+            }}
+            disabled={locating || tool !== 'none'}
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold shadow-md transition bg-white text-primary border-2 border-primary hover:bg-primary/5 disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-3a5 5 0 100-10 5 5 0 000 10zm0-3a2 2 0 110-4 2 2 0 010 4z" clipRule="evenodd" />
+            </svg>
+            {locating ? 'Locating…' : 'Find me'}
+          </button>
+          {locateAccuracy !== null && !locating && (
+            <div className="pointer-events-auto rounded-md bg-white border border-gray-100 shadow-md px-3 py-2 text-xs text-gray-700 leading-snug">
+              <span className="font-semibold text-primary">±{Math.round(locateAccuracy * 3.281)} ft</span>
+              <span className="text-gray-500 ml-1">(Wi-Fi triangulation — use phone for GPS)</span>
+            </div>
+          )}
+        </div>
+
+        {tool !== 'none' && (
+          <div className="pointer-events-none rounded-md bg-primary-dark/90 text-white px-3 py-2 text-xs leading-snug max-w-xs shadow-md">
+            {tool === 'line'
+              ? 'Click points along the road or ditch. Double-click the last point to finish. Press Esc to cancel.'
+              : tool === 'freehand'
+                ? 'Press and drag to draw. Let go to save the line.'
+                : tool === 'text'
+                  ? 'Click the map where the label should go.'
+                  : 'Click each corner of the block. Double-click the last corner to finish. Press Esc to cancel.'}
+          </div>
+        )}
+
+        {lineChooser && tool === 'none' && (
+          <div className="pointer-events-auto rounded-md bg-white shadow-md border border-gray-100 px-3 py-2 flex items-center gap-2 flex-wrap max-w-xs">
+            {(
+              [
+                ['freehand', 'Freehand'],
+                ['line', 'Point to point'],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setLineChooser(false)
+                  setTool(m)
+                }}
+                className="text-xs font-semibold rounded-md border-2 border-primary text-primary px-2.5 py-1.5 hover:bg-primary hover:text-white transition"
+              >
+                {label}
+              </button>
+            ))}
+            <span className="basis-full h-0" />
+            <span className="text-[11px] font-semibold text-gray-500">Thickness:</span>
+            {(
+              [
+                [1.5, 'Thin'],
+                [3, 'Medium'],
+                [5, 'Thick'],
+              ] as const
+            ).map(([w, label]) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setLineWidth(w)}
+                className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border transition ${
+                  lineWidth === w
+                    ? 'bg-primary text-white border-primary'
+                    : 'border-gray-300 text-gray-600 hover:border-primary hover:text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {locateError && (
+          <div className="pointer-events-auto rounded-md bg-red-50 border border-red-100 text-red-800 px-3 py-2 text-xs leading-snug max-w-xs shadow-md flex items-start gap-2">
+            <span>{locateError}</span>
+            <button type="button" onClick={() => setLocateError(null)} className="text-red-600 hover:underline shrink-0" aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
+
+        {editingShape && (
+          <div className="pointer-events-auto rounded-md bg-white shadow-md border border-gray-200 p-2 space-y-1.5 max-w-[190px]">
+            <p className="text-xs text-gray-600">Drag the corners into place.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void finishReshape()} className="btn-primary text-xs px-2.5 py-1.5">
+                Save shape
+              </button>
+              <button type="button" onClick={() => setEditingShape(false)} className="text-xs text-gray-600 hover:text-primary">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Text-label input — exact clone of the full map's panel. */}
+      {textDraft && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto">
+          <form
+            className="rounded-md bg-white shadow-lg border border-gray-200 p-3 space-y-2 w-72"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const value = textDraft.value.trim()
+              if (!value || !onCreateAnnotation) return
+              void onCreateAnnotation(
+                'text',
+                { type: 'Point', coordinates: [textDraft.lng, textDraft.lat] },
+                value,
+                { size: textDraft.size, rotation: textDraft.rotation },
+              )
               setTextDraft(null)
             }}
           >
-            Save
-          </button>
-          <button type="button" className="text-xs text-gray-500" onClick={() => setTextDraft(null)}>
-            Cancel
-          </button>
+            <input
+              autoFocus
+              type="text"
+              value={textDraft.value}
+              maxLength={120}
+              onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
+              placeholder="Hwy 308, Shop house, N…"
+              className="input text-sm w-full"
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Size</span>
+              {(
+                [
+                  ['S', 12],
+                  ['M', 16],
+                  ['L', 24],
+                  ['XL', 36],
+                ] as const
+              ).map(([label, px]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setTextDraft({ ...textDraft, size: px })}
+                  className={`text-xs font-semibold rounded-md border-2 px-2.5 py-1 transition ${
+                    textDraft.size === px
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 w-10">Turn</span>
+              <input
+                type="range"
+                min={-90}
+                max={90}
+                step={5}
+                value={textDraft.rotation}
+                onChange={(e) => setTextDraft({ ...textDraft, rotation: Number(e.target.value) })}
+                className="flex-1"
+                aria-label="Rotate label"
+              />
+              <span className="text-xs text-gray-500 w-9 text-right">{textDraft.rotation}°</span>
+            </div>
+            {textDraft.value.trim() && (
+              <div className="h-16 flex items-center justify-center overflow-hidden">
+                <span
+                  className="font-bold text-gray-800"
+                  style={{ fontSize: Math.min(textDraft.size, 28), transform: `rotate(${textDraft.rotation}deg)` }}
+                >
+                  {textDraft.value}
+                </span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button type="submit" disabled={!textDraft.value.trim()} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
+                Save
+              </button>
+              <button type="button" className="text-xs text-gray-500" onClick={() => setTextDraft(null)}>
+                Cancel
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* view toggle */}
+      {/* view toggle — identical to the full map */}
       <div className="absolute left-1/2 -translate-x-1/2 z-[1000] bottom-8 lg:bottom-auto lg:top-3">
         <div className="inline-flex rounded-md bg-white shadow-md border border-gray-200 overflow-hidden text-sm font-semibold">
           {(['crop', 'satellite'] as const).map((m) => (
@@ -493,15 +925,49 @@ export default function LiteMap({
         </div>
       </div>
 
-      {/* GPS */}
-      <button
-        type="button"
-        onClick={() => setGpsOn(!gpsOn)}
-        className={`absolute right-3 top-24 z-[1000] w-9 h-9 rounded-md shadow-md border text-base ${gpsOn ? 'bg-primary text-white border-primary' : 'bg-white border-gray-200'}`}
-        title="Find me"
-      >
-        📍
-      </button>
+      {/* Reposition bar — exact clone of the full map's */}
+      {repositionIds && repositionIds.size > 0 && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1100] w-[calc(100%-1.5rem)] max-w-md">
+          <div className="rounded-lg bg-white shadow-lg border border-gray-200 px-4 py-3">
+            <p className="text-sm font-semibold text-primary">
+              Repositioning {repositionIds.size} block{repositionIds.size === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+              Drag the highlighted blocks to slide them. Use the round handle above
+              them to rotate. Shapes and acreage stay the same.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                disabled={savingReposition}
+                onClick={async () => {
+                  if (!onSaveReposition) return
+                  setSavingReposition(true)
+                  const features = Array.from(repoWorkingRef.current.entries()).map(
+                    ([id, geometry]) => ({ id, geometry }),
+                  )
+                  try {
+                    await onSaveReposition(features)
+                  } finally {
+                    setSavingReposition(false)
+                  }
+                }}
+                className="btn-primary flex-1 text-sm disabled:opacity-50"
+              >
+                {savingReposition ? 'Saving…' : 'Save new position'}
+              </button>
+              <button
+                type="button"
+                disabled={savingReposition}
+                onClick={onCancelReposition}
+                className="flex-1 text-sm font-semibold rounded-md border-2 border-gray-200 text-gray-600 hover:border-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="absolute left-1/2 -translate-x-1/2 bottom-20 lg:bottom-3 lg:left-auto lg:right-3 lg:translate-x-0 z-[1000] max-w-xs px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-900 shadow-sm text-center">
         Compatibility mode — full features, lightweight graphics for this computer.
