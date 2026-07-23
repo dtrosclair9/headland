@@ -93,6 +93,9 @@ export default function LiteMap({
   const holderRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const blocksRef = useRef<L.LayerGroup | null>(null)
+  // Persistent per-block polygons — the Mapbox model: build once, restyle in
+  // place. Zoom/pan/selection NEVER tear these down.
+  const polysRef = useRef<Map<string, L.Polygon>>(new Map())
   const annosRef = useRef<L.LayerGroup | null>(null)
   const satLayerRef = useRef<L.TileLayer | null>(null)
   const gpsRef = useRef<{ marker: L.CircleMarker; ring: L.Circle } | null>(null)
@@ -127,6 +130,7 @@ export default function LiteMap({
   const [locateError, setLocateError] = useState<string | null>(null)
   const [gpsOn, setGpsOn] = useState(false)
   const [zoomTick, setZoomTick] = useState(0)
+  const [viewTick, setViewTick] = useState(0)
 
   // Refs mirror the props/state the imperative Leaflet handlers need — the
   // map is created once; handlers must read current values.
@@ -157,11 +161,17 @@ export default function LiteMap({
       attributionControl: false,
       // canvas renderer: fastest non-GPU path for hundreds of polygons
       preferCanvas: true,
+      // The crop view has no tile layer, so nothing constrains zoom without
+      // this — users could zoom to a microscopic empty viewport (z25+).
+      maxZoom: 19,
+      minZoom: 3,
     })
     // Zoom top-right, same corner as the full map's navigation control —
     // and clear of the draw-tools column top-left.
     L.control.zoom({ position: 'topright' }).addTo(map)
     mapRef.current = map
+    // debug handle (read-only introspection; used by tests/diagnostics)
+    ;(window as unknown as { __liteMap?: L.Map }).__liteMap = map
     blocksRef.current = L.layerGroup().addTo(map)
     annosRef.current = L.layerGroup().addTo(map)
 
@@ -224,11 +234,17 @@ export default function LiteMap({
       setTool('none')
     })
 
-    const onZoomEnd = () => setZoomTick((n) => n + 1)
+    const onZoomEnd = () => {
+      setZoomTick((n) => n + 1) // annotations ground-scale (zoom only)
+      setViewTick((n) => n + 1)
+    }
+    const onMoveEnd = () => setViewTick((n) => n + 1) // label culling only
     map.on('zoomend', onZoomEnd)
+    map.on('moveend', onMoveEnd)
 
     return () => {
       map.off('zoomend', onZoomEnd)
+      map.off('moveend', onMoveEnd)
       map.remove()
       mapRef.current = null
     }
@@ -250,42 +266,35 @@ export default function LiteMap({
     }
   }, [mode])
 
-  // ── blocks layer (rebuilt on input change — cheap without a GPU) ───
+  // ── blocks: STRUCTURE (create/remove polygons only when the data set
+  // changes — never on zoom/pan/selection). The Mapbox model in Leaflet terms.
   useEffect(() => {
     const map = mapRef.current
     const group = blocksRef.current
     if (!map || !group) return
-    group.clearLayers()
-    editTargetRef.current = null
-    const sat = mode === 'satellite'
-    const repositioning = !!repositionIds && repositionIds.size > 0
-    const shown = (visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields).filter(
-      (f) => !repositioning || !repositionIds!.has(f.id),
+    const polys = polysRef.current
+    const shownIds = new Set(
+      (visibleIds ? fields.filter((f) => visibleIds.has(f.id)) : fields).map((f) => f.id),
     )
-    const showLabels = map.getZoom() >= 14
-    for (const f of shown) {
-      const sel = f.id === selectedFieldId
-      const bulkSel = selectMode && !!selectedIds?.has(f.id)
-      // Mirrors the full map's fillColorExpression: selected > plain/white >
-      // fly-plan color > variety palette > stage palette.
-      const fill = sel
-        ? SELECTED_COLOR
-        : whiteMap || (filterIds && !filterIds.has(f.id))
-          ? '#FFFFFF'
-          : highlightColor
-            ? highlightColor
-            : colorBy === 'variety'
-              ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
-              : ((f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')
+    // remove stale
+    for (const [id, poly] of polys) {
+      if (!shownIds.has(id)) {
+        group.removeLayer(poly)
+        polys.delete(id)
+      }
+    }
+    // add/update
+    for (const f of fields) {
+      if (!shownIds.has(f.id)) continue
       const latlngs = (f.geometry?.coordinates ?? []).map((ring) =>
         ring.map(([lng, lat]) => [lat, lng] as [number, number]),
       )
-      const poly = L.polygon(latlngs, {
-        color: bulkSel ? SELECTED_COLOR : sel ? '#111827' : sat ? '#facc15' : '#374151',
-        weight: bulkSel ? 4 : sel ? 3 : sat ? 1.5 : 1,
-        fillColor: fill,
-        fillOpacity: repositioning ? 0.25 : sat ? (sel ? 0.35 : 0.08) : 0.9,
-      })
+      const existing = polys.get(f.id)
+      if (existing) {
+        existing.setLatLngs(latlngs)
+        continue
+      }
+      const poly = L.polygon(latlngs, { color: '#374151', weight: 1, fillColor: '#e5e7eb', fillOpacity: 0.9 })
       poly.on('click', (ev) => {
         if (live.current.tool !== 'none' || live.current.repositioning) return
         L.DomEvent.stopPropagation(ev)
@@ -295,33 +304,126 @@ export default function LiteMap({
         }
         live.current.onSelectField(f.id)
       })
-      if (showLabels) {
-        const cutShort: Record<string, string> = {
-          plant_cane: 'PC', first_stubble: '1st', second_stubble: '2nd', third_stubble: '3rd',
-          fourth_stubble: '4th', fifth_stubble_plus: '5th', sixth_stubble_plus: '6th+', fallow: 'F',
-        }
-        const facts = [
-          Number(f.acreage_cached || 0) ? `${Number(f.acreage_cached).toFixed(2)} ac` : '',
-          f.variety ?? '',
-          f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
-        ].filter(Boolean).join(' · ')
-        poly.bindTooltip(
-          `<div style="text-align:center"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`,
-          {
-            permanent: true,
-            direction: 'center',
-            className: sat ? 'lite-label lite-label-sat' : 'lite-label',
-          },
-        )
-      }
       poly.addTo(group)
-      // reshape mode for the selected block — geoman vertex editing
-      if (sel && editingShape && onUpdateField && !readOnly) {
-        poly.pm.enable({ allowSelfIntersection: false })
-        editTargetRef.current = poly
+      polys.set(f.id, poly)
+    }
+  }, [fields, visibleIds])
+
+  // ── blocks: STYLE (setStyle in place — cheap even at thousands of blocks;
+  // zoom is deliberately NOT a dependency).
+  useEffect(() => {
+    const polys = polysRef.current
+    if (polys.size === 0) return
+    const sat = mode === 'satellite'
+    const repositioning = !!repositionIds && repositionIds.size > 0
+    const byId = new Map(fields.map((f) => [f.id, f]))
+    for (const [id, poly] of polys) {
+      const f = byId.get(id)
+      if (!f) continue
+      if (repositioning && repositionIds!.has(id)) {
+        // the working copy renders separately — hide the original in place
+        poly.setStyle({ opacity: 0, fillOpacity: 0 })
+        continue
+      }
+      const sel = id === selectedFieldId
+      const bulkSel = selectMode && !!selectedIds?.has(id)
+      const fill = sel
+        ? SELECTED_COLOR
+        : whiteMap || (filterIds && !filterIds.has(id))
+          ? '#FFFFFF'
+          : highlightColor
+            ? highlightColor
+            : colorBy === 'variety'
+              ? (varietyColors[f.variety ?? ''] ?? '#e5e7eb')
+              : ((f.current_ratoon && stageColorMap[f.current_ratoon]) || '#e5e7eb')
+      poly.setStyle({
+        color: bulkSel ? SELECTED_COLOR : sel ? '#111827' : sat ? '#facc15' : '#374151',
+        weight: bulkSel ? 4 : sel ? 3 : sat ? 1.5 : 1,
+        fillColor: fill,
+        fillOpacity: repositioning ? 0.25 : sat ? (sel ? 0.35 : 0.08) : 0.9,
+      })
+    }
+  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, repositionIds, selectMode, selectedIds])
+
+  // ── blocks: LABELS (viewport-culled — only on-screen blocks carry tooltip
+  // DOM, typically 20–80 instead of the whole farm; re-culled after each
+  // zoom/pan settle via zoomTick).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const polys = polysRef.current
+    const sat = mode === 'satellite'
+    const showLabels = map.getZoom() >= 14
+    const bounds = map.getBounds().pad(0.15)
+    const repositioning = !!repositionIds && repositionIds.size > 0
+    const byId = new Map(fields.map((f) => [f.id, f]))
+    const cutShort: Record<string, string> = {
+      plant_cane: 'PC', first_stubble: '1st', second_stubble: '2nd', third_stubble: '3rd',
+      fourth_stubble: '4th', fifth_stubble_plus: '5th', sixth_stubble_plus: '6th+', fallow: 'F',
+    }
+    const className = sat ? 'lite-label lite-label-sat' : 'lite-label'
+    const contentFor = (f: FieldRow) => {
+      const facts = [
+        Number(f.acreage_cached || 0) ? `${Number(f.acreage_cached).toFixed(2)} ac` : '',
+        f.variety ?? '',
+        f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return `<div style="text-align:center"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`
+    }
+    // Rank in-view candidates by distance to center and cap the count — a
+    // dense viewport otherwise mounts hundreds of label nodes in one burst.
+    const MAX_LABELS = 120
+    const center = map.getCenter()
+    const candidates: { id: string; d: number }[] = []
+    if (showLabels) {
+      for (const [id] of polys) {
+        const f = byId.get(id)
+        if (!f) continue
+        if (repositioning && repositionIds!.has(id)) continue
+        const ll = L.latLng(f.centroid_lat, f.centroid_lng)
+        if (!bounds.contains(ll)) continue
+        candidates.push({ id, d: center.distanceTo(ll) })
+      }
+      candidates.sort((a, b) => a.d - b.d)
+    }
+    const labeled = new Set(candidates.slice(0, MAX_LABELS).map((c) => c.id))
+    for (const [id, poly] of polys) {
+      const f = byId.get(id)
+      const wants = !!f && labeled.has(id)
+      const existing = poly.getTooltip()
+      if (wants && existing && existing.options.className !== className) {
+        poly.unbindTooltip() // crop<->satellite flip restyles the label
+      }
+      if (wants && !poly.getTooltip()) {
+        poly.bindTooltip(contentFor(f!), { permanent: true, direction: 'center', className })
+      } else if (wants && poly.getTooltip()) {
+        // keep visible labels' facts fresh (bulk edits change variety/cut)
+        poly.setTooltipContent(contentFor(f!))
+      } else if (!wants && poly.getTooltip()) {
+        poly.unbindTooltip()
       }
     }
-  }, [fields, selectedFieldId, mode, colorBy, varietyColors, highlightColor, filterIds, visibleIds, whiteMap, stageColorMap, editingShape, onUpdateField, readOnly, zoomTick, repositionIds, selectMode, selectedIds])
+  }, [fields, mode, viewTick, repositionIds])
+
+  // ── blocks: RESHAPE (geoman on the persistent polygon — survives zooms).
+  useEffect(() => {
+    editTargetRef.current = null
+    if (!editingShape || !selectedFieldId || !onUpdateField || readOnly) return
+    const poly = polysRef.current.get(selectedFieldId)
+    if (!poly) return
+    poly.pm.enable({ allowSelfIntersection: false })
+    editTargetRef.current = poly
+    return () => {
+      try {
+        poly.pm.disable()
+      } catch {
+        /* map tearing down */
+      }
+      editTargetRef.current = null
+    }
+  }, [editingShape, selectedFieldId, onUpdateField, readOnly])
 
   // ── annotations layer ──────────────────────────────────────────────
   useEffect(() => {
