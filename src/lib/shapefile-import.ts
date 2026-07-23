@@ -24,9 +24,20 @@ export function extractImportSource(files: { name: string; data: Buffer }[]): Im
   const zipFile = files.find((f) => f.name.toLowerCase().endsWith('.zip'))
   if (zipFile) {
     const zip = new JSZip(zipFile.data)
+    // Decompression-bomb guard: the 40MB cap upstream is COMPRESSED bytes; a
+    // deflate bomb expands to GB. Bound the total we actually inflate.
+    const MAX_UNCOMPRESSED = 200 * 1024 * 1024
+    let total = 0
     entries = Object.keys(zip.files)
       .filter((n) => !n.endsWith('/'))
-      .map((n) => ({ name: n, data: zip.file(n).asNodeBuffer() as Buffer }))
+      .map((n) => {
+        const data = zip.file(n).asNodeBuffer() as Buffer
+        total += data.length
+        if (total > MAX_UNCOMPRESSED) {
+          throw new Error('That zip expands too large to import.')
+        }
+        return { name: n, data }
+      })
   }
   const find = (...exts: string[]) =>
     entries.find((e) => exts.some((ext) => e.name.toLowerCase().endsWith(ext)))
@@ -238,6 +249,31 @@ export function parseGeoJSONBuffer(buf: Buffer): ParsedShapefile {
   }
 
   const features: ImportFeature[] = []
+  // Vertex budgets: FSA/FarmWorks blocks run tens of vertices; anything near
+  // these caps is hostile or corrupt, and one mega-polygon would grind the
+  // DB geometry ops and every later map/print render for the org.
+  const MAX_RING_VERTICES = 10_000
+  const MAX_TOTAL_VERTICES = 500_000
+  let totalVertices = 0
+  const validRing = (ring: unknown): ring is [number, number][] =>
+    Array.isArray(ring) &&
+    ring.length <= MAX_RING_VERTICES &&
+    ring.every(
+      (c) => Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number',
+    )
+  const takePolygon = (coords: unknown, props: Record<string, string>) => {
+    if (!Array.isArray(coords) || !coords.every(validRing)) {
+      throw new Error('That file contains an invalid or oversized field shape.')
+    }
+    for (const ring of coords as [number, number][][]) totalVertices += ring.length
+    if (totalVertices > MAX_TOTAL_VERTICES) {
+      throw new Error('That file has too many shape points to import.')
+    }
+    features.push({
+      geometry: { type: 'Polygon', coordinates: coords as [number, number][][] },
+      properties: props,
+    })
+  }
   for (const f of fc.features ?? []) {
     if (!f?.geometry) continue
     const props: Record<string, string> = {}
@@ -247,16 +283,18 @@ export function parseGeoJSONBuffer(buf: Buffer): ParsedShapefile {
       else props[k] = String(v).trim()
     }
     if (f.geometry.type === 'Polygon') {
-      features.push({ geometry: f.geometry as GeoJSON.Polygon, properties: props })
+      takePolygon((f.geometry as GeoJSON.Polygon).coordinates, props)
     } else if (f.geometry.type === 'MultiPolygon') {
       for (const poly of (f.geometry as GeoJSON.MultiPolygon).coordinates) {
-        features.push({ geometry: { type: 'Polygon', coordinates: poly }, properties: props })
+        takePolygon(poly, props)
       }
     }
   }
 
-  const first = features[0]?.geometry.coordinates?.[0]?.[0]
-  const projected = first ? !inWgs84Range(first[0], first[1]) : false
+  // Every coordinate must be finite WGS84 — not just feature[0]'s first point.
+  const projected = features.some((f) =>
+    f.geometry.coordinates.some((ring) => ring.some(([x, y]) => !inWgs84Range(x, y))),
+  )
   return summarize(features, projected)
 }
 

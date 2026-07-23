@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { requireUserAndOrg } from '@/lib/orgs'
+import { rateLimit } from '@/lib/rate-limit'
 import { createClient } from '@/lib/supabase/server'
 import { listAnnotations } from '@/lib/annotations'
 
@@ -35,6 +36,11 @@ const CreateSchema = z.discriminatedUnion('kind', [
 
 export async function POST(request: NextRequest) {
   const { user, org } = await requireUserAndOrg()
+  // Light write, but the read side loads the org's ENTIRE set on every map
+  // load/print — cap scripted inserts.
+  if (!(await rateLimit(`anno:${org.id}`, 120, 60))) {
+    return NextResponse.json({ error: 'Too many changes at once — slow down a moment.' }, { status: 429 })
+  }
   const body = await request.json().catch(() => null)
   const parsed = CreateSchema.safeParse(body)
   if (!parsed.success) {
@@ -59,6 +65,9 @@ export async function POST(request: NextRequest) {
     })
     .select('id, kind, geometry, text, color, size, rotation, width')
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[annotations] insert failed', error)
+    return NextResponse.json({ error: 'save_failed' }, { status: 500 })
+  }
   return NextResponse.json({ annotation: data }, { status: 201 })
 }

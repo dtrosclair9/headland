@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       .eq('org_id', org.id)
       .in('id', slice)
     if (ownErr) {
-      return NextResponse.json({ error: ownErr.message }, { status: 500 })
+      console.error('[bulk-geometry] ownership check failed', ownErr)
+      return NextResponse.json({ error: 'save_failed' }, { status: 500 })
     }
     for (const r of owned ?? []) ownedSet.add(r.id as string)
   }
@@ -52,7 +53,8 @@ export async function POST(request: NextRequest) {
     p_features: features,
   })
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('[bulk-geometry] rpc failed', error)
+    return NextResponse.json({ error: 'save_failed' }, { status: 500 })
   }
 
   return NextResponse.json({ updated: typeof data === 'number' ? data : features.length })
