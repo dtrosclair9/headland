@@ -1321,12 +1321,21 @@ export default function FieldMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
-    map.getCanvas().style.cursor = drawKind ? PENCIL_CURSOR : ''
+    // getCanvas() is undefined once the map is removed — this cleanup runs
+    // AFTER the init effect's map.remove() on unmount (React cleans up in
+    // definition order), which crashed navigation off the map page.
+    const canvas = map.getCanvas?.()
+    if (canvas) canvas.style.cursor = drawKind ? PENCIL_CURSOR : ''
     progressPtsRef.current = []
-    const src = map.getSource('draw-progress') as mapboxgl.GeoJSONSource | undefined
-    src?.setData({ type: 'FeatureCollection', features: [] })
+    try {
+      const src = map.getSource('draw-progress') as mapboxgl.GeoJSONSource | undefined
+      src?.setData({ type: 'FeatureCollection', features: [] })
+    } catch {
+      /* map tearing down */
+    }
     return () => {
-      map.getCanvas().style.cursor = ''
+      const c = map.getCanvas?.()
+      if (c) c.style.cursor = ''
     }
   }, [drawKind, ready])
 

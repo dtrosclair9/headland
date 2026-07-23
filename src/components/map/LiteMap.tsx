@@ -588,13 +588,17 @@ export default function LiteMap({
     map.on('mouseup', onUp)
 
     return () => {
-      map.off('mousedown', onDown)
-      map.off('mousemove', onMove)
-      map.off('mouseup', onUp)
-      handle.remove()
-      group.remove()
+      try {
+        map.off('mousedown', onDown)
+        map.off('mousemove', onMove)
+        map.off('mouseup', onUp)
+        handle.remove()
+        group.remove()
+        map.dragging.enable()
+      } catch {
+        /* map already removed */
+      }
       repoGroupRef.current = null
-      map.dragging.enable()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repositionIds, fields])
@@ -614,9 +618,13 @@ export default function LiteMap({
     layer.pm.enable({ allowSelfIntersection: true })
     layer.pm.enableLayerDrag()
     return () => {
-      layer.pm.disableLayerDrag()
-      layer.pm.disable()
-      layer.remove()
+      try {
+        layer.pm.disableLayerDrag()
+        layer.pm.disable()
+        layer.remove()
+      } catch {
+        /* map already removed */
+      }
       lineEditLayerRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
