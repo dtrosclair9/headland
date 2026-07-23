@@ -656,6 +656,7 @@ export default function MapShell({
         varietyColors={varietyColors}
         annotations={annotations}
         onCreateAnnotation={handleCreateAnnotation}
+        onUpdateAnnotation={handleUpdateAnnotation}
         onDeleteAnnotation={handleDeleteAnnotation}
       />
 

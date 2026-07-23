@@ -49,11 +49,7 @@ function loadSavedCamera(orgId: string | undefined): {
 
 // Pencil cursor while a draw tool is armed — hotspot at the pencil tip.
 export const PENCIL_CURSOR =
-  'url("data:image/svg+xml;charset=utf-8,' +
-  encodeURIComponent(
-    '<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'><path fill=\'%231A3D2E\' stroke=\'white\' stroke-width=\'1.2\' d=\'M3 21l1.2-4.2L15.4 5.6a2.1 2.1 0 013 0l0 0a2.1 2.1 0 010 3L7.2 19.8 3 21z\'/></svg>',
-  ) +
-  '") 2 21, crosshair'
+  'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAuUlEQVR4nO2U4Q2CMBBGe13CRHeQCWQSx2MSnEB2qIlTfOZMmhz0BHq98MuX8AMK77VpSgh/jgIAtOfRS/4eejUSveSMFole8swyYg4AwKXvwuk+FmMyElvkjBbheyIiUwBCnpERKWeoVS5J43Mmr1oBDPLdARjluwJokG8GWuWrAQ/5z4CXnCleOt+u6l/RIq8+aKlSXgR49izhy0O+ugIZSUb5LJBnn5GbTEb591sZkAOvx2SWHsoH0v2NW7G57dwAAAAASUVORK5CYII=) 2 21, crosshair'
 const UNSET_COLOR = UNSET_RATOON_COLOR
 
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
@@ -1526,6 +1522,8 @@ export default function FieldMap({
       'reposition-outline',
       'annotations-line',
       'annotations-text',
+      // in-progress draw vertex dots — must survive the crop-map layer hider
+      'draw-progress-dots',
     ])
     const style = map.getStyle()
     for (const layer of style?.layers ?? []) {

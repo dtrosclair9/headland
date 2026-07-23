@@ -718,7 +718,7 @@ export default function LiteMap({
         .lite-label { background: transparent; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #111827; }
         .lite-label-sat { color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
         .lite-label::before { display: none; }
-        .lite-pencil, .lite-pencil * { cursor: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%231A3D2E' stroke='white' stroke-width='1.2' d='M3 21l1.2-4.2L15.4 5.6a2.1 2.1 0 013 0l0 0a2.1 2.1 0 010 3L7.2 19.8 3 21z'/%3E%3C/svg%3E") 2 21, crosshair !important; }
+        .lite-pencil, .lite-pencil * { cursor: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAuUlEQVR4nO2U4Q2CMBBGe13CRHeQCWQSx2MSnEB2qIlTfOZMmhz0BHq98MuX8AMK77VpSgh/jgIAtOfRS/4eejUSveSMFole8swyYg4AwKXvwuk+FmMyElvkjBbheyIiUwBCnpERKWeoVS5J43Mmr1oBDPLdARjluwJokG8GWuWrAQ/5z4CXnCleOt+u6l/RIq8+aKlSXgR49izhy0O+ugIZSUb5LJBnn5GbTEb591sZkAOvx2SWHsoH0v2NW7G57dwAAAAASUVORK5CYII=) 2 21, crosshair !important; }
       `}</style>
 
       {/* Labeled action buttons — overlay the map at top-left. EXACT clone of
