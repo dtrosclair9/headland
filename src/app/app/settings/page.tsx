@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { requireUserAndOrg } from '@/lib/orgs'
 import { hasActiveSubscription, isInTrial, trialDaysLeft } from '@/lib/billing'
 import { updateOrgSettings, updatePassword } from './actions'
+import MapLabelSettings from './MapLabelSettings'
+import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -133,6 +135,18 @@ export default async function SettingsPage({
         </div>
         <span className="text-primary font-bold text-xl" aria-hidden="true">→</span>
       </a>
+
+      <section className="mt-6 bg-white border border-gray-100 rounded-xl p-6">
+        <h2 className="text-base font-bold text-primary">Map &amp; print labels</h2>
+        <p className="text-sm text-gray-600 mt-0.5 mb-4">
+          The default facts shown on each block and how blocks are colored — applies to the live
+          map and printed sheets. Each device can still toggle its own view.
+        </p>
+        <MapLabelSettings
+          initialFields={parseLabelFields(org.label_fields as LabelField[] | undefined)}
+          initialColorBy={(org.default_color_by as 'stage' | 'variety') ?? 'stage'}
+        />
+      </section>
 
       <form action={updatePassword} className="mt-6 bg-white border border-gray-100 rounded-xl p-6 space-y-5">
         <div>
