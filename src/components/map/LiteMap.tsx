@@ -11,6 +11,7 @@ import type { StageColor } from '@/lib/resolve-colors'
 import MapLegend from './MapLegend'
 import type { FieldRow } from '@/lib/fields'
 import type { AnnotationRow } from '@/lib/annotations'
+import { ALL_LABEL_FIELDS, type LabelField } from '@/lib/label-fields'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 const SAT_TILES = `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${MAPBOX_TOKEN}`
@@ -52,6 +53,7 @@ export default function LiteMap({
   visibleIds = null,
   whiteMap = false,
   readOnly = false,
+  labelFields,
 }: {
   fields: FieldRow[]
   selectedFieldId: string | null
@@ -89,6 +91,7 @@ export default function LiteMap({
   onDeleteAnnotation?: (id: string) => Promise<void>
   colorBy?: 'stage' | 'variety'
   varietyColors?: Record<string, string>
+  labelFields?: ReadonlySet<LabelField>
   // Ordered stage palette with labels — feeds the shared MapLegend.
   stageColors?: StageColor[]
   highlightColor?: string | null
@@ -415,30 +418,39 @@ export default function LiteMap({
       fourth_stubble: '4th', fifth_stubble_plus: '5th', sixth_stubble_plus: '6th+', fallow: 'F',
     }
     const className = sat ? 'lite-label lite-label-sat' : 'lite-label'
+    const lf = labelFields ?? new Set<LabelField>(ALL_LABEL_FIELDS)
     const factsFor = (f: FieldRow) =>
       [
-        Number(f.acreage_cached || 0) ? `${Number(f.acreage_cached).toFixed(2)} ac` : '',
-        f.variety ?? '',
-        f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
+        lf.has('acres') && Number(f.acreage_cached || 0)
+          ? `${Number(f.acreage_cached).toFixed(2)} ac`
+          : '',
+        lf.has('variety') ? (f.variety ?? '') : '',
+        lf.has('cut') && f.current_ratoon ? (cutShort[f.current_ratoon] ?? '') : '',
       ]
         .filter(Boolean)
         .join(' · ')
     const contentFor = (f: FieldRow) => {
       const facts = factsFor(f)
+      const nameShown = lf.has('name')
+      if (!nameShown && !facts) return ''
       // Same label rule as the full map: white text with a dark halo on
       // colored blocks, black with a white halo on white/plain blocks.
       const colored = fillFor(f) !== '#FFFFFF'
       const textStyle = colored
         ? 'color:#FFFFFF;text-shadow:0 0 3px #0F2A1F,0 0 3px #0F2A1F'
         : 'color:#111827;text-shadow:0 0 2px #FFFFFF,0 0 2px #FFFFFF'
-      return `<div style="text-align:center;${textStyle}"><strong>${escapeHtml(f.name)}</strong>${facts ? `<br/><span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>` : ''}</div>`
+      const head = nameShown ? `<strong>${escapeHtml(f.name)}</strong>` : ''
+      const sub = facts
+        ? `${nameShown ? '<br/>' : ''}<span style="font-weight:500;font-size:10px">${escapeHtml(facts)}</span>`
+        : ''
+      return `<div style="text-align:center;${textStyle}">${head}${sub}</div>`
     }
     // Rank in-view candidates by distance to center and cap the count — a
     // dense viewport otherwise mounts hundreds of label nodes in one burst.
     const MAX_LABELS = 120
     const center = map.getCenter()
     const candidates: { id: string; d: number }[] = []
-    if (showLabels) {
+    if (showLabels && lf.size > 0) {
       for (const [id] of polys) {
         const f = byId.get(id)
         if (!f) continue
@@ -461,8 +473,10 @@ export default function LiteMap({
       const f = byId.get(c.id)!
       const pt = map.latLngToContainerPoint(L.latLng(f.centroid_lat, f.centroid_lng))
       const facts = factsFor(f)
-      const w = Math.max((f.name ?? '').length * 8, facts.length * 5.5) + 20
-      const h = (facts ? 44 : 30) + 4
+      const nameShown = lf.has('name')
+      const nameW = nameShown ? (f.name ?? '').length * 8 : 0
+      const w = Math.max(nameW, facts.length * 5.5) + 20
+      const h = (nameShown && facts ? 44 : nameShown || facts ? 30 : 0) + 4
       const box = { x1: pt.x - w / 2, y1: pt.y - h / 2, x2: pt.x + w / 2, y2: pt.y + h / 2 }
       if (
         placedBoxes.some(
@@ -489,7 +503,7 @@ export default function LiteMap({
         poly.unbindTooltip()
       }
     }
-  }, [fields, mode, viewTick, repositionIds, colorBy, varietyColors, stageColorMap, filterIds, whiteMap, highlightColor, blockColors, selectedFieldId])
+  }, [fields, mode, viewTick, repositionIds, colorBy, varietyColors, stageColorMap, filterIds, whiteMap, highlightColor, blockColors, selectedFieldId, labelFields])
 
   // ── blocks: RESHAPE (geoman on the persistent polygon — survives zooms).
   useEffect(() => {
