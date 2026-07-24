@@ -57,7 +57,7 @@ export default async function PlanGroupPrintPage({
 
   const labelFields = parseLabelFields(
     labelsRaw,
-    parseLabelFields(org.print_label_fields as LabelField[] | undefined),
+    parseLabelFields(org.label_fields as LabelField[] | undefined),
   )
   const labelFieldSet = new Set(labelFields)
   const paper = parsePaperSize(paperRaw ?? (org.print_paper as string | undefined))

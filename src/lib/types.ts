@@ -64,8 +64,12 @@ export interface Organization {
   stripe_price_id: string | null
   subscription_status: SubscriptionStatus
   current_period_end: string | null
-  /** which block facts print on plat sheets (farm default) */
-  print_label_fields: string[]
+  /** which block facts show on the map + plat sheets (shared farm default) */
+  label_fields: string[]
+  /** default color-by mode for the live map (year cane vs variety) */
+  default_color_by: 'stage' | 'variety'
+  /** bumped on every "save as default"; propagates a new default across devices */
+  view_defaults_updated_at: string
   /** default paper size for prints (letter/legal/tabloid) */
   print_paper: string | null
   created_at: string

@@ -15,7 +15,7 @@ export default function SaveDefaultsButton({ fields }: { fields: LabelField[] })
   async function save() {
     setSaving(true)
     try {
-      const res = await fetch('/api/print-prefs', {
+      const res = await fetch('/api/view-defaults', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
