@@ -2179,6 +2179,7 @@ export default function FieldMap({
         stageColorMap={Object.fromEntries(stageColors.map((r) => [r.key, r.color]))}
         stageColors={stageColors}
         colorBy={colorBy}
+        labelFields={labelFields}
         varietyColors={varietyColors}
         highlightColor={highlightColor}
         blockColors={blockColors}

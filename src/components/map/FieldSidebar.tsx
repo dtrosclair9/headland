@@ -7,6 +7,7 @@ import type { Plantation, Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { friendlyError } from '@/lib/errors'
 import type { ViewMode, ColorBy } from './FieldMap'
+import type { LabelField } from '@/lib/label-fields'
 import type { PlanGroupRow } from '@/lib/fly-plans'
 import LayersPanel from './LayersPanel'
 import PlansPanel from './PlansPanel'
@@ -42,6 +43,12 @@ interface FieldSidebarProps {
   onColorByChange: (c: ColorBy) => void
   stageColors: import('@/lib/resolve-colors').StageColor[]
   varietyColors: Record<string, string>
+  // Map label toggles + the shared-default save/reset, forwarded to LayersPanel.
+  labelFields?: ReadonlySet<LabelField>
+  onLabelFieldsChange?: (next: Set<LabelField>) => void
+  onSaveViewDefault?: () => void
+  onResetViewDefault?: () => void
+  savingViewDefault?: boolean
   selectedFieldId: string | null
   onSelectField: (id: string | null) => void
   totalAcres: number
@@ -93,6 +100,11 @@ export default function FieldSidebar({
   onColorByChange,
   stageColors,
   varietyColors,
+  labelFields,
+  onLabelFieldsChange,
+  onSaveViewDefault,
+  onResetViewDefault,
+  savingViewDefault,
   selectedFieldId,
   onSelectField,
   totalAcres,
@@ -231,6 +243,11 @@ export default function FieldSidebar({
           varietyColors={varietyColors}
           isSpray={isSpray}
           snapshotId={snapshot?.id ?? null}
+          labelFields={labelFields}
+          onLabelFieldsChange={onLabelFieldsChange}
+          onSaveViewDefault={onSaveViewDefault}
+          onResetViewDefault={onResetViewDefault}
+          savingViewDefault={savingViewDefault}
         />
       ) : tab === 'plans' && fields.length > 0 ? (
         <PlansPanel

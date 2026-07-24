@@ -20,6 +20,13 @@ import type { OrgColorOverrides } from '@/lib/org-colors'
 import type { AnnotationRow } from '@/lib/annotations'
 import type { PlanGroupRow } from '@/lib/fly-plans'
 import { formatArea } from '@/lib/units'
+import {
+  ALL_LABEL_FIELDS,
+  MAP_VIEW_KEY,
+  resolveMapView,
+  type LabelField,
+  type ViewDefaults,
+} from '@/lib/label-fields'
 
 const FieldMap = dynamic(() => import('./FieldMap'), {
   ssr: false,
@@ -46,6 +53,8 @@ interface MapShellProps {
   // Archived monthly snapshot: the same map, read-only — layers, plantation
   // isolation, color-by, and printing all work; nothing can be edited.
   snapshot?: { id: string; label: string } | null
+  // Shared org default for the map view (labels + color-by) + its version stamp.
+  viewDefaults?: ViewDefaults
 }
 
 export default function MapShell({
@@ -57,6 +66,7 @@ export default function MapShell({
   initialPlanGroups,
   focusFieldId,
   snapshot = null,
+  viewDefaults,
 }: MapShellProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -323,7 +333,73 @@ export default function MapShell({
 
   // Which palette paints the blocks (filters pick WHICH blocks highlight;
   // colorBy picks the palette, so stage + variety filters never fight).
-  const [colorBy, setColorBy] = useState<ColorBy>('stage')
+  // The map view (labels + color-by) is a per-device override seeded from the
+  // shared org default; "Save as default" promotes the current view to the org.
+  const savedDefaultInit: ViewDefaults = viewDefaults ?? {
+    labelFields: [...ALL_LABEL_FIELDS],
+    colorBy: 'stage',
+    updatedAt: '',
+  }
+  const [savedDefault, setSavedDefault] = useState<ViewDefaults>(savedDefaultInit)
+  const [labelFields, setLabelFields] = useState<Set<LabelField>>(
+    new Set(savedDefaultInit.labelFields),
+  )
+  const [colorBy, setColorByState] = useState<ColorBy>(savedDefaultInit.colorBy)
+  const [savingViewDefault, setSavingViewDefault] = useState(false)
+
+  // Hydrate from localStorage AFTER mount (avoids an SSR hydration mismatch on
+  // the Labels checkboxes — server renders the default, client corrects).
+  useEffect(() => {
+    const v = resolveMapView(localStorage.getItem(MAP_VIEW_KEY), savedDefaultInit)
+    setLabelFields(new Set(v.labelFields))
+    setColorByState(v.colorBy)
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const persistView = (nextFields: Set<LabelField>, nextColorBy: ColorBy) => {
+    localStorage.setItem(
+      MAP_VIEW_KEY,
+      JSON.stringify({
+        labelFields: [...nextFields],
+        colorBy: nextColorBy,
+        basedOn: savedDefault.updatedAt,
+      }),
+    )
+  }
+  const handleLabelFieldsChange = (next: Set<LabelField>) => {
+    setLabelFields(next)
+    persistView(next, colorBy)
+  }
+  // Wrapper preserves the existing onColorByChange={setColorBy} call site while
+  // persisting the pick to the per-device view.
+  const setColorBy = (cb: ColorBy) => {
+    setColorByState(cb)
+    persistView(labelFields, cb)
+  }
+  const handleSaveViewDefault = async () => {
+    if (labelFields.size === 0) return
+    setSavingViewDefault(true)
+    try {
+      const res = await fetch('/api/view-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: [...labelFields], colorBy }),
+      })
+      if (res.ok) {
+        const { updatedAt } = (await res.json()) as { updatedAt: string }
+        setSavedDefault({ labelFields: [...labelFields], colorBy, updatedAt })
+        localStorage.removeItem(MAP_VIEW_KEY) // current === default now
+      }
+    } finally {
+      setSavingViewDefault(false)
+    }
+  }
+  const handleResetViewDefault = () => {
+    localStorage.removeItem(MAP_VIEW_KEY)
+    setLabelFields(new Set(savedDefault.labelFields))
+    setColorByState(savedDefault.colorBy)
+  }
   // Defaults merged with the farm's custom colors — one resolution point for
   // the map fill, the legend, and the sidebar dots.
   const stageColors = useMemo(() => resolveStageColors(colorOverrides.stage), [colorOverrides])
@@ -674,6 +750,11 @@ export default function MapShell({
           onColorByChange={setColorBy}
           stageColors={stageColors}
           varietyColors={varietyColors}
+          labelFields={labelFields}
+          onLabelFieldsChange={handleLabelFieldsChange}
+          onSaveViewDefault={handleSaveViewDefault}
+          onResetViewDefault={handleResetViewDefault}
+          savingViewDefault={savingViewDefault}
           selectedFieldId={selectedFieldId}
           onSelectField={(id) => {
             setSelectedFieldId(id)
@@ -770,6 +851,7 @@ export default function MapShell({
         colorBy={colorBy}
         stageColors={stageColors}
         varietyColors={varietyColors}
+        labelFields={labelFields}
         annotations={annotations}
         onCreateAnnotation={handleCreateAnnotation}
         onUpdateAnnotation={handleUpdateAnnotation}
