@@ -170,13 +170,21 @@ export const PAPER_DIMS: Record<PaperSize, { w: number; h: number; label: string
 const PAGE_MARGIN_IN = 0.3 // @page margin, all sides
 const SHEET_PAD_IN = 0.15 // .sheet horizontal padding
 const CHROME_IN = 0.7 // thin header + paddings above/below the map
+// Consumer inkjets (e.g. Canon TS-series) enforce ~0.5in hardware margins that
+// exceed our 0.3in @page margin, and the map SVG is atomic — it can't split, so
+// if header+map exceeds the REAL printable area by a hair the whole map bumps to
+// page 2. This slack keeps a single sheet on one landscape page. Do NOT reclaim
+// it to make the map bigger — that's the regression that reintroduced the
+// 2-page spill (the pre-refactor fix capped the letter map at 6.6in for exactly
+// this reason). letter/legal → 6.6in map; tabloid → 9.1in.
+const PRINTER_SLACK_IN = 0.6
 export function paperSpec(paper: PaperSize) {
   const d = PAPER_DIMS[paper]
   const sheetWidthIn = d.w - PAGE_MARGIN_IN * 2
   return {
     sheetWidthIn,
     widthIn: sheetWidthIn - SHEET_PAD_IN * 2, // printable map width
-    heightIn: d.h - PAGE_MARGIN_IN * 2 - CHROME_IN, // printable map height
+    heightIn: d.h - PAGE_MARGIN_IN * 2 - CHROME_IN - PRINTER_SLACK_IN, // printable map height
     pageW: d.w,
     pageH: d.h,
     label: d.label,
