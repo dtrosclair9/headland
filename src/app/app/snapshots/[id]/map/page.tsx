@@ -6,6 +6,7 @@ import { listFields } from '@/lib/fields'
 import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import MapShell from '@/components/map/MapShell'
+import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 
 export const metadata: Metadata = { title: 'Farm snapshot' }
 
@@ -51,6 +52,11 @@ export default async function SnapshotMapPage({
       initialPlanGroups={[]}
       focusFieldId={null}
       snapshot={{ id: snap.id, label: `${periodLabel(snap.period)} snapshot` }}
+      viewDefaults={{
+        labelFields: parseLabelFields(org.label_fields as LabelField[] | undefined),
+        colorBy: (org.default_color_by as 'stage' | 'variety') ?? 'stage',
+        updatedAt: String(org.view_defaults_updated_at ?? ''),
+      }}
     />
   )
 }

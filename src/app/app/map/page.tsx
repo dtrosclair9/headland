@@ -5,6 +5,7 @@ import { getOrgColors } from '@/lib/org-colors'
 import { listAnnotations } from '@/lib/annotations'
 import { listPlanGroups } from '@/lib/fly-plans'
 import MapShell from '@/components/map/MapShell'
+import { parseLabelFields, type LabelField } from '@/lib/label-fields'
 
 export const metadata: Metadata = { title: 'Block map' }
 
@@ -31,6 +32,11 @@ export default async function MapPage({
       initialAnnotations={annotations}
       initialPlanGroups={planGroups}
       focusFieldId={focus ?? null}
+      viewDefaults={{
+        labelFields: parseLabelFields(org.label_fields as LabelField[] | undefined),
+        colorBy: (org.default_color_by as 'stage' | 'variety') ?? 'stage',
+        updatedAt: String(org.view_defaults_updated_at ?? ''),
+      }}
     />
   )
 }
