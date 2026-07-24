@@ -18,6 +18,7 @@ import dynamic from 'next/dynamic'
 const LiteMap = dynamic(() => import('./LiteMap'), { ssr: false })
 import type { AnnotationRow } from '@/lib/annotations'
 import { cornerLabelAnchors } from './cornerLabels'
+import { ALL_LABEL_FIELDS, type LabelField } from '@/lib/label-fields'
 import MapLegend from './MapLegend'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
@@ -241,6 +242,8 @@ export interface FieldMapProps {
   colorBy: ColorBy
   stageColors: StageColor[]
   varietyColors: Record<string, string>
+  /** which of the 4 facts to render on blocks; absent = all four */
+  labelFields?: ReadonlySet<LabelField>
   // Hand-drawn reference lines + text labels ("Hwy 308", "Shop house").
   annotations: AnnotationRow[]
   onCreateAnnotation: (
@@ -292,11 +295,13 @@ export default function FieldMap({
   colorBy,
   stageColors,
   varietyColors,
+  labelFields,
   annotations,
   onCreateAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
 }: FieldMapProps) {
+  const labelFieldsRef = useRef<ReadonlySet<LabelField>>(labelFields ?? new Set(ALL_LABEL_FIELDS))
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const drawRef = useRef<MapboxDraw | null>(null)
@@ -1721,6 +1726,32 @@ export default function FieldMap({
     }
   }, [selectedFieldId, ready, viewMode, whiteMap, highlightColor, blockColors, colorBy, stageColors, varietyColors])
 
+  // Per-field label visibility (user toggle). The 4 label layers are in the
+  // white-sheet `ours` set (they aren't hidden by the crop-sheet loop), so this
+  // effect owns their base visibility. cut=fields-label (center), name/variety/
+  // acres = the three corner layers.
+  useEffect(() => {
+    const set = labelFields ?? new Set<LabelField>(ALL_LABEL_FIELDS)
+    labelFieldsRef.current = set
+    const map = mapRef.current
+    if (!map || !ready) return
+    const pairs: [LabelField, string][] = [
+      ['cut', 'fields-label'],
+      ['name', 'field-label-id'],
+      ['variety', 'field-label-variety'],
+      ['acres', 'field-label-acres'],
+    ]
+    for (const [field, layerId] of pairs) {
+      try {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', set.has(field) ? 'visible' : 'none')
+        }
+      } catch {
+        /* layer not ready — ignore */
+      }
+    }
+  }, [labelFields, ready])
+
   // Mirror viewMode into a ref so the reposition effect's cleanup can restore the
   // correct base-layer opacity without taking viewMode as a dependency (which
   // would tear down an in-progress move when the user flips the basemap).
@@ -1931,7 +1962,11 @@ export default function FieldMap({
         map.dragPan.enable()
         const vm = viewModeRef.current
         map.setPaintProperty('fields-fill', 'fill-opacity', vm === 'crop' ? 0.92 : 0.4)
-        map.setLayoutProperty('fields-label', 'visibility', 'visible')
+        map.setLayoutProperty(
+          'fields-label',
+          'visibility',
+          labelFieldsRef.current.has('cut') ? 'visible' : 'none',
+        )
       } catch {
         /* ignore */
       }
