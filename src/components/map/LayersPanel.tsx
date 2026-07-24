@@ -7,6 +7,7 @@ import type { Units } from '@/lib/types'
 import { formatArea } from '@/lib/units'
 import { UNSET_RATOON_COLOR } from '@/lib/ratoon-colors'
 import type { StageColor } from '@/lib/resolve-colors'
+import { ALL_LABEL_FIELDS, LABEL_FIELD_NAMES, type LabelField } from '@/lib/label-fields'
 import {
   type LayerFilter,
   EMPTY_LAYER_FILTER,
@@ -34,6 +35,11 @@ export default function LayersPanel({
   varietyColors,
   isSpray,
   snapshotId = null,
+  labelFields,
+  onLabelFieldsChange,
+  onSaveViewDefault,
+  onResetViewDefault,
+  savingViewDefault = false,
 }: {
   fields: FieldRow[]
   units: Units
@@ -54,6 +60,11 @@ export default function LayersPanel({
   isSpray: boolean
   // Archived-snapshot view: print links pull blocks from the snapshot, not the live farm.
   snapshotId?: string | null
+  labelFields?: ReadonlySet<LabelField>
+  onLabelFieldsChange?: (next: Set<LabelField>) => void
+  onSaveViewDefault?: () => void
+  onResetViewDefault?: () => void
+  savingViewDefault?: boolean
 }) {
   const active = isLayerFilterActive(filter)
 
@@ -207,6 +218,38 @@ export default function LayersPanel({
         )}
       </div>
 
+      {/* Labels — which of the 4 block facts render on the map. Sits directly
+          above Color by so the Save pill below the divider clearly caps both. */}
+      <div className="px-4 py-2.5 border-b border-gray-100">
+        <span className="text-[11px] uppercase tracking-wider font-bold text-gray-600">
+          Labels
+        </span>
+        <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5">
+          {ALL_LABEL_FIELDS.map((f) => {
+            const on = (labelFields ?? new Set<LabelField>(ALL_LABEL_FIELDS)).has(f)
+            return (
+              <label
+                key={f}
+                className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => {
+                    const next = new Set<LabelField>(labelFields ?? new Set(ALL_LABEL_FIELDS))
+                    if (next.has(f)) next.delete(f)
+                    else next.add(f)
+                    onLabelFieldsChange?.(next)
+                  }}
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                {LABEL_FIELD_NAMES[f]}
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Color by — which palette paints the highlighted blocks. Filters pick
           WHICH blocks; this picks the colors, so stage + variety picks never
           fight over the palette. Always visible: from the white map, checking
@@ -239,6 +282,31 @@ export default function LayersPanel({
           </div>
         </div>
       )}
+
+      {/* Save-as-default: caps the Labels + Color-by group so its scope is
+          obvious. Always rendered (Color by hides when an org has no varieties). */}
+      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onSaveViewDefault}
+          disabled={savingViewDefault || (labelFields?.size ?? ALL_LABEL_FIELDS.length) === 0}
+          title={
+            (labelFields?.size ?? 1) === 0
+              ? 'Pick at least one label to save as default'
+              : undefined
+          }
+          className="flex-1 text-xs font-semibold rounded-md border-2 border-primary text-primary px-3 py-1.5 hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {savingViewDefault ? 'Saving…' : 'Save current view as default'}
+        </button>
+        <button
+          type="button"
+          onClick={onResetViewDefault}
+          className="text-xs font-semibold text-gray-500 hover:text-primary shrink-0"
+        >
+          Reset
+        </button>
+      </div>
 
       {/* Year cane */}
       <LayerGroup title="Year cane">
