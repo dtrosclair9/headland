@@ -93,18 +93,27 @@ toggle wins only on its own device, only until a newer default lands.**
 ## UI
 
 ### Layers panel (`LayersPanel.tsx`)
-- New **"Labels"** section: 4 checkboxes from `LABEL_FIELD_NAMES`, bound to
-  `viewPrefs.labelFields`. Zero-selected is allowed (clean map).
-- Existing color-by control stays as-is (now seeded from `viewPrefs.colorBy`).
-- One small **"Save as default"** pill at the panel bottom → promotes the **whole
-  current view** (`labelFields` + `colorBy`) to the org default. Disabled with a
-  hint when zero labels are selected (can't save "no labels" as the org default;
-  live view still allows zero).
-- Small **"Reset to default"** link → clear `headland-map-view`, re-pull org default.
+Grouped as one "display" block so the Save affordance's scope is unmistakable —
+order: **Labels → Color by → Save**:
+- New **"Labels"** section placed **directly above** the existing "Color by" row:
+  4 checkboxes from `LABEL_FIELD_NAMES`, bound to `viewPrefs.labelFields`.
+  Zero-selected allowed (clean map).
+- Existing **"Color by"** row stays (existing UI labels **"Year cane" / "Variety"**,
+  i.e. `colorBy` `'stage'|'variety'`), now seeded from `viewPrefs.colorBy`.
+- **"Save current view as default"** pill placed **directly under the Color-by
+  divider** (between color-by and the "Year cane" filter group) — so it visually
+  caps the labels + color choices right above it and users know exactly what
+  they're saving. Saves the whole view (`labelFields` + `colorBy`) to the org
+  default. **Always rendered** (not gated on the color-by row, which hides when an
+  org has no varieties). Disabled with a hint when zero labels are selected (can't
+  save "no labels" as the org default; the live view still allows zero).
+- Small **"Reset to default"** link beside/under the pill → clear
+  `headland-map-view`, re-pull the org default.
 
 ### Settings (`app/settings`)
 - New **"Map & print labels"** section near Colors: the 4 label checkboxes + a
-  color-by radio (Crop stage / Variety). Saves via the same endpoint.
+  color-by radio (**Year cane / Variety**, matching the panel's copy). Saves via
+  the same endpoint.
 
 ## Live-map wiring
 
